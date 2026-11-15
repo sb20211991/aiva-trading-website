@@ -1,0 +1,89 @@
+name: Square sandbox deployment preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/square-sandbox-review]
+    paths: [.github/workflows/square-sandbox-preflight.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run local checkout and website checks
+        run: npm test
+      - name: Identify Cloudflare Pages project without changing it
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: python
+        run: |
+          import json, os, urllib.request, urllib.error, sys
+          names = ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN")
+          missing = [name for name in names if not os.environ.get(name, "").strip()]
+          if missing:
+              print("BLOCKED: add these encrypted GitHub repository secrets: " + ", ".join(missing))
+              print("No Cloudflare configuration or deployment has been changed.")
+              sys.exit(1)
+          account = os.environ["CLOUDFLARE_ACCOUNT_ID"].strip()
+          if len(account) != 32 or any(c not in "0123456789abcdefABCDEF" for c in account):
+              print("BLOCKED: invalid Cloudflare account ID format.")
+              sys.exit(1)
+          token = os.environ["CLOUDFLARE_API_TOKEN"].strip()
+          def get(path):
+              request = urllib.request.Request(
+                  "https://api.cloudflare.com/client/v4/accounts/" + account + path,
+                  headers={"Authorization": "Bearer " + token})
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      result = json.load(response)
+              except urllib.error.HTTPError as error:
+                  print("Cloudflare API access failed (HTTP " + str(error.code) + ").")
+                  sys.exit(1)
+              except Exception:
+                  print("Cloudflare API could not be reached. No changes made.")
+                  sys.exit(1)
+              if result.get("success") is not True:
+                  print("Cloudflare rejected the read-only request. No changes made.")
+                  sys.exit(1)
+              return result
+          projects, page = [], 1
+          while True:
+              response = get("/pages/projects?per_page=100&page=" + str(page))
+              batch = response.get("result", [])
+              projects.extend(batch)
+              info = response.get("result_info", {})
+              if page >= info.get("total_pages", page):
+                  break
+              page += 1
+          matches = [p for p in projects if
+                     any(d in ("aivatrading.uk", "www.aivatrading.uk")
+                         for d in p.get("domains", []))]
+          if len(matches) != 1:
+              print("BLOCKED: could not uniquely identify a Pages project for aivatrading.uk.")
+              print("No Worker name or deployment target has been assumed.")
+              sys.exit(1)
+          project = matches[0]
+          print("Verified Pages project: " + project["name"])
+          print("Production branch: " + str(project.get("production_branch")))
+          deployment = project.get("canonical_deployment") or {}
+          print("Current deployment ID: " + str(deployment.get("id")))
+          print("Current deployment URL: " + str(deployment.get("url")))
+          keys = ("SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_ENVIRONMENT",
+                  "SQUARE_WEBHOOK_SIGNATURE_KEY", "SQUARE_WEBHOOK_NOTIFICATION_URL",
+                  "MERCHANT_REFUND_SECRET")
+          for environment in ("preview", "production"):
+              config = (project.get("deployment_configs") or {}).get(environment) or {}
+              variables = config.get("env_vars") or {}
+              print(environment + " configuration (values never printed):")
+              for key in keys:
+                  entry = variables.get(key)
+                  print("  " + key + ": " + ("PRESENT (" + str(entry.get("type")) + ")" if entry else "MISSING"))
+              databases = config.get("d1_databases") or {}
+              print("  ORDERS_DB binding: " + ("PRESENT" if "ORDERS_DB" in databases else "MISSING"))
+          print("READ-ONLY PREFLIGHT COMPLETE. No deployment, secret update or payment was performed.")
