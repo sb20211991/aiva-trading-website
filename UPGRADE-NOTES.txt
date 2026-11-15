@@ -1,0 +1,18 @@
+AIVA V9 — CONSISTENT CATEGORY IMAGES
+All nine sourcing cards now have product imagery. Six icon cards replaced, including barber/beauty. Six dedicated detail pages added with product and sample enquiry links. Generated imagery is labelled illustrative, not real inventory or work evidence. Gmail untouched. Upload complete package to existing Cloudflare project; not yet deployed by this update.
+
+V10: Verified Companies House number 17485509 added visibly to every page footer and company profile with official record link. No direct Cloudflare deployment performed.
+
+V11: Option B shop cleanup. Navigation and buying guide lead directly to sample enquiry with Sample request selected. Existing shop URL remains a quotation page. Removed dormant checkout scripts and empty product/policy containers. No paid sample or checkout claims added.
+
+V12: Consumer electronics now depicts portable TV, wireless router and USB-C hub. Corrected electronics detail page category, router copy, enquiry parameters and image alt text. Home essentials sample card uses dedicated home-essentials artwork. Image generated with built-in image generation; prompt: premium unbranded portable TV, two-antenna wireless router and USB-C hub on ivory stone with emerald background; no household appliances, text or logos.
+
+V13: Added optional evidence-request checklist beside buyer RFQ with selections included in draft. No unverified certification badges or fabricated trade media. Genuine trade photos and model/supplier documents remain required. Sources: GOV.UK product-safety-law-compliance-advice-for-manufacturers-and-importers; ISO certification.html and iso-9001-explained.
+
+V14 — 10 November 2026: Added the registered office address supplied by the owner to all 14 page footers and the company profile. Retained company number 17485509 and official record link. Verified every page has no Shop navigation link; sample requests still open the enquiry form. Domain email setup skipped as requested; existing Gmail links retained. This ZIP is ready for upload to the existing Cloudflare project; this update has not been deployed.
+
+V15 — 10 November 2026: Added Director: Chia Sabir to all 14 company footers, alongside existing registration details. Existing working Gmail contact retained pending domain mailbox activation. Not deployed to Cloudflare.
+
+V17 — Category enquiry selection corrected; clear-shortlist control; mobile native sharing with copy/download fallbacks; social preview metadata; organization structured data; custom 404; print and small-screen refinements. Gmail and all existing email addresses unchanged. No fabricated inspection media, certificates, testimonials or stock. Package update only; Cloudflare deployment not performed.
+
+V18 — 10 November 2026: Footer wording and layout aligned with the owner-supplied Gemini option 1 across all 15 pages. Company number, England & Wales registration and address grouped clearly. Existing director details retained. All email links unchanged; option 2 skipped. Cloudflare upload required.

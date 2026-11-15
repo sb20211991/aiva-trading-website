@@ -1,0 +1,45 @@
+AIVA TRADING — ONLY ACTIONS THAT STILL NEED YOU
+Updated: 15 November 2026 (Europe/London)
+
+Tap to Pay on iPhone = Active (thank you). That helps in-person sales.
+Website checkout on aivatrading.uk still needs secrets + Cloudflare deploy.
+Do NOT buy Square Reader / Terminal.
+
+==================================================
+YOU MUST DO
+==================================================
+
+1. In Square Dashboard (desktop), confirm:
+   - No open identity / business verification banners
+   - Balances / Banking → UK bank account verified for payouts
+   - Payments → Payment links works (create a link if useful — no hardware)
+
+2. Developer Dashboard → https://developer.squareup.com/apps
+   - Sandbox Access Token + Sandbox Location ID
+   - Webhook: https://aivatrading.uk/api/square-webhook
+     Events: payment.updated, order.updated, refund.created, refund.updated
+   - Copy Signature Key into secrets (not chat)
+
+3. Add all 8 values in MISSING-CONFIG.txt to the Cursor secure secrets form.
+   SQUARE_ENVIRONMENT = sandbox
+   Also need CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN + MERCHANT_REFUND_SECRET
+
+4. After saving secrets, start a NEW Cloud Agent on this repo (running agents
+   do not receive newly added secrets), and tell it:
+   Secrets added — deploy preview
+   Optional: bank ready: yes|no
+
+5. Keep shop closed until real products + your approval to set shopEnabled=true.
+
+SECURE LOCATION (do not paste tokens into chat):
+https://cursor.com/dashboard/cloud-agents → Secrets / My Secrets → Add Secrets
+Also use the secure form prompted by this agent if shown.
+
+==================================================
+ALREADY DONE WITHOUT YOU
+==================================================
+
+- Square Functions checkout (Visa/Mastercard + Apple Pay + Google Pay flags)
+- Refunds, webhooks handlers, local tests green
+- Live site probed: old Stripe static package still published; APIs not executing
+- Design / product data left unchanged

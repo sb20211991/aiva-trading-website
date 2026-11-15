@@ -1,0 +1,29 @@
+AIVA TRADING LIMITED — PROGRESS REPORT
+Updated: 15 November 2026 (Europe/London)
+PR: https://cursor.com/codebase/simon-bolivar/aiva-trading/pull/6
+
+==================================================
+COMPLETED
+==================================================
+[x] Square Functions checkout (card + Apple Pay + Google Pay accepted_payment_methods)
+[x] Webhooks, refunds, live-mode safety gates
+[x] Stripe website path retired in Functions package
+[x] Catalogue closed; design/pages/product data preserved
+[x] Local npm test PASS
+[x] Live Cloudflare probed: still old Stripe static package; /api not executing
+[x] Tap to Pay Active noted (in-person); hardware not required for website
+[x] Secrets re-requested via secure form (still MISSING in environment)
+
+==================================================
+REMAINING
+==================================================
+[ ] Secrets in Cursor form (blocks deploy + Square API eligibility check)
+[ ] Confirm bank payouts ready in Dashboard
+[ ] Preview deploy + sandbox £1 test after secrets
+[ ] Merge/promote Functions package to replace live Stripe-era static site
+[ ] Real products before shopEnabled=true
+
+==================================================
+SQUARE LIVE WEBSITE PAYMENTS READY?
+==================================================
+NO. Tap to Pay ≠ website checkout live.

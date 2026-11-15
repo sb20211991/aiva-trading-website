@@ -1,0 +1,19 @@
+AIVA TRADING LIMITED — STATUS & CHECKOUT SAFETY (15 NOVEMBER 2026)
+
+Preferred provider: Square. Stripe checkout is retired for this website.
+PayPal remains optional and hidden unless configured.
+
+Live shop: DISABLED (shopEnabled=false, empty product catalogue).
+
+Checkout is BLOCKED unless:
+- Square is configured (access token + location + environment)
+- for live mode: webhook signature key, ORDERS_DB, and ACTIVE Square location
+  with CREDIT_CARD_PROCESSING
+- catalogue has shopEnabled=true, policies, shipping and at least one buyable product
+
+REAL PAYMENT STATUS: NOT ACTIVE. No live payments claimed.
+
+Website checkout uses Square-hosted Payment Links. No physical card reader required.
+Apple Pay / Google Pay appear on Square Checkout only when Square and the device support them.
+
+See YOUR-NEXT-STEP.txt, PROGRESS-REPORT.txt and DEPLOY-SQUARE-SANDBOX.txt.

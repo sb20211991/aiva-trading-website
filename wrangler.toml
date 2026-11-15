@@ -1,0 +1,12 @@
+# Cloudflare Pages project for aivatrading.uk
+# Deploy with: ./scripts/deploy-pages.sh
+name = "aiva-trading"
+compatibility_date = "2025-11-01"
+pages_build_output_dir = "."
+
+# Bind D1 in the Cloudflare dashboard as ORDERS_DB (recommended),
+# or uncomment and set your database_id after creation:
+# [[d1_databases]]
+# binding = "ORDERS_DB"
+# database_name = "aiva_orders"
+# database_id = "YOUR_D1_DATABASE_ID"

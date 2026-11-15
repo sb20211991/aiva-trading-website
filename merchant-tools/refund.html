@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Merchant refund tool | Aiva Trading Limited</title>
+<link rel="icon" href="../assets/mark.svg">
+<link rel="stylesheet" href="../assets/style.css?v=trade-10">
+<link rel="stylesheet" href="../assets/aiva-commerce.css?v=3">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <a class="brand" href="../index.html"><span class="brand-wordmark">AIVA</span><span class="brand-caption">TRADING LIMITED</span></a>
+  <nav><a href="../shop.html">Shop</a><a href="../index.html#contact">Contact</a></nav>
+</header>
+<main id="main" class="section shop-page">
+  <section class="aiva-commerce">
+    <p class="eyebrow">MERCHANT ONLY</p>
+    <h1>Square refund</h1>
+    <p>Use this after a real or sandbox Square payment when you need to refund a customer. The merchant key never leaves your browser except as a request header to your own Cloudflare function.</p>
+    <form id="refund-form" class="aiva-shop-terms">
+      <label>Square payment ID
+        <input id="payment-id" name="paymentId" required autocomplete="off" maxlength="191" placeholder="e.g. payment id from Square Dashboard">
+      </label>
+      <label>Square order ID (optional, updates local order record)
+        <input id="order-id" name="orderId" autocomplete="off" maxlength="191">
+      </label>
+      <label>Amount in pence (optional — leave blank for full refund)
+        <input id="amount-pence" name="amountPence" type="number" min="1" step="1" placeholder="100 for £1.00">
+      </label>
+      <label>Reason
+        <input id="reason" name="reason" maxlength="192" value="Customer refund">
+      </label>
+      <label>Merchant refund key
+        <input id="merchant-key" name="merchantKey" type="password" required autocomplete="off" minlength="24">
+      </label>
+      <button class="button" type="submit">Create Square refund</button>
+    </form>
+    <p id="refund-result" class="aiva-store-status" role="status"></p>
+    <p class="aiva-small-print">You can also refund from the Square Dashboard. Website checkout does not require a physical card reader.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const form = document.getElementById('refund-form');
+  const out = document.getElementById('refund-result');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    out.textContent = 'Submitting refund…';
+    const amountRaw = document.getElementById('amount-pence').value;
+    const body = {
+      paymentId: document.getElementById('payment-id').value.trim(),
+      orderId: document.getElementById('order-id').value.trim() || undefined,
+      reason: document.getElementById('reason').value.trim() || 'Customer refund'
+    };
+    if (amountRaw !== '') body.amountPence = Number(amountRaw);
+    try {
+      const response = await fetch('/api/create-refund', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Aiva-Merchant-Key': document.getElementById('merchant-key').value
+        },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Refund failed');
+      out.textContent =
+        'Refund ' + (data.status || 'submitted') +
+        (data.refundId ? ' · id ' + data.refundId : '') +
+        (data.mode === 'test' ? ' · SANDBOX (no real money)' : '');
+    } catch (err) {
+      out.textContent = err.message || 'Refund failed';
+    }
+  });
+})();
+</script>
+</body>
+</html>

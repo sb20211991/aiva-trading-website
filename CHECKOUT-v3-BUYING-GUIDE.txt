@@ -1,0 +1,10 @@
+AIVA TRADING LIMITED — BUYING GUIDE CHECKOUT (SQUARE) — 15 NOVEMBER 2026
+
+- Buying Guide checkout section offers card / Apple Pay / Google Pay entry points.
+- All three buttons open the same Square-hosted checkout when configured.
+- Provider and device decide which wallets actually appear.
+- Catalogue stays empty and shopEnabled=false until real stock is confirmed.
+- Cloudflare needs SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, SQUARE_ENVIRONMENT,
+  SQUARE_WEBHOOK_SIGNATURE_KEY and ORDERS_DB. See CHECKOUT-v2-SETUP.txt.
+
+Never put Square access tokens in a website ZIP or send them in chat.

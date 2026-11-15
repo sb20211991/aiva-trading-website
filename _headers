@@ -1,0 +1,23 @@
+/*.html
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache
+/assets/app-v5.js
+  Cache-Control: no-cache
+/assets/fixes-v5.css
+  Cache-Control: no-cache
+
+/assets/app-v6.js
+  Cache-Control: no-cache
+/assets/experience-v6.css
+  Cache-Control: no-cache
+
+/assets/app-v7.js
+  Cache-Control: no-cache
+/assets/samples-v7.css
+  Cache-Control: no-cache
+
+/assets/app-v8.js
+  Cache-Control: no-cache
+/assets/assurance-v8.css
+  Cache-Control: no-cache

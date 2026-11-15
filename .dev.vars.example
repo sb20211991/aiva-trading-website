@@ -1,0 +1,15 @@
+# Copy to .dev.vars for local wrangler testing. Never commit real values.
+
+SQUARE_ACCESS_TOKEN=
+SQUARE_LOCATION_ID=
+SQUARE_ENVIRONMENT=sandbox
+SQUARE_WEBHOOK_SIGNATURE_KEY=
+SQUARE_WEBHOOK_NOTIFICATION_URL=http://127.0.0.1:8788/api/square-webhook
+
+# Optional second checkout method:
+PAYPAL_CLIENT_ID=
+PAYPAL_CLIENT_SECRET=
+PAYPAL_ENVIRONMENT=sandbox
+
+# Required for /api/create-refund and merchant-tools/refund.html (min 24 chars):
+MERCHANT_REFUND_SECRET=

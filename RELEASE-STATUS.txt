@@ -1,0 +1,6 @@
+AIVA TRADING LIMITED — SQUARE CHECKOUT — 15 NOVEMBER 2026
+Prepared in git. NOT DEPLOYED. NOT LIVE FOR CUSTOMER PAYMENTS.
+
+Checkout provider: Square (Stripe retired). Functions architecture ready.
+Catalogue remains empty and shopEnabled=false, intentionally blocking charges.
+See PROGRESS-REPORT.txt and YOUR-NEXT-STEP.txt.

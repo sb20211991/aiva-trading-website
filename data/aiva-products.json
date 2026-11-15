@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "currency": "GBP",
+  "shopEnabled": false,
+  "businessAddress": "153 Whitehill Road, Gravesend, Kent, DA12 5LS",
+  "deliveryPolicy": "UK mainland delivery within 5–10 working days after dispatch confirmation. Exact dispatch timing is confirmed for each order before payment is treated as fulfilled.",
+  "returnsPolicy": "Unused items in original condition may be returned within 14 days of delivery after written confirmation from Aiva Trading Limited. Refunds are processed through Square after the return is accepted.",
+  "shipping": {
+    "allowedCountries": [
+      "GB"
+    ],
+    "flatRatePence": 495,
+    "freeShippingThresholdPence": 10000
+  },
+  "categories": [
+    "Smart home & security",
+    "Energy & power",
+    "Consumer electronics",
+    "Cars & vehicles",
+    "Scooters & mobility",
+    "Parts & accessories",
+    "Laptops & computing",
+    "Barber & beauty",
+    "Home essentials"
+  ],
+  "products": []
+}

@@ -1,0 +1,83 @@
+AIVA TRADING — REQUIRED CONFIGURATION VALUES
+Updated: 15 November 2026 (Europe/London)
+Status checked from this agent: ALL VALUES BELOW ARE CURRENTLY MISSING
+(No secret values are shown here.)
+
+Add values in the Cursor secure secrets form / dashboard Secrets page.
+Never paste secret values into chat.
+
+==================================================
+REQUIRED FOR SQUARE SANDBOX + PREVIEW DEPLOY
+==================================================
+
+1) SQUARE_ACCESS_TOKEN
+   Status: MISSING
+   Where: https://developer.squareup.com/apps → your app → Credentials → Sandbox Access Token
+   Use: Sandbox token first (never put production token in chat)
+
+2) SQUARE_LOCATION_ID
+   Status: MISSING
+   Where: Square Developer Dashboard → Locations (Sandbox) → Location ID
+   Also visible in Square Dashboard for the selling location
+
+3) SQUARE_ENVIRONMENT
+   Status: MISSING
+   Where: You set this yourself
+   Value to enter: sandbox
+
+4) SQUARE_WEBHOOK_SIGNATURE_KEY
+   Status: MISSING
+   Where: Square Developer Dashboard → Webhooks → create/open subscription → Signature Key
+   Subscribe URL: https://aivatrading.uk/api/square-webhook
+   Events: payment.updated, order.updated, refund.created, refund.updated
+
+5) SQUARE_WEBHOOK_NOTIFICATION_URL
+   Status: MISSING
+   Where: You set this yourself to match the webhook subscription URL
+   Value: https://aivatrading.uk/api/square-webhook
+   (For a pages.dev preview, use that preview host + /api/square-webhook)
+
+6) CLOUDFLARE_ACCOUNT_ID
+   Status: MISSING
+   Where: https://dash.cloudflare.com → Workers & Pages → Account ID (right sidebar)
+
+7) CLOUDFLARE_API_TOKEN
+   Status: MISSING
+   Where: Cloudflare → My Profile → API Tokens → Create Token
+   Needs: Cloudflare Pages Edit + D1 Edit (Account Settings Read helps)
+
+8) MERCHANT_REFUND_SECRET
+   Status: MISSING
+   Where: Generate a random 24+ character password/string yourself
+   Used only by /api/create-refund and merchant-tools/refund.html
+
+==================================================
+OPTIONAL (PayPal second button — not required for Square)
+==================================================
+
+9) PAYPAL_CLIENT_ID — PayPal Developer Dashboard → Sandbox app
+10) PAYPAL_CLIENT_SECRET — same app
+11) PAYPAL_ENVIRONMENT — set to sandbox if using PayPal
+
+==================================================
+OBSOLETE FOR WEBSITE CHECKOUT (SAFE TO REMOVE)
+==================================================
+
+STRIPE_SECRET_KEY — obsolete for aivatrading.uk website checkout
+STRIPE_WEBHOOK_SECRET — obsolete for aivatrading.uk website checkout
+Confirm removal in the secure form. Pocket Hub does not use those secret names;
+it only uses an optional public PAYMENT_LINK_URL if you configure one separately.
+
+==================================================
+AFTER SECRETS ARE ADDED
+==================================================
+
+Reply in chat: Secrets added — deploy preview
+Then this agent can run: npm run website:go-live-prep
+That script creates D1, binds ORDERS_DB, deploys a Pages PREVIEW branch,
+and verifies /api/shop-status. It refuses production Square and does not
+promote live production without your later explicit approval.
+
+No Square card reader / hardware is required for website Visa/Mastercard/
+Apple Pay / Google Pay checkout. If Square’s signup keeps showing hardware,
+follow HARDWARE-BYPASS-GUIDE.txt (Skip / Not now / open Payment links in Dashboard).

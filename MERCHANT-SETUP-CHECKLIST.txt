@@ -1,0 +1,25 @@
+AIVA TRADING LIMITED — ADDITIVE E-COMMERCE UPGRADE (15 NOV 2026)
+
+WHAT IS PRESERVED
+Existing layout, branding, language switcher, supplier/buyer enquiry forms, images,
+company pages and content remain unchanged. Checkout provider is Square.
+
+WHAT IS BUILT
+- Product catalogue UI with search, category, price filters, basket
+- Square Payment Links via Cloudflare Pages functions/
+- Shipping country / flat-rate support; order status page; refund tool
+- Safe defaults: no real products, no live payment, no invented prices
+- Secrets stay in Cloudflare / Cursor secure form — never in public source files
+
+CRITICAL: THIS IS NOT LIVE COMMERCE YET
+No retail SKUs/prices/stocks were supplied. shopEnabled remains false.
+Live Square credentials, D1, webhook and your deploy approval are still required.
+
+SELLER SETUP
+1. Back up the existing Cloudflare Pages deployment.
+2. Preview in the Aiva Trading Pages project, not Pocket Hub.
+3. Add secrets (see YOUR-NEXT-STEP.txt), create D1, subscribe Square webhooks.
+4. Sandbox-test first (including a £1 test when ready), then production after verification.
+5. Complete data/aiva-products.json with real products and policies, then shopEnabled=true.
+
+See CHECKOUT-v2-SETUP.txt, PROGRESS-REPORT.txt and ORDER-DATABASE-SETUP.sql.

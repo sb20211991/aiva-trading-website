@@ -1,0 +1,95 @@
+AIVA TRADING LIMITED — ONLINE PAYMENTS STATUS REPORT
+Date: 15 November 2026 (Europe/London)
+Site: https://aivatrading.uk
+Company: Aiva Trading Limited (No. 17485509)
+
+==================================================
+BOTTOM LINE
+==================================================
+
+Ready for REAL website customer payments today?  NO.
+
+Hardware (Reader / Terminal) required for website?  NO.
+Tap to Pay on iPhone: Active (in-person only — does NOT enable website APIs).
+
+==================================================
+TAP TO PAY ACTIVE — WHAT IT MEANS
+==================================================
+
+Confirmed by you: Tap to Pay on iPhone is Active in Square Dashboard.
+
+That strongly indicates:
+- Square has enabled card acceptance for your account for in-person POS
+- Identity verification is very likely complete enough to take card payments
+  (Square does not activate card acceptance without required verification)
+
+That does NOT automatically mean:
+- Website Payment Links / Developer API credentials are configured in Cloudflare
+- Webhooks are subscribed for aivatrading.uk
+- Bank payout destination is verified (please confirm Balances / Banking)
+- aivatrading.uk Functions checkout is deployed
+
+Website checkout (Visa / Mastercard / Apple Pay / Google Pay in the browser)
+uses Square-hosted Payment Links via Cloudflare Pages Functions — separate from
+Tap to Pay on iPhone.
+
+==================================================
+COMPLETED (CODE / GITHUB)
+==================================================
+
+[x] Square Payment Links checkout (cards + Apple Pay + Google Pay flags)
+[x] Secure server-side pricing, webhook HMAC, D1 schema, refunds
+[x] Live-mode safety gates (ACTIVE location + CREDIT_CARD_PROCESSING)
+[x] Stripe website checkout retired in Functions package
+[x] Root _worker.js removed from package (must not deploy as static file)
+[x] Catalogue policies/address in repo; shopEnabled=false; products empty
+[x] Local npm test PASS (mock £1 checkout + refund)
+[x] Hardware bypass guide; Tap to Pay vs website documented
+[x] PR #6 open with Functions deploy path + status docs
+
+==================================================
+LIVE CLOUDFLARE DEPLOYMENT (aivatrading.uk) — PROBED
+==================================================
+
+[!] Cloudflare DNS/CDN: UP
+[!] Live package is STILL the older Stripe-era static site:
+    - /assets/aiva-commerce.js still mentions Stripe setup
+    - /shop still shows Stripe payment wording
+    - /data/aiva-products.json live: empty policies, shopEnabled=false
+    - /_worker.js downloads as static Stripe worker source (HTTP 200)
+    - GET /api/shop-status → HTML 404 (worker NOT executing)
+    - POST /api/* → 405 (static hosting; no Functions)
+
+Conclusion: Square Functions integration is in GitHub but NOT deployed live.
+Cannot verify live checkout or webhooks until Cloudflare deploy with secrets.
+
+==================================================
+IDENTITY / BANK PAYOUTS
+==================================================
+
+Identity: Tap to Pay Active ⇒ likely verified for card acceptance.
+          Agent cannot see Dashboard banners; confirm no yellow verification prompts.
+
+Bank payouts: NOT verifiable via API from this agent.
+              You must confirm Square Dashboard → Balances / Banking shows a
+              verified UK account ready for transfers.
+
+==================================================
+REMAINING (NEEDS YOU — AUTHORISATION)
+==================================================
+
+[ ] Add 8 secrets in Cursor secure form (sandbox first) — MISSING-CONFIG.txt
+[ ] Confirm: identity clear + UK bank ready (yes/no) — do not paste tokens
+[ ] Reply: Secrets added — deploy preview
+    → Agent runs D1 + Pages PREVIEW + /api/shop-status + sandbox check
+[ ] Approve merge of Functions PR + production promote when preview is good
+[ ] Real products before shopEnabled=true (do not invent stock)
+
+==================================================
+SCORE / LIVE-READY
+==================================================
+
+Repo + local tests: ready
+Tap to Pay (in person): Active (your report)
+Website live payments: NOT READY (no Functions deploy, no secrets, shop closed)
+Real customer website payments: NO

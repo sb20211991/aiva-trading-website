@@ -1,0 +1,215 @@
+/* Aiva Buying Guide payment handoff. The server validates every SKU and price. */
+(() => {
+  'use strict';
+  const root = document.getElementById('direct-checkout');
+  if (!root) return;
+  const $ = (id) => document.getElementById(id);
+  const buttons = Array.from(root.querySelectorAll('[data-aiva-checkout]'));
+  const view = {
+    status: $('aiva-guide-pay-status'),
+    basket: $('aiva-guide-basket-status'),
+    items: $('aiva-guide-basket-items'),
+    total: $('aiva-guide-order-total'),
+    error: $('aiva-guide-pay-error')
+  };
+  const formatPence = (n) =>
+    new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n / 100);
+  const cartKey = 'aiva_cart_v2';
+  const validSku = (x) => typeof x === 'string' && /^[A-Za-z0-9_-]{2,60}$/.test(x);
+  const validQuantity = (x) => Number.isSafeInteger(x) && x > 0 && x <= 10;
+  const validMoney = (x) => Number.isSafeInteger(x) && x > 0 && x <= 100000000;
+  let catalog = null,
+    online = { ready: false, mode: 'disabled' },
+    cart = {},
+    busy = false;
+
+  function loadSavedCart() {
+    try {
+      const data = JSON.parse(localStorage.getItem(cartKey) || '{}');
+      if (data && typeof data === 'object' && !Array.isArray(data))
+        return Object.fromEntries(
+          Object.entries(data).filter(([sku, qty]) => validSku(sku) && validQuantity(qty))
+        );
+    } catch {
+      /* Browser storage disabled. */
+    }
+    return {};
+  }
+
+  function saveCart() {
+    try {
+      localStorage.setItem(cartKey, JSON.stringify(cart));
+    } catch {
+      /* Local storage unavailable. */
+    }
+  }
+
+  function setMessage(message, ready = false) {
+    view.status.textContent = message;
+    view.status.dataset.ready = String(ready);
+  }
+
+  function render() {
+    if (!catalog) return;
+    const all = Array.isArray(catalog?.products) ? catalog.products : [];
+    const map = new Map(all.filter((p) => p && validSku(p.sku)).map((p) => [p.sku, p]));
+    let itemTotal = 0,
+      unitCount = 0;
+    const lines = [];
+    const safeCart = {};
+    for (const [sku, qty] of Object.entries(cart)) {
+      const p = map.get(sku);
+      if (
+        !p ||
+        p.available !== true ||
+        !validMoney(p.pricePence) ||
+        !Number.isSafeInteger(p.stock) ||
+        p.stock < 1
+      )
+        continue;
+      const count = Math.min(qty, p.stock, 10);
+      if (!validQuantity(count)) continue;
+      safeCart[sku] = count;
+      unitCount += count;
+      itemTotal += count * p.pricePence;
+      const line = document.createElement('div');
+      line.className = 'aiva-guide-basket-item';
+      const title = document.createElement('strong');
+      title.textContent = String(p.name || sku) + ' × ' + count;
+      const price = document.createElement('span');
+      price.textContent = formatPence(p.pricePence * count);
+      line.append(title, price);
+      lines.push(line);
+    }
+    cart = safeCart;
+    saveCart();
+    view.items.replaceChildren(...lines);
+    const ready =
+      online.ready === true && ['live', 'test'].includes(online.mode) && unitCount > 0;
+    buttons.forEach((button) => {
+      button.disabled = busy || !ready;
+      button.textContent = busy
+        ? 'Opening Square checkout…'
+        : button.dataset.aivaOriginalLabel || button.textContent;
+    });
+    view.basket.textContent = unitCount
+      ? `${unitCount} item${unitCount === 1 ? '' : 's'} in your basket.`
+      : 'Your basket is empty. Browse the Shop to add confirmed products.';
+    if (unitCount) {
+      let ship = null;
+      const policy = catalog?.shipping;
+      if (Number.isSafeInteger(policy?.flatRatePence) && policy.flatRatePence >= 0)
+        ship =
+          Number.isSafeInteger(policy.freeShippingThresholdPence) &&
+          itemTotal >= policy.freeShippingThresholdPence
+            ? 0
+            : policy.flatRatePence;
+      view.total.textContent =
+        'Subtotal ' +
+        formatPence(itemTotal) +
+        (ship === null
+          ? ' · Delivery confirmed at checkout'
+          : ' · Estimated delivery ' +
+            formatPence(ship) +
+            ' · Estimated total ' +
+            formatPence(itemTotal + ship));
+    } else view.total.textContent = '';
+    if (online.ready === true && online.mode === 'live')
+      setMessage(
+        unitCount
+          ? 'Secure checkout is available. Choose a payment option above; the eligible methods are shown on Square.'
+          : 'Choose an available product in the Shop to enable secure checkout.',
+        true
+      );
+    else if (online.ready === true && online.mode === 'test')
+      setMessage('TEST MODE ONLY — Square sandbox can simulate checkout but will not charge real money.');
+    else
+      setMessage(
+        'Live checkout is not yet available. Aiva must confirm products, prices, shipping, returns and activate Square before customer payments can begin.'
+      );
+  }
+
+  async function initialize() {
+    buttons.forEach((button) => {
+      button.dataset.aivaOriginalLabel = button.textContent;
+    });
+    cart = loadSavedCart();
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch('/data/aiva-products.json', { cache: 'no-store' }),
+        fetch('/api/shop-status', { cache: 'no-store' })
+      ]);
+      if (!r1.ok || !r2.ok) throw Error('Cannot verify store readiness.');
+      catalog = await r1.json();
+      online = await r2.json();
+      if (!Array.isArray(catalog?.products)) throw Error('Invalid catalogue.');
+    } catch {
+      online = { ready: false, mode: 'disabled' };
+      catalog = { products: [] };
+    }
+    render();
+  }
+
+  function trustedCheckout(url) {
+    const host = url.hostname.toLowerCase();
+    return (
+      host === 'square.link' ||
+      host.endsWith('.square.link') ||
+      host === 'checkout.square.site' ||
+      host.endsWith('.checkout.square.site') ||
+      host.endsWith('.squareup.com') ||
+      host.endsWith('.squareupsandbox.com')
+    );
+  }
+
+  async function checkout() {
+    if (
+      busy ||
+      online.ready !== true ||
+      !['live', 'test'].includes(online.mode) ||
+      !Object.keys(cart).length
+    )
+      return;
+    busy = true;
+    view.error.hidden = true;
+    render();
+    try {
+      const items = Object.entries(cart).map(([sku, quantity]) => ({ sku, quantity }));
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json();
+      if (!response.ok || typeof data.url !== 'string')
+        throw Error(data.error || 'Could not start checkout.');
+      const url = new URL(data.url);
+      if (url.protocol !== 'https:' || !trustedCheckout(url))
+        throw Error('Unrecognized checkout destination.');
+      if (typeof data.orderId === 'string' && /^[A-Za-z0-9_-]{8,191}$/.test(data.orderId)) {
+        try {
+          sessionStorage.setItem('aiva_pending_checkout_ref', data.orderId);
+        } catch {
+          /* private browsing */
+        }
+      }
+      window.location.assign(url.href);
+    } catch (err) {
+      view.error.textContent =
+        err instanceof Error ? err.message : 'Unable to open checkout. Please contact Aiva.';
+      view.error.hidden = false;
+      busy = false;
+      render();
+    }
+  }
+
+  buttons.forEach((btn) => btn.addEventListener('click', checkout));
+  window.addEventListener('pageshow', () => {
+    if (catalog) {
+      busy = false;
+      cart = loadSavedCart();
+      render();
+    }
+  });
+  initialize();
+})();
