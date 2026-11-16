@@ -1,0 +1,89 @@
+# Deploys a Cloudflare Pages PREVIEW only. Never promotes production.
+name: Cloudflare Pages preview deploy
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - cursor/cloudflare-github-deploy-1f19
+permissions:
+  contents: read
+  deployments: write
+concurrency:
+  group: cloudflare-pages-preview-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Require Cloudflare deploy secrets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID// }" ]]; then
+            missing+=("CLOUDFLARE_ACCOUNT_ID")
+          fi
+          if [[ -z "${CLOUDFLARE_API_TOKEN// }" ]]; then
+            missing+=("CLOUDFLARE_API_TOKEN")
+          fi
+          if ((${#missing[@]})); then
+            echo "BLOCKED: add these encrypted GitHub repository secrets: ${missing[*]}"
+            echo "Secrets are missing or empty. No Cloudflare Pages deploy was attempted."
+            echo "Add them under Settings → Secrets and variables → Actions (names only; never commit values)."
+            exit 1
+          fi
+          echo "Required secret names are present (values not printed)."
+
+      - name: Run local checkout and website checks
+        run: npm test
+
+      - name: Refuse root worker static upload
+        run: |
+          set -euo pipefail
+          if [[ -f _worker.js ]]; then
+            echo "Refusing deploy: _worker.js exists."
+            echo "Use functions/ only so the worker is not served as a static file."
+            exit 1
+          fi
+          if [[ ! -f functions/api/shop-status.js ]]; then
+            echo "Missing functions/api/shop-status.js"
+            exit 1
+          fi
+
+      - name: Deploy Cloudflare Pages preview
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PROJECT_NAME: aiva-trading
+        run: |
+          set -euo pipefail
+          # Always use a non-production Pages branch so this never promotes production.
+          REF_NAME="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          PREVIEW_BRANCH="gh-preview/${REF_NAME}"
+          PREVIEW_BRANCH="${PREVIEW_BRANCH// /-}"
+          case "${PREVIEW_BRANCH}" in
+            gh-preview/main|gh-preview/master|gh-preview/production)
+              PREVIEW_BRANCH="gh-preview/sha-${GITHUB_SHA:0:7}"
+              ;;
+          esac
+          echo "Deploying PREVIEW only."
+          echo "Pages project: ${PROJECT_NAME}"
+          echo "Preview branch label: ${PREVIEW_BRANCH}"
+          echo "Commit: ${GITHUB_SHA}"
+          npx --yes wrangler@4 pages deploy . \
+            --project-name="${PROJECT_NAME}" \
+            --branch="${PREVIEW_BRANCH}" \
+            --commit-hash="${GITHUB_SHA}" \
+            --commit-message="GitHub Actions preview ${GITHUB_SHA}" \
+            --commit-dirty=true
+          echo "Preview deploy finished. Production was not promoted."

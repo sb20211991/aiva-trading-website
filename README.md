@@ -38,3 +38,17 @@ npm test
 ## Deploy
 
 Use Cloudflare Pages with this repository as the project root (Functions from `functions/`). Do not restore a root `_worker.js`.
+
+### GitHub Actions (preview only)
+
+Workflows under `.github/workflows/` run tests and can deploy a **Cloudflare Pages preview**:
+
+- `square-sandbox-preflight.yml` — read-only project/config check
+- `cloudflare-pages-preview.yml` — preview deploy (never production promote)
+
+Required encrypted repository secrets (Settings → Secrets and variables → Actions):
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+Workflows fail clearly if either secret name is missing or empty. Values must never be committed.
