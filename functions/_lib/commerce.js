@@ -290,8 +290,14 @@ async function createSquareCheckout(env, site, basket, mode) {
     },
     checkout_options: {
       redirect_url: site.origin + '/order-success.html',
-      ask_for_shipping_address: true,
-      accepted_payment_methods: { apple_pay: true, google_pay: true, card: true }
+      /* Sample coordination fee: delivery is agreed by email after payment. */
+      ask_for_shipping_address: basket.shippingPrice > 0,
+      accepted_payment_methods: {
+        apple_pay: false,
+        google_pay: false,
+        cash_app_pay: false,
+        afterpay_clearpay: false
+      }
     },
     payment_note: 'Aiva Trading Limited order'
   };
@@ -312,9 +318,28 @@ async function createSquareCheckout(env, site, basket, mode) {
     if (!isTrustedCheckoutUrl(result.payment_link.url, 'square')) {
       return respond({ error: 'Invalid payment provider response.' }, 502);
     }
+    const link = result.payment_link;
+    let orderId = str(link.order_id);
+    if (!orderId && str(link.id) && squareConfigured(env)) {
+      try {
+        const linkRes = await fetch(
+          squareApiBase(env) +
+            '/v2/online-checkout/payment-links/' +
+            encodeURIComponent(str(link.id)),
+          { headers: squareHeaders(env) }
+        );
+        if (linkRes.ok) {
+          const linkData = await linkRes.json();
+          orderId = str(linkData?.payment_link?.order_id);
+        }
+      } catch (e) {
+        console.error('Square payment-link lookup failed', String(e));
+      }
+    }
     return respond({
-      url: result.payment_link.url,
-      orderId: result.payment_link.order_id || null,
+      url: link.url,
+      orderId: orderId || null,
+      paymentLinkId: str(link.id) || null,
       provider: 'square'
     });
   } catch (e) {

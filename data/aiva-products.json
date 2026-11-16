@@ -1,16 +1,16 @@
 {
   "version": 1,
   "currency": "GBP",
-  "shopEnabled": false,
-  "businessAddress": "153 Whitehill Road, Gravesend, Kent, DA12 5LS",
-  "deliveryPolicy": "UK mainland delivery within 5–10 working days after dispatch confirmation. Exact dispatch timing is confirmed for each order before payment is treated as fulfilled.",
-  "returnsPolicy": "Unused items in original condition may be returned within 14 days of delivery after written confirmation from Aiva Trading Limited. Refunds are processed through Square after the return is accepted.",
+  "shopEnabled": true,
+  "businessAddress": "Aiva Trading Ltd, 153 Whitehill Road, Gravesend, Kent, DA12 5LS, United Kingdom",
+  "deliveryPolicy": "This catalogue currently sells a UK sample coordination fee only. After payment, Aiva confirms the exact sample model, any additional sample cost, and UK delivery arrangements by email within 2 business days. Physical goods are not dispatched until those details are agreed in writing. Delivery within Great Britain only.",
+  "returnsPolicy": "The sample coordination fee is non-refundable once Aiva has begun arranging the sample, except where required by UK consumer law or where Aiva cannot proceed with the agreed sample. Contact Aivatradingltd2026@gmail.com with your Square payment reference within 14 days of purchase for any return or refund request.",
   "shipping": {
     "allowedCountries": [
       "GB"
     ],
-    "flatRatePence": 495,
-    "freeShippingThresholdPence": 10000
+    "flatRatePence": 0,
+    "freeShippingThresholdPence": null
   },
   "categories": [
     "Smart home & security",
@@ -23,5 +23,15 @@
     "Barber & beauty",
     "Home essentials"
   ],
-  "products": []
+  "products": [
+    {
+      "sku": "AIVA-SAMPLE-FEE",
+      "name": "UK sample coordination fee",
+      "description": "One-off fee so Aiva can coordinate a confirmed product sample for a UK buyer. Exact model, any extra sample cost, and delivery are agreed by email after payment. This fee is credited against the agreed sample invoice when you proceed.",
+      "category": "Home essentials",
+      "pricePence": 4900,
+      "stock": 100,
+      "available": true
+    }
+  ]
 }

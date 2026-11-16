@@ -74,8 +74,11 @@ assert.match(company, /Chia Sabir/);
 assert.match(company, /Aivatradingltd2026@gmail\.com/);
 
 const catalogue = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
-assert.equal(catalogue.shopEnabled, false);
-assert.deepEqual(catalogue.products, []);
+assert.equal(catalogue.shopEnabled, true);
+assert.equal(catalogue.products.length, 1);
+assert.equal(catalogue.products[0].sku, 'AIVA-SAMPLE-FEE');
+assert.equal(catalogue.products[0].pricePence, 4900);
+assert.equal(catalogue.products[0].available, true);
 assert.ok(String(catalogue.businessAddress || '').includes('Whitehill'));
 assert.ok(String(catalogue.deliveryPolicy || '').length >= 15);
 assert.ok(String(catalogue.returnsPolicy || '').length >= 15);
@@ -86,8 +89,10 @@ assert.ok(existsSync(path.join(root, 'data/aiva-products.sandbox.example.json'))
 const commerce = readFileSync(path.join(root, 'functions/_lib/commerce.js'), 'utf8');
 assert.match(commerce, /createSquareCheckout/);
 assert.match(commerce, /handleCreateRefund/);
-assert.match(commerce, /apple_pay:\s*true/);
-assert.match(commerce, /google_pay:\s*true/);
+assert.match(commerce, /apple_pay:\s*false/);
+assert.match(commerce, /google_pay:\s*false/);
+assert.match(commerce, /cash_app_pay:\s*false/);
+assert.match(commerce, /afterpay_clearpay:\s*false/);
 assert.doesNotMatch(commerce, /createStripeCheckout/);
 assert.doesNotMatch(commerce, /stripeMode/);
 
@@ -98,5 +103,5 @@ assert.ok(assetCount >= 40, 'Expected rich asset set, found ' + assetCount);
 
 console.log('WEBSITE INTEGRITY CHECKS PASSED');
 console.log('- pages, assets, company details and Square Functions present');
-console.log('- shop remains closed (shopEnabled=false, empty catalogue)');
+console.log('- shop enabled with one card-only SKU (AIVA-SAMPLE-FEE)');
 console.log('- root _worker.js absent (Functions deploy path)');

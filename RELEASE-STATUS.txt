@@ -1,13 +1,13 @@
 AIVA TRADING LIMITED — SQUARE CHECKOUT — 16 NOVEMBER 2026 (Europe/London)
-Prepared in git. PREVIEW DEPLOY TRIGGERED. Production NOT promoted.
+Prepared in git. PREVIEW REDEPLOYED with sample catalogue. Production NOT promoted.
 
-Checkout provider: Square (Stripe retired). Functions architecture ready.
-Catalogue remains empty and shopEnabled=false, intentionally blocking charges.
+Checkout provider: Square (Stripe retired). Card-only hosted checkout.
+Catalogue: shopEnabled=true with one SKU (AIVA-SAMPLE-FEE, £49.00).
 
 STATUS UPDATE (16 Nov 2026, Europe/London):
-- GitHub Actions secrets CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN were added.
-- Cloudflare Pages preview redeploy was triggered from this branch.
+- GitHub Actions secrets CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are in place.
+- Preview redeployed with Origin sample catalogue + card-only Square checkout options.
 - Production was not touched.
-- Square Cloudflare Pages secrets and D1 may still be outstanding (see YOUR-NEXT-STEP.txt).
+- Square Cloudflare Pages secrets and D1 (ORDERS_DB) are still required before merchantReady.
 
 See PROGRESS-REPORT.txt and YOUR-NEXT-STEP.txt.
