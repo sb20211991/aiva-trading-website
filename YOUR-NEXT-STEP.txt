@@ -1,8 +1,9 @@
 AIVA TRADING — ONLY ACTIONS THAT STILL NEED YOU
-Updated: 15 November 2026 (Europe/London)
+Updated: 16 November 2026 (Europe/London)
 
 Tap to Pay on iPhone = Active (thank you). That helps in-person sales.
-Website checkout on aivatrading.uk still needs secrets + Cloudflare deploy.
+GitHub Cloudflare secrets were added on 16 Nov 2026 (Europe/London);
+preview redeploy was triggered. Production was not promoted.
 Do NOT buy Square Reader / Terminal.
 
 ==================================================
@@ -18,18 +19,14 @@ YOU MUST DO
    - Sandbox Access Token + Sandbox Location ID
    - Webhook: https://aivatrading.uk/api/square-webhook
      Events: payment.updated, order.updated, refund.created, refund.updated
-   - Copy Signature Key into secrets (not chat)
+   - Copy Signature Key into Cloudflare Pages secrets (not chat)
 
-3. Add all 8 values in MISSING-CONFIG.txt to the Cursor secure secrets form.
-   SQUARE_ENVIRONMENT = sandbox
-   Also need CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN + MERCHANT_REFUND_SECRET
+3. On Cloudflare Pages (preview + later production), set Square env vars
+   listed in MISSING-CONFIG.txt, plus MERCHANT_REFUND_SECRET and ORDERS_DB (D1).
+   SQUARE_ENVIRONMENT = sandbox until you approve live charges.
+   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN are already in GitHub Actions.
 
-4. After saving secrets, start a NEW Cloud Agent on this repo (running agents
-   do not receive newly added secrets), and tell it:
-   Secrets added — deploy preview
-   Optional: bank ready: yes|no
-
-5. Keep shop closed until real products + your approval to set shopEnabled=true.
+4. Keep shop closed until real products + your approval to set shopEnabled=true.
 
 SECURE LOCATION (do not paste tokens into chat):
 https://cursor.com/dashboard/cloud-agents → Secrets / My Secrets → Add Secrets
@@ -41,5 +38,6 @@ ALREADY DONE WITHOUT YOU
 
 - Square Functions checkout (Visa/Mastercard + Apple Pay + Google Pay flags)
 - Refunds, webhooks handlers, local tests green
-- Live site probed: old Stripe static package still published; APIs not executing
+- GitHub Actions Cloudflare secrets added; preview redeploy triggered (16 Nov 2026)
+- Live site production not promoted; shop remains closed
 - Design / product data left unchanged

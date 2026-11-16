@@ -1,6 +1,13 @@
-AIVA TRADING LIMITED — SQUARE CHECKOUT — 15 NOVEMBER 2026
-Prepared in git. NOT DEPLOYED. NOT LIVE FOR CUSTOMER PAYMENTS.
+AIVA TRADING LIMITED — SQUARE CHECKOUT — 16 NOVEMBER 2026 (Europe/London)
+Prepared in git. PREVIEW DEPLOY TRIGGERED. Production NOT promoted.
 
 Checkout provider: Square (Stripe retired). Functions architecture ready.
 Catalogue remains empty and shopEnabled=false, intentionally blocking charges.
+
+STATUS UPDATE (16 Nov 2026, Europe/London):
+- GitHub Actions secrets CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN were added.
+- Cloudflare Pages preview redeploy was triggered from this branch.
+- Production was not touched.
+- Square Cloudflare Pages secrets and D1 may still be outstanding (see YOUR-NEXT-STEP.txt).
+
 See PROGRESS-REPORT.txt and YOUR-NEXT-STEP.txt.
