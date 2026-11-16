@@ -267,6 +267,55 @@ async function run() {
   assert.equal(refundBody.refundId, 'REFUND_TEST_1');
   console.log('square refund api ok');
 
+  // Signed webhook retries must not be lost when Square's order API is unavailable.
+  const mockCheckoutFetch = globalThis.fetch;
+  const writes = [];
+  const webhookEnv = { ...env, ORDERS_DB: {
+    prepare(sql) {
+      return { bind(...values) {
+        return { sql, values, async run() { writes.push({ sql, values }); } };
+      } };
+    },
+    async batch(statements) { writes.push(...statements); }
+  } };
+  const eventBody = JSON.stringify({
+    event_id: 'EVENT_RETRY_01', type: 'payment.updated',
+    data: { object: { payment: {
+      id: 'PAYMENT_TEST_1', order_id: 'SQ_ORDER_TEST_12345', status: 'COMPLETED',
+      amount_money: { amount: 20395, currency: 'GBP' }
+    } } }
+  });
+  const { createHmac } = await import('node:crypto');
+  const signature = createHmac('sha256', env.SQUARE_WEBHOOK_SIGNATURE_KEY)
+    .update(env.SQUARE_WEBHOOK_NOTIFICATION_URL + eventBody).digest('base64');
+  const notification = () => new Request(env.SQUARE_WEBHOOK_NOTIFICATION_URL, {
+    method: 'POST', body: eventBody,
+    headers: { 'x-square-hmacsha256-signature': signature }
+  });
+  try {
+    for (const failure of ['http', 'network', 'malformed']) {
+      globalThis.fetch = async () => {
+        if (failure === 'network') throw new Error('Simulated outage');
+        return new Response(failure === 'malformed' ? '{}' : 'Unavailable', {
+          status: failure === 'http' ? 503 : 200
+        });
+      };
+      assert.equal((await handleSquareWebhook(notification(), webhookEnv)).status, 503);
+      assert.equal(writes.length, 0, 'Unverified events must remain eligible for retry');
+    }
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      order: { id: 'OTHER_ORDER', metadata: { source: 'another-store' } }
+    }));
+    assert.equal((await handleSquareWebhook(notification(), webhookEnv)).status, 200);
+    assert.equal(writes.length, 0, 'Other stores must not be persisted');
+    globalThis.fetch = mockCheckoutFetch;
+    assert.equal((await handleSquareWebhook(notification(), webhookEnv)).status, 200);
+    assert.equal(writes.length, 2, 'Recovered delivery must persist the event and order');
+    console.log('signed Square webhook outage and recovery checks passed');
+  } finally {
+    globalThis.fetch = mockCheckoutFetch;
+  }
+
   const retired = await handleStripeWebhook(
     new Request(base + '/api/stripe-webhook', { method: 'POST', body: '{}' }),
     env

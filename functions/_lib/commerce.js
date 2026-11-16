@@ -686,10 +686,12 @@ export async function handleSquareWebhook(request, env) {
   let lineItemsJson = null;
   let confirmedAivaOrder = false;
   if (orderId && squareConfigured(env)) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
     try {
       const orderRes = await fetch(
         squareApiBase(env) + '/v2/orders/' + encodeURIComponent(orderId),
-        { headers: squareHeaders(env) }
+        { headers: squareHeaders(env), signal: controller.signal }
       );
       if (orderRes.ok) {
         const orderData = await orderRes.json();
@@ -722,18 +724,16 @@ export async function handleSquareWebhook(request, env) {
       }
     } catch (e) {
       console.error('Square webhook order lookup failed', String(e));
+    } finally {
+      clearTimeout(timeout);
     }
   }
   if (!orderId) return respond({ received: true });
   const now = Math.floor(Date.now() / 1000);
-  /* Only persist orders confirmed as aivatrading.uk; still ack + record the event id. */
+  // Do not acknowledge an event until its order can be verified and persisted.
+  // A 503 lets Square retry after a temporary API failure.
   if (!confirmedAivaOrder) {
-    await env.ORDERS_DB.prepare(
-      'INSERT OR IGNORE INTO payment_events (event_id, processed_at) VALUES (?,?)'
-    )
-      .bind(eventId, now)
-      .run();
-    return respond({ received: true, deferred: true });
+    return respond({ error: 'Order verification unavailable. Retry this notification.' }, 503);
   }
   await env.ORDERS_DB.batch([
     env.ORDERS_DB.prepare(
