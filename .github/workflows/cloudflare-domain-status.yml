@@ -1,0 +1,48 @@
+name: Cloudflare domain status poll
+on:
+  workflow_dispatch:
+  push:
+    branches: [cursor/cloudflare-github-deploy-1f19]
+    paths: ['.github/workflows/cloudflare-domain-status.yml']
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll Pages domains + live hosts
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.error
+          account=os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token=os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          def call(method,url,body=None):
+            data=None if body is None else json.dumps(body).encode()
+            req=urllib.request.Request(url,data=data,method=method,headers={'Authorization':f'Bearer {token}','Content-Type':'application/json'})
+            try:
+              with urllib.request.urlopen(req,timeout=60) as res:
+                return res.status, json.loads(res.read().decode() or '{}')
+            except urllib.error.HTTPError as e:
+              return e.code, json.loads(e.read().decode() or '{}')
+          code,payload=call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/aiva-trading/domains')
+          print('domains', code)
+          print(json.dumps(payload.get('result'), indent=2)[:4000])
+          # env var NAMES only
+          code,payload=call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/aiva-trading')
+          dc=(payload.get('result') or {}).get('deployment_configs') or {}
+          for env in ('production','preview'):
+            ev=((dc.get(env) or {}).get('env_vars') or {})
+            print(env, 'env names', sorted(ev.keys()), 'd1', (dc.get(env) or {}).get('d1_databases'))
+          PY
+          for u in \
+            https://app.aivatrading.uk/api/shop-status \
+            https://aiva-trading.pages.dev/api/shop-status \
+            https://aivatrading.uk/api/shop-status
+          do
+            echo "==== $u ===="
+            curl -sS -A 'Mozilla/5.0' --max-time 20 "$u" | head -c 300 || true
+            echo
+          done
