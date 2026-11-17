@@ -392,3 +392,4 @@ jobs:
           # Apex may still be pending DNS in another CF account — do not fail the job for that alone.
           apex=$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 25 https://aivatrading.uk/api/shop-status || true)
           echo "apex_shop_status_http=$apex"
+# Trigger workflow Tue Nov 17 02:15:39 AM UTC 2026
