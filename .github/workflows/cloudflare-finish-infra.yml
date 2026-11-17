@@ -2,7 +2,7 @@
 # multi-account zone hunt, apex domain poll, D1 ORDERS_DB create+bind,
 # set non-secret env + generated MERCHANT_REFUND_SECRET, list existing var names.
 # Does NOT invent Square access tokens.
-# Redeploy trigger: 2026-11-17T14:45:00Z — ORDERS_DB fallback + pre/post patch + second deploy
+# Redeploy trigger: 2026-11-17T14:55:00Z — stop wiping secrets via empty value PATCH
 name: Cloudflare finish infra
 on:
   workflow_dispatch:
@@ -235,10 +235,21 @@ jobs:
               else:
                   print(' keep existing MERCHANT_REFUND_SECRET')
 
+          def sanitize_env_vars(vars_dict):
+              out = {}
+              for name, meta in (vars_dict or {}).items():
+                  meta = dict(meta or {})
+                  if meta.get('type') == 'secret_text':
+                      # GET redacts as value=""; never send that back or secrets are wiped.
+                      out[name] = {'type': 'secret_text'}
+                  else:
+                      out[name] = meta
+              return out
+
           patch_body = {
               'deployment_configs': {
-                  'production': {'env_vars': prod_vars},
-                  'preview': {'env_vars': prev_vars},
+                  'production': {'env_vars': sanitize_env_vars(prod_vars)},
+                  'preview': {'env_vars': sanitize_env_vars(prev_vars)},
               }
           }
           code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', patch_body)
@@ -362,6 +373,16 @@ jobs:
           def summarize(ev):
               return sorted((k, (ev.get(k) or {}).get('type')) for k in ev)
 
+          def sanitize_env_vars(vars_dict):
+              out = {}
+              for name, meta in (vars_dict or {}).items():
+                  meta = dict(meta or {})
+                  if meta.get('type') == 'secret_text':
+                      out[name] = {'type': 'secret_text'}
+                  else:
+                      out[name] = meta
+              return out
+
           code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
           assert code == 200 and payload.get('success'), payload
           dc = (payload.get('result') or {}).get('deployment_configs') or {}
@@ -386,11 +407,11 @@ jobs:
           code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
               'deployment_configs': {
                   'production': {
-                      'env_vars': prod,
+                      'env_vars': sanitize_env_vars(prod),
                       'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
                   },
                   'preview': {
-                      'env_vars': prev,
+                      'env_vars': sanitize_env_vars(prev),
                       'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
                   },
               }
@@ -456,6 +477,16 @@ jobs:
           def summarize(ev):
               return sorted((k, (ev.get(k) or {}).get('type')) for k in ev)
 
+          def sanitize_env_vars(vars_dict):
+              out = {}
+              for name, meta in (vars_dict or {}).items():
+                  meta = dict(meta or {})
+                  if meta.get('type') == 'secret_text':
+                      out[name] = {'type': 'secret_text'}
+                  else:
+                      out[name] = meta
+              return out
+
           code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
           assert code == 200 and payload.get('success'), payload
           dc = (payload.get('result') or {}).get('deployment_configs') or {}
@@ -480,11 +511,11 @@ jobs:
           code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
               'deployment_configs': {
                   'production': {
-                      'env_vars': prod,
+                      'env_vars': sanitize_env_vars(prod),
                       'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
                   },
                   'preview': {
-                      'env_vars': prev,
+                      'env_vars': sanitize_env_vars(prev),
                       'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
                   },
               }
@@ -555,6 +586,16 @@ jobs:
           def summarize(ev):
               return sorted((k, (ev.get(k) or {}).get('type')) for k in ev)
 
+          def sanitize_env_vars(vars_dict):
+              out = {}
+              for name, meta in (vars_dict or {}).items():
+                  meta = dict(meta or {})
+                  if meta.get('type') == 'secret_text':
+                      out[name] = {'type': 'secret_text'}
+                  else:
+                      out[name] = meta
+              return out
+
           code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
           assert code == 200 and payload.get('success'), payload
           dc = (payload.get('result') or {}).get('deployment_configs') or {}
@@ -575,11 +616,11 @@ jobs:
           code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
               'deployment_configs': {
                   'production': {
-                      'env_vars': prod,
+                      'env_vars': sanitize_env_vars(prod),
                       'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
                   },
                   'preview': {
-                      'env_vars': prev,
+                      'env_vars': sanitize_env_vars(prev),
                       'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
                   },
               }
@@ -639,11 +680,13 @@ jobs:
           import json
           d=json.load(open('/tmp/app.json'))
           print('final app shop-status', d)
-          # Do not hard-fail if only D1/webhook lag; hard-fail when mode still disabled
-          # after env+D1 remediation — surfaces empty secrets as the remaining blocker.
-          raise SystemExit('shop-status mode still disabled after remediations')
+          print('BLOCKER: SQUARE_* secret names exist as secret_text but runtime sees them empty/missing.')
+          print('Simon must re-paste SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, SQUARE_WEBHOOK_SIGNATURE_KEY')
+          print('into Cloudflare Pages → aiva-trading → Settings → Variables (Production), then re-run finish-infra.')
+          print('Do not leave values blank. Prior API patches that echoed redacted value="" may have wiped them.')
+          raise SystemExit(2)
           PY
           fi
           apex=$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 25 https://aivatrading.uk/api/shop-status || true)
           echo "apex_shop_status_http=$apex"
-# Trigger workflow Tue Nov 17 14:45:00 UTC 2026
+# Trigger workflow Tue Nov 17 14:55:00 UTC 2026
