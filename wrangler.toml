@@ -12,9 +12,12 @@ name = "aiva-trading"
 compatibility_date = "2025-11-01"
 pages_build_output_dir = "."
 
-# Bind D1 in the Cloudflare dashboard as ORDERS_DB (recommended),
-# or uncomment and set your database_id after creation:
-# [[d1_databases]]
-# binding = "ORDERS_DB"
-# database_name = "aiva_orders"
-# database_id = "YOUR_D1_DATABASE_ID"
+# Keep plain vars in wrangler.toml so `wrangler pages deploy` does not wipe them.
+[vars]
+SQUARE_ENVIRONMENT = "sandbox"
+SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
+
+[[d1_databases]]
+binding = "ORDERS_DB"
+database_name = "aiva_orders"
+database_id = "d6791133-c5f2-4209-a9ab-91573e123939"

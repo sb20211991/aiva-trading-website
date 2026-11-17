@@ -2,7 +2,7 @@
 # multi-account zone hunt, apex domain poll, D1 ORDERS_DB create+bind,
 # set non-secret env + generated MERCHANT_REFUND_SECRET, list existing var names.
 # Does NOT invent Square access tokens.
-# Redeploy trigger: 2026-11-17T14:37:35Z
+# Redeploy trigger: 2026-11-17T14:45:00Z — ORDERS_DB fallback + pre/post patch + second deploy
 name: Cloudflare finish infra
 on:
   workflow_dispatch:
@@ -138,47 +138,73 @@ jobs:
               d1s = env.get('d1_databases') or {}
               print(f'{env_name} d1 bindings:', d1s)
 
-          print('=== List D1 databases ===')
+          print('=== Resolve ORDERS_DB id (list may 401; use binding/fallback) ===')
+          FALLBACK_DB_ID = 'd6791133-c5f2-4209-a9ab-91573e123939'
           code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/d1/database')
           print('d1 list', code, json.dumps(payload)[:2000])
           dbs = payload.get('result') or []
           orders = next((d for d in dbs if d.get('name') == 'aiva_orders'), None)
-          if not orders:
+          if not orders and code not in (200, 201):
+              print('D1 list unauthorized/failed; will use existing Pages binding or fallback id')
+          if not orders and code in (200, 201):
               print('Creating D1 aiva_orders')
               code, payload = call('POST', f'https://api.cloudflare.com/client/v4/accounts/{account}/d1/database', {
                   'name': 'aiva_orders',
               })
               print('create d1', code, json.dumps(payload)[:1500])
               orders = (payload.get('result') or {}) if code in (200, 201) else None
+
+          code, proj = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
+          dc0 = ((proj.get('result') or {}).get('deployment_configs') or {})
+          def binding_id(env_name):
+              d1s = ((dc0.get(env_name) or {}).get('d1_databases') or {})
+              for key in ('ORDERS_DB', 'ORDERS_D8'):
+                  item = d1s.get(key) or {}
+                  bid = item.get('id') or item.get('uuid')
+                  if bid:
+                      print(f' found {env_name} binding {key} -> {bid}')
+                      return bid
+              return None
+          db_id = None
           if orders:
               db_id = orders.get('uuid') or orders.get('id')
-              print('ORDERS_DB id', db_id)
-              # Bind to Pages production + preview
-              print('Binding ORDERS_DB on Pages project')
-              patch_body = {
-                  'deployment_configs': {
-                      'production': {
-                          'd1_databases': {
-                              'ORDERS_DB': {'id': db_id}
-                          }
-                      },
-                      'preview': {
-                          'd1_databases': {
-                              'ORDERS_DB': {'id': db_id}
-                          }
-                      },
-                  }
-              }
-              code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', patch_body)
-              print('bind d1 patch', code, json.dumps(payload)[:2000])
+          if not db_id:
+              db_id = binding_id('production') or binding_id('preview') or FALLBACK_DB_ID
+          print('ORDERS_DB id', db_id)
 
-              # Apply schema
-              sql = open('ORDER-DATABASE-SETUP.sql').read()
-              print('Applying D1 schema')
-              code, payload = call('POST', f'https://api.cloudflare.com/client/v4/accounts/{account}/d1/database/{db_id}/query', {
-                  'sql': sql,
-              })
-              print('schema', code, json.dumps(payload)[:2000])
+          print('Binding ORDERS_DB on Pages project (remove ORDERS_D8 if present)')
+          patch_body = {
+              'deployment_configs': {
+                  'production': {
+                      'd1_databases': {
+                          'ORDERS_DB': {'id': db_id},
+                          'ORDERS_D8': None,
+                      }
+                  },
+                  'preview': {
+                      'd1_databases': {
+                          'ORDERS_DB': {'id': db_id},
+                          'ORDERS_D8': None,
+                      }
+                  },
+              }
+          }
+          code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', patch_body)
+          print('bind d1 patch', code, 'success', payload.get('success'))
+          if not payload.get('success'):
+              print(json.dumps(payload)[:2000])
+          else:
+              for env_name in ('production', 'preview'):
+                  d1s = (((payload.get('result') or {}).get('deployment_configs') or {}).get(env_name) or {}).get('d1_databases') or {}
+                  print(f' {env_name} d1 after bind:', d1s)
+
+          # Apply schema when token allows (often 401 on this token)
+          sql = open('ORDER-DATABASE-SETUP.sql').read()
+          print('Applying D1 schema')
+          code, payload = call('POST', f'https://api.cloudflare.com/client/v4/accounts/{account}/d1/database/{db_id}/query', {
+              'sql': sql,
+          })
+          print('schema', code, json.dumps(payload)[:2000])
 
           print('=== Set agent-owned env vars (no Square tokens invented) ===')
           refund = secrets.token_urlsafe(48)
@@ -259,19 +285,23 @@ jobs:
           print(m.group(1) if m else '')
           PY
           )
-          echo "DB_ID=${DB_ID}"
-          if [[ -n "$DB_ID" ]]; then
-            npx --yes wrangler@4 d1 execute aiva_orders --remote --file=ORDER-DATABASE-SETUP.sql 2>&1 | tee /tmp/d1-sql.txt || true
-            export DB_ID
-            python3 <<'PY'
+          if [[ -z "$DB_ID" ]]; then
+            DB_ID='d6791133-c5f2-4209-a9ab-91573e123939'
+            echo "Using fallback DB_ID=${DB_ID}"
+          else
+            echo "DB_ID=${DB_ID}"
+          fi
+          npx --yes wrangler@4 d1 execute aiva_orders --remote --file=ORDER-DATABASE-SETUP.sql 2>&1 | tee /tmp/d1-sql.txt || true
+          export DB_ID
+          python3 <<'PY'
           import json, os, urllib.request, urllib.error
           account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
           token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
           db_id = os.environ['DB_ID'].strip()
           body = json.dumps({
               'deployment_configs': {
-                  'production': {'d1_databases': {'ORDERS_DB': {'id': db_id}}},
-                  'preview': {'d1_databases': {'ORDERS_DB': {'id': db_id}}},
+                  'production': {'d1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None}},
+                  'preview': {'d1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None}},
               }
           }).encode()
           req = urllib.request.Request(
@@ -285,25 +315,8 @@ jobs:
           except urllib.error.HTTPError as e:
               print('bind failed', e.code, e.read().decode()[:1500])
           PY
-          else
-            echo 'No D1 database id available from this token'
-          fi
           exit 0
-      - name: Redeploy production after bindings
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          npm test
-          test ! -f _worker.js
-          npx --yes wrangler@4 pages deploy . \
-            --project-name=aiva-trading \
-            --branch=main \
-            --commit-hash="${GITHUB_SHA}" \
-            --commit-message="Finish infra ${GITHUB_SHA}" \
-            --commit-dirty=true
-      - name: Re-apply Pages env after wrangler (deploy can wipe plain vars)
+      - name: Pre-deploy patch ORDERS_DB + env (before wrangler snapshot)
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -314,6 +327,7 @@ jobs:
           account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
           token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
           project = 'aiva-trading'
+          FALLBACK_DB_ID = 'd6791133-c5f2-4209-a9ab-91573e123939'
           hdr = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
           def call(method, url, body=None):
@@ -325,53 +339,269 @@ jobs:
               except urllib.error.HTTPError as e:
                   return e.code, json.loads(e.read().decode() or '{}')
 
+          def resolve_db_id(dc):
+              for env_name in ('production', 'preview'):
+                  d1s = ((dc.get(env_name) or {}).get('d1_databases') or {})
+                  for key in ('ORDERS_DB', 'ORDERS_D8'):
+                      item = d1s.get(key) or {}
+                      bid = item.get('id') or item.get('uuid')
+                      if bid:
+                          print(f'resolve from {env_name}.{key}={bid}')
+                          return bid
+              return FALLBACK_DB_ID
+
+          def ensure_plain(vars_dict, name, value):
+              existing = vars_dict.get(name)
+              if existing and existing.get('type') == 'secret_text':
+                  # Keep secret as-is; do not invent/overwrite secret values.
+                  print(f' keep existing secret {name}')
+                  return
+              vars_dict[name] = {'type': 'plain_text', 'value': value}
+              print(f' set plain {name}')
+
+          def summarize(ev):
+              return sorted((k, (ev.get(k) or {}).get('type')) for k in ev)
+
           code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
           assert code == 200 and payload.get('success'), payload
           dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          db_id = resolve_db_id(dc)
           prod = dict((dc.get('production') or {}).get('env_vars') or {})
           prev = dict((dc.get('preview') or {}).get('env_vars') or {})
-          print('before names', sorted(prod.keys()), sorted(prev.keys()))
+          print('pre-deploy before', summarize(prod), 'd1', (dc.get('production') or {}).get('d1_databases'))
 
-          def ensure(vars_dict, name, value, secret=False):
-              existing = vars_dict.get(name)
-              if existing and existing.get('type') == 'secret_text' and secret:
-                  # keep existing secret value
-                  return
-              if existing and existing.get('type') == 'secret_text' and not secret:
-                  # replace secret with plain if we intentionally want plain
-                  pass
-              vars_dict[name] = {
-                  'type': 'secret_text' if secret else 'plain_text',
-                  'value': value,
-              }
-
-          refund = secrets.token_urlsafe(48)
           for vars_dict in (prod, prev):
-              ensure(vars_dict, 'SQUARE_ENVIRONMENT', 'sandbox', secret=False)
-              ensure(vars_dict, 'SQUARE_WEBHOOK_NOTIFICATION_URL', 'https://app.aivatrading.uk/api/square-webhook', secret=False)
+              ensure_plain(vars_dict, 'SQUARE_ENVIRONMENT', 'sandbox')
+              ensure_plain(vars_dict, 'SQUARE_WEBHOOK_NOTIFICATION_URL', 'https://app.aivatrading.uk/api/square-webhook')
               if 'MERCHANT_REFUND_SECRET' not in vars_dict:
-                  ensure(vars_dict, 'MERCHANT_REFUND_SECRET', refund, secret=True)
+                  vars_dict['MERCHANT_REFUND_SECRET'] = {
+                      'type': 'secret_text',
+                      'value': secrets.token_urlsafe(48),
+                  }
+                  print(' set MERCHANT_REFUND_SECRET')
+              else:
+                  print(' keep existing MERCHANT_REFUND_SECRET')
+
+          # Preserve any existing secret_text entries already in prod/prev (from GET).
+          code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
+              'deployment_configs': {
+                  'production': {
+                      'env_vars': prod,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+                  'preview': {
+                      'env_vars': prev,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+              }
+          })
+          print('pre-deploy patch', code, 'success', payload.get('success'))
+          if not payload.get('success'):
+              raise SystemExit(json.dumps(payload)[:2500])
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          ev = (dc.get('production') or {}).get('env_vars') or {}
+          print('pre-deploy production names/types', summarize(ev))
+          print('pre-deploy production d1', (dc.get('production') or {}).get('d1_databases'))
+          PY
+      - name: Redeploy production after bindings
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm test
+          test ! -f _worker.js
+          npx --yes wrangler@4 pages deploy .             --project-name=aiva-trading             --branch=main             --commit-hash="${GITHUB_SHA}"             --commit-message="Finish infra ${GITHUB_SHA}"             --commit-dirty=true
+      - name: Re-apply ORDERS_DB + env after wrangler (deploy can wipe plains)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, secrets, urllib.request, urllib.error
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          project = 'aiva-trading'
+          FALLBACK_DB_ID = 'd6791133-c5f2-4209-a9ab-91573e123939'
+          hdr = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+          def call(method, url, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(url, data=data, method=method, headers=hdr)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as res:
+                      return res.status, json.loads(res.read().decode() or '{}')
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode() or '{}')
+
+          def resolve_db_id(dc):
+              for env_name in ('production', 'preview'):
+                  d1s = ((dc.get(env_name) or {}).get('d1_databases') or {})
+                  for key in ('ORDERS_DB', 'ORDERS_D8'):
+                      item = d1s.get(key) or {}
+                      bid = item.get('id') or item.get('uuid')
+                      if bid:
+                          return bid
+              return FALLBACK_DB_ID
+
+          def ensure_plain(vars_dict, name, value):
+              existing = vars_dict.get(name)
+              if existing and existing.get('type') == 'secret_text':
+                  print(f' keep existing secret {name}')
+                  return
+              vars_dict[name] = {'type': 'plain_text', 'value': value}
+              print(f' set plain {name}')
+
+          def summarize(ev):
+              return sorted((k, (ev.get(k) or {}).get('type')) for k in ev)
+
+          code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
+          assert code == 200 and payload.get('success'), payload
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          db_id = resolve_db_id(dc)
+          prod = dict((dc.get('production') or {}).get('env_vars') or {})
+          prev = dict((dc.get('preview') or {}).get('env_vars') or {})
+          print('post-wipe before names/types', summarize(prod))
+          print('post-wipe before d1', (dc.get('production') or {}).get('d1_databases'))
+
+          for vars_dict in (prod, prev):
+              ensure_plain(vars_dict, 'SQUARE_ENVIRONMENT', 'sandbox')
+              ensure_plain(vars_dict, 'SQUARE_WEBHOOK_NOTIFICATION_URL', 'https://app.aivatrading.uk/api/square-webhook')
+              if 'MERCHANT_REFUND_SECRET' not in vars_dict:
+                  vars_dict['MERCHANT_REFUND_SECRET'] = {
+                      'type': 'secret_text',
+                      'value': secrets.token_urlsafe(48),
+                  }
+                  print(' set MERCHANT_REFUND_SECRET')
+              else:
+                  print(' keep existing MERCHANT_REFUND_SECRET')
 
           code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
               'deployment_configs': {
-                  'production': {'env_vars': prod},
-                  'preview': {'env_vars': prev},
+                  'production': {
+                      'env_vars': prod,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+                  'preview': {
+                      'env_vars': prev,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
               }
           })
           print('reapply', code, 'success', payload.get('success'))
-          ev = ((payload.get('result') or {}).get('deployment_configs') or {}).get('production', {}).get('env_vars') or {}
-          print('after production names', sorted(ev.keys()))
           if not payload.get('success'):
-              raise SystemExit(json.dumps(payload)[:2000])
+              raise SystemExit(json.dumps(payload)[:2500])
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          ev = (dc.get('production') or {}).get('env_vars') or {}
+          print('FINAL production env names/types', summarize(ev))
+          print('FINAL production d1', (dc.get('production') or {}).get('d1_databases'))
+          print('FINAL preview d1', (dc.get('preview') or {}).get('d1_databases'))
+          secret_names = [k for k, t in summarize(ev) if t == 'secret_text']
+          plain_names = [k for k, t in summarize(ev) if t == 'plain_text']
+          print('secret_text names:', secret_names)
+          print('plain_text names:', plain_names)
+          PY
+      - name: Second deploy so live Functions pick up restored env+D1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Wrangler may wipe plains during deploy #1; env was re-applied above.
+          # Deploy again with wrangler.toml [vars] + ORDERS_DB so the live snapshot is correct.
+          npx --yes wrangler@4 pages deploy .             --project-name=aiva-trading             --branch=main             --commit-hash="${GITHUB_SHA}"             --commit-message="Finish infra post-env ${GITHUB_SHA}"             --commit-dirty=true
+      - name: Final patch + diagnostics after second deploy
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, secrets, urllib.request, urllib.error
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          project = 'aiva-trading'
+          FALLBACK_DB_ID = 'd6791133-c5f2-4209-a9ab-91573e123939'
+          hdr = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+          def call(method, url, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(url, data=data, method=method, headers=hdr)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as res:
+                      return res.status, json.loads(res.read().decode() or '{}')
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode() or '{}')
+
+          def resolve_db_id(dc):
+              for env_name in ('production', 'preview'):
+                  d1s = ((dc.get(env_name) or {}).get('d1_databases') or {})
+                  for key in ('ORDERS_DB', 'ORDERS_D8'):
+                      item = d1s.get(key) or {}
+                      bid = item.get('id') or item.get('uuid')
+                      if bid:
+                          return bid
+              return FALLBACK_DB_ID
+
+          def ensure_plain(vars_dict, name, value):
+              existing = vars_dict.get(name)
+              if existing and existing.get('type') == 'secret_text':
+                  print(f' keep existing secret {name}')
+                  return
+              vars_dict[name] = {'type': 'plain_text', 'value': value}
+              print(f' set plain {name}')
+
+          def summarize(ev):
+              return sorted((k, (ev.get(k) or {}).get('type')) for k in ev)
+
+          code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
+          assert code == 200 and payload.get('success'), payload
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          db_id = resolve_db_id(dc)
+          prod = dict((dc.get('production') or {}).get('env_vars') or {})
+          prev = dict((dc.get('preview') or {}).get('env_vars') or {})
+          print('after-deploy2 before', summarize(prod), (dc.get('production') or {}).get('d1_databases'))
+
+          for vars_dict in (prod, prev):
+              ensure_plain(vars_dict, 'SQUARE_ENVIRONMENT', 'sandbox')
+              ensure_plain(vars_dict, 'SQUARE_WEBHOOK_NOTIFICATION_URL', 'https://app.aivatrading.uk/api/square-webhook')
+              if 'MERCHANT_REFUND_SECRET' not in vars_dict:
+                  vars_dict['MERCHANT_REFUND_SECRET'] = {
+                      'type': 'secret_text',
+                      'value': secrets.token_urlsafe(48),
+                  }
+
+          code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
+              'deployment_configs': {
+                  'production': {
+                      'env_vars': prod,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+                  'preview': {
+                      'env_vars': prev,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+              }
+          })
+          print('final patch', code, 'success', payload.get('success'))
+          if not payload.get('success'):
+              raise SystemExit(json.dumps(payload)[:2500])
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          ev = (dc.get('production') or {}).get('env_vars') or {}
+          print('DIAG production env names/types', summarize(ev))
+          print('DIAG production d1', (dc.get('production') or {}).get('d1_databases'))
+          print('DIAG preview d1', (dc.get('preview') or {}).get('d1_databases'))
+          print('DIAG secret_text?', {k: ((ev.get(k) or {}).get('type') == 'secret_text') for k in (
+              'SQUARE_ACCESS_TOKEN', 'SQUARE_LOCATION_ID', 'SQUARE_WEBHOOK_SIGNATURE_KEY', 'MERCHANT_REFUND_SECRET'
+          )})
           PY
       - name: Verify live surfaces
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 (compatible; AivaAgent/1.0)'
-          for u in \
-            https://app.aivatrading.uk/api/shop-status \
-            https://aiva-trading.pages.dev/api/shop-status \
-            https://aivatrading.uk/api/shop-status
+          # Primary: app subdomain (apex may still 404). Also check pages.dev.
+          for u in             https://app.aivatrading.uk/api/shop-status             https://aiva-trading.pages.dev/api/shop-status             https://aivatrading.uk/api/shop-status
           do
             echo "==== $u ===="
             code=$(curl -sS -o /tmp/s.json -w '%{http_code}' -A "$UA" --max-time 25 "$u" || echo ERR)
@@ -379,18 +609,41 @@ jobs:
             head -c 400 /tmp/s.json || true
             echo
           done
-          code=$(curl -sS -o /tmp/app.json -w '%{http_code}' -A "$UA" --max-time 25 https://app.aivatrading.uk/api/shop-status)
-          test "$code" = "200"
-          python3 - <<'PY'
-          import json
-          d = json.load(open('/tmp/app.json'))
+          # Retry app briefly in case deployment propagation lags
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -o /tmp/app.json -w '%{http_code}' -A "$UA" --max-time 25 https://app.aivatrading.uk/api/shop-status || true)
+            echo "app poll $i HTTP $code"
+            if [[ "$code" == "200" ]] && python3 - <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/app.json'))
           print('app shop-status', d)
-          assert d.get('shopEnabled') is True
+          # Fail job if still fully disabled — means secrets empty or env not attached.
+          ok = d.get('shopEnabled') is True and d.get('mode') != 'disabled' and d.get('provider') == 'square'
+          sys.exit(0 if ok else 1)
+          PY
+            then
+              echo 'APP_SHOP_STATUS_OK'
+              python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/app.json'))
           print('orderDatabaseConfigured', d.get('orderDatabaseConfigured'))
           print('merchantReady', d.get('merchantReady'))
           print('webhookConfigured', d.get('webhookConfigured'))
           PY
-          # Apex may still be pending DNS in another CF account — do not fail the job for that alone.
+              break
+            fi
+            sleep 10
+          else
+            echo 'APP_SHOP_STATUS_STILL_DISABLED'
+            python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/app.json'))
+          print('final app shop-status', d)
+          # Do not hard-fail if only D1/webhook lag; hard-fail when mode still disabled
+          # after env+D1 remediation — surfaces empty secrets as the remaining blocker.
+          raise SystemExit('shop-status mode still disabled after remediations')
+          PY
+          fi
           apex=$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 25 https://aivatrading.uk/api/shop-status || true)
           echo "apex_shop_status_http=$apex"
-# Trigger workflow Tue Nov 17 02:15:39 AM UTC 2026
+# Trigger workflow Tue Nov 17 14:45:00 UTC 2026
