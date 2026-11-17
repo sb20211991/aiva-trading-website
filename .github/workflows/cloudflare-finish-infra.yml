@@ -2,7 +2,7 @@
 # multi-account zone hunt, apex domain poll, D1 ORDERS_DB create+bind,
 # set non-secret env + generated MERCHANT_REFUND_SECRET, list existing var names.
 # Does NOT invent Square access tokens.
-# Redeploy trigger: 2026-11-17T15:05:00Z envFlags+short-poll
+# Redeploy trigger: 2026-11-17T16:21:00Z after Simon refilled Square secrets
 name: Cloudflare finish infra
 on:
   workflow_dispatch:
