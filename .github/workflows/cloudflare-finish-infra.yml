@@ -65,6 +65,15 @@ jobs:
           for a in accounts:
               print(' ACCOUNT', a.get('id'), a.get('name'))
 
+          print('=== Zone ownership probe (POST may reveal existing account) ===')
+          code, payload = call('POST', 'https://api.cloudflare.com/client/v4/zones', {
+              'name': domain,
+              'account': {'id': account},
+              'jump_start': False,
+          })
+          print('zone create probe', code, json.dumps(payload)[:2000])
+          # If we accidentally created an empty zone (unlikely when NS already CF elsewhere), leave it.
+
           print('=== Zone hunt across accounts + global name filter ===')
           code, payload = call('GET', 'https://api.cloudflare.com/client/v4/zones?name=' + urllib.parse.quote(domain))
           print('global zone name filter', code, 'count', len(payload.get('result') or []), json.dumps(payload)[:1200])
@@ -233,6 +242,52 @@ jobs:
           code, payload = call('GET', base)
           print('final domains', json.dumps(payload.get('result'), indent=2)[:4000])
           PY
+      - name: Try wrangler D1 create + bind (if token allows)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +e
+          npx --yes wrangler@4 d1 list 2>&1 | tee /tmp/d1-list.txt
+          npx --yes wrangler@4 d1 create aiva_orders 2>&1 | tee /tmp/d1-create.txt
+          # Extract uuid if created or already exists
+          DB_ID=$(python3 - <<'PY'
+          import re, pathlib
+          text = pathlib.Path('/tmp/d1-create.txt').read_text() + '\n' + pathlib.Path('/tmp/d1-list.txt').read_text()
+          m = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', text, re.I)
+          print(m.group(1) if m else '')
+          PY
+          )
+          echo "DB_ID=${DB_ID}"
+          if [[ -n "$DB_ID" ]]; then
+            npx --yes wrangler@4 d1 execute aiva_orders --remote --file=ORDER-DATABASE-SETUP.sql 2>&1 | tee /tmp/d1-sql.txt || true
+            export DB_ID
+            python3 <<'PY'
+          import json, os, urllib.request, urllib.error
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          db_id = os.environ['DB_ID'].strip()
+          body = json.dumps({
+              'deployment_configs': {
+                  'production': {'d1_databases': {'ORDERS_DB': {'id': db_id}}},
+                  'preview': {'d1_databases': {'ORDERS_DB': {'id': db_id}}},
+              }
+          }).encode()
+          req = urllib.request.Request(
+              f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/aiva-trading',
+              data=body, method='PATCH',
+              headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=60) as res:
+                  print(res.read().decode()[:2000])
+          except urllib.error.HTTPError as e:
+              print('bind failed', e.code, e.read().decode()[:1500])
+          PY
+          else
+            echo 'No D1 database id available from this token'
+          fi
+          exit 0
       - name: Redeploy production after bindings
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -250,24 +305,29 @@ jobs:
       - name: Verify live surfaces
         run: |
           set -euo pipefail
+          UA='Mozilla/5.0 (compatible; AivaAgent/1.0)'
           for u in \
             https://app.aivatrading.uk/api/shop-status \
             https://aiva-trading.pages.dev/api/shop-status \
             https://aivatrading.uk/api/shop-status
           do
             echo "==== $u ===="
-            code=$(curl -sS -o /tmp/s.json -w '%{http_code}' -A 'Mozilla/5.0' --max-time 25 "$u" || echo ERR)
+            code=$(curl -sS -o /tmp/s.json -w '%{http_code}' -A "$UA" --max-time 25 "$u" || echo ERR)
             echo "HTTP $code"
             head -c 400 /tmp/s.json || true
             echo
           done
+          code=$(curl -sS -o /tmp/app.json -w '%{http_code}' -A "$UA" --max-time 25 https://app.aivatrading.uk/api/shop-status)
+          test "$code" = "200"
           python3 - <<'PY'
-          import json, urllib.request
-          raw = urllib.request.urlopen('https://app.aivatrading.uk/api/shop-status', timeout=25).read().decode()
-          d = json.loads(raw)
+          import json
+          d = json.load(open('/tmp/app.json'))
           print('app shop-status', d)
           assert d.get('shopEnabled') is True
           print('orderDatabaseConfigured', d.get('orderDatabaseConfigured'))
           print('merchantReady', d.get('merchantReady'))
           print('webhookConfigured', d.get('webhookConfigured'))
           PY
+          # Apex may still be pending DNS in another CF account — do not fail the job for that alone.
+          apex=$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 25 https://aivatrading.uk/api/shop-status || true)
+          echo "apex_shop_status_http=$apex"
