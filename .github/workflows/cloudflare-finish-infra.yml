@@ -302,6 +302,67 @@ jobs:
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="Finish infra ${GITHUB_SHA}" \
             --commit-dirty=true
+      - name: Re-apply Pages env after wrangler (deploy can wipe plain vars)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, secrets, urllib.request, urllib.error
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          project = 'aiva-trading'
+          hdr = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+          def call(method, url, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(url, data=data, method=method, headers=hdr)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as res:
+                      return res.status, json.loads(res.read().decode() or '{}')
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode() or '{}')
+
+          code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
+          assert code == 200 and payload.get('success'), payload
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          prod = dict((dc.get('production') or {}).get('env_vars') or {})
+          prev = dict((dc.get('preview') or {}).get('env_vars') or {})
+          print('before names', sorted(prod.keys()), sorted(prev.keys()))
+
+          def ensure(vars_dict, name, value, secret=False):
+              existing = vars_dict.get(name)
+              if existing and existing.get('type') == 'secret_text' and secret:
+                  # keep existing secret value
+                  return
+              if existing and existing.get('type') == 'secret_text' and not secret:
+                  # replace secret with plain if we intentionally want plain
+                  pass
+              vars_dict[name] = {
+                  'type': 'secret_text' if secret else 'plain_text',
+                  'value': value,
+              }
+
+          refund = secrets.token_urlsafe(48)
+          for vars_dict in (prod, prev):
+              ensure(vars_dict, 'SQUARE_ENVIRONMENT', 'sandbox', secret=False)
+              ensure(vars_dict, 'SQUARE_WEBHOOK_NOTIFICATION_URL', 'https://app.aivatrading.uk/api/square-webhook', secret=False)
+              if 'MERCHANT_REFUND_SECRET' not in vars_dict:
+                  ensure(vars_dict, 'MERCHANT_REFUND_SECRET', refund, secret=True)
+
+          code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
+              'deployment_configs': {
+                  'production': {'env_vars': prod},
+                  'preview': {'env_vars': prev},
+              }
+          })
+          print('reapply', code, 'success', payload.get('success'))
+          ev = ((payload.get('result') or {}).get('deployment_configs') or {}).get('production', {}).get('env_vars') or {}
+          print('after production names', sorted(ev.keys()))
+          if not payload.get('success'):
+              raise SystemExit(json.dumps(payload)[:2000])
+          PY
       - name: Verify live surfaces
         run: |
           set -euo pipefail
