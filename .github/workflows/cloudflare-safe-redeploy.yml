@@ -195,3 +195,4 @@ jobs:
           print('SQUARE_RUNTIME_STILL_EMPTY')
           sys.exit(0)
           PY
+# probe-secrets-trigger: 2026-11-17T21:24:00Z
