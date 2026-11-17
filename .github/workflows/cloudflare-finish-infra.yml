@@ -2,7 +2,7 @@
 # multi-account zone hunt, apex domain poll, D1 ORDERS_DB create+bind,
 # set non-secret env + generated MERCHANT_REFUND_SECRET, list existing var names.
 # Does NOT invent Square access tokens.
-# Redeploy trigger: 2026-11-17T15:00:00Z — try GitHub Square secrets → Pages if present
+# Redeploy trigger: 2026-11-17T15:05:00Z envFlags+short-poll
 name: Cloudflare finish infra
 on:
   workflow_dispatch:
@@ -262,7 +262,7 @@ jobs:
 
           print('=== Domains status + long poll ===')
           base = f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}/domains'
-          for i in range(1, 13):
+          for i in range(1, 3):
               code, payload = call('GET', base)
               domains = payload.get('result') or []
               apex = next((d for d in domains if d.get('name') == domain), None)
@@ -273,7 +273,7 @@ jobs:
               if not apex:
                   print('apex missing; creating')
                   call('POST', base, {'name': domain})
-              time.sleep(15)
+              time.sleep(5)
           else:
               print('APEX_STILL_NOT_ACTIVE')
 

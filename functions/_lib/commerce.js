@@ -446,7 +446,15 @@ export async function handleShopStatus(request, env) {
           : false,
       orderDatabaseConfigured: !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function',
       publishedProducts: Array.isArray(cat.products) ? cat.products.filter(buyable).length : 0,
-      shopEnabled: cat.shopEnabled === true
+      shopEnabled: cat.shopEnabled === true,
+      /* boolean-only diagnostics — never expose secret values */
+      envFlags: {
+        hasSquareAccessToken: str(env.SQUARE_ACCESS_TOKEN).length > 0,
+        hasSquareLocationId: str(env.SQUARE_LOCATION_ID).length > 0,
+        squareEnvironment: squareEnvName(env) || null,
+        hasWebhookSignatureKey: str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16,
+        hasOrdersDb: !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function'
+      }
     });
   } catch {
     return respond({
