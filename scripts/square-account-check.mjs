@@ -19,7 +19,7 @@ async function main() {
 
   if (!present('SQUARE_ACCESS_TOKEN') || !present('SQUARE_LOCATION_ID') || !present('SQUARE_ENVIRONMENT')) {
     console.log('\nCannot query Square until the three core Square secrets are set.');
-    console.log('See MISSING-CONFIG.txt');
+    console.log('See website/MISSING-CONFIG.txt');
     process.exitCode = 2;
     return;
   }

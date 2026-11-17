@@ -15,7 +15,6 @@
     params.get('orderId') ||
     params.get('session_id') ||
     params.get('transactionId') ||
-    params.get('token') ||
     (stored && /^[A-Za-z0-9_-]{8,191}$/.test(stored) ? stored : '');
   if (!ref) {
     out.textContent =
@@ -32,16 +31,10 @@
         /* private browsing */
       }
       if (a.paid) {
-        const provider =
-          a.provider === 'paypal'
-            ? 'PayPal'
-            : a.provider === 'square'
-              ? 'Square'
-              : 'the payment provider';
         out.textContent =
           (a.mode === 'test'
             ? 'TEST PAYMENT CONFIRMED — no real money charged.'
-            : 'Payment confirmed by ' + provider + '.') +
+            : 'Payment confirmed by Square.') +
           ' Your reference ends in ' +
           a.reference +
           '. Aiva will review the order and delivery arrangements.';
@@ -52,6 +45,6 @@
     })
     .catch(() => {
       out.textContent =
-        'We could not verify this payment automatically. Please check your Square/PayPal receipt or contact Aiva before making another payment.';
+        'We could not verify this payment automatically. Please check your Square receipt or contact Aiva before making another payment.';
     });
 })();

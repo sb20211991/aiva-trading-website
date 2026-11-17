@@ -14,11 +14,8 @@ function liveCheckoutUrl(value) {
       host === 'square.link' ||
       host.endsWith('.square.link') ||
       host === 'checkout.square.site' ||
-      host.endsWith('.checkout.square.site') ||
-      host.endsWith('.squareup.com') ||
-      host.endsWith('.squareupsandbox.com');
-    if (squareHost && url.pathname.length > 1) return url.href;
-    return '';
+      host.endsWith('.checkout.square.site');
+    return squareHost && url.pathname.length > 1 ? url.href : '';
   } catch {
     return '';
   }
@@ -56,7 +53,7 @@ function makeProductCard(product, ordersOpen) {
   const checkout = ordersOpen && product.available === true && liveCheckoutUrl(product.checkoutUrl);
   const action = document.createElement('a');
   action.href = checkout || '#order-support';
-  action.textContent = checkout ? 'Buy now · Secure checkout' : 'Ask about availability';
+  action.textContent = checkout ? 'Buy now · Square checkout' : 'Ask about availability';
   card.append(action);
   return card;
 }

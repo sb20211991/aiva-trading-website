@@ -4,7 +4,7 @@
 const root = document.getElementById('aiva-online-store');
 if (!root) return;
 const $ = id => document.getElementById(id);
-const els = {status:$('aiva-store-status'),search:$('aiva-search'),category:$('aiva-category'),sort:$('aiva-sort'),min:$('aiva-price-min'),max:$('aiva-price-max'),stock:$('aiva-in-stock'),results:$('aiva-product-results'),count:$('aiva-results-count'),lines:$('aiva-basket-lines'),summary:$('aiva-basket-summary'),cartCount:$('aiva-cart-count'),checkout:$('aiva-checkout'),paypal:$('aiva-checkout-paypal'),error:$('aiva-checkout-error'),terms:$('aiva-shop-terms'),delivery:$('aiva-delivery-text'),returns:$('aiva-returns-text')};
+const els = {status:$('aiva-store-status'),search:$('aiva-search'),category:$('aiva-category'),sort:$('aiva-sort'),min:$('aiva-price-min'),max:$('aiva-price-max'),stock:$('aiva-in-stock'),results:$('aiva-product-results'),count:$('aiva-results-count'),lines:$('aiva-basket-lines'),summary:$('aiva-basket-summary'),cartCount:$('aiva-cart-count'),checkout:$('aiva-checkout'),error:$('aiva-checkout-error'),terms:$('aiva-shop-terms'),delivery:$('aiva-delivery-text'),returns:$('aiva-returns-text')};
 const money = n => new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(n/100);
 const validMoney = n => Number.isSafeInteger(n) && n > 0 && n <= 100000000;
 const validStock = n => Number.isSafeInteger(n) && n >= 0 && n <= 100000;
@@ -39,17 +39,8 @@ function updateCart(){sanitizeCart();els.lines.replaceChildren();let amount=0,to
     }}
   saveCart();
   els.cartCount.textContent=String(total);
-  const canPay=total>0&&shopStatus.ready===true;
-  const providers=Array.isArray(shopStatus.providers)?shopStatus.providers:[];
-  const hasSquare=providers.includes('square')||shopStatus.provider==='square';
-  const hasPayPal=providers.includes('paypal');
-  els.checkout.disabled=!(canPay&&hasSquare);
-  els.checkout.textContent=shopStatus.mode==='test'?'Pay with Square (sandbox)':'Pay with Square';
-  if(els.paypal){
-    els.paypal.hidden=!hasPayPal;
-    els.paypal.disabled=!(canPay&&hasPayPal);
-    els.paypal.textContent=shopStatus.mode==='test'?'Pay with PayPal (sandbox)':'Pay with PayPal';
-  }
+  els.checkout.disabled=!(total>0&&shopStatus.ready===true);
+  els.checkout.textContent=shopStatus.mode==='test'?'Continue to test online checkout':'Pay online by card';
 }
 function modify(sku,delta){const p=products.find(p=>p.sku===sku);if(!p||!available(p))return;cart[sku]=Math.max(0,Math.min(getQuantityLimit(p),(cart[sku]||0)+delta));if(!cart[sku])delete cart[sku];updateCart();}
 function card(p){const item=document.createElement('article');item.className='aiva-product-item';
@@ -90,43 +81,36 @@ async function load(){try{
   if(typeof catalog.deliveryPolicy==='string'&&catalog.deliveryPolicy.trim()&&typeof catalog.returnsPolicy==='string'&&catalog.returnsPolicy.trim()){
     els.delivery.textContent=catalog.deliveryPolicy;els.returns.textContent=catalog.returnsPolicy;els.terms.hidden=false;
   }
-  if(shopStatus.ready&&shopStatus.mode==='live')setStatus('Online checkout is available for confirmed in-stock products via Square.','info');
-  else if(shopStatus.ready&&shopStatus.mode==='test')setStatus('TEST / SANDBOX CHECKOUT ONLY — this shop is not taking real payments.','warning');
-  else if(statusRes.status===404)setStatus('Checkout API is not deployed on Cloudflare yet. Design and catalogue browsing still work; payments stay closed.','warning');
-  else setStatus('Browse products and request information. Secure Square payments will open after product listings, delivery terms and sandbox testing are confirmed.','warning');
+  if(shopStatus.ready&&shopStatus.mode==='live')setStatus('Online checkout is available for confirmed in-stock products.','info');
+  else if(shopStatus.ready&&shopStatus.mode==='test')setStatus('TEST CHECKOUT ONLY — this shop is not taking real payments.','warning');
+  else setStatus('Browse products and request information. Secure payments will open after product listings, delivery terms and Square setup are confirmed.','warning');
   render();
- }catch(e){setStatus('Shop listings are temporarily unavailable. Our sourcing enquiry form is still available.','warning');els.results.replaceChildren(text('p','Product catalogue could not load.'));els.checkout.disabled=true;}
+ }catch(e){setStatus('Shop listings are temporarily unavailable. Our sourcing enquiry form is still available below.','warning');els.results.replaceChildren(text('p','Product catalogue could not load.'));els.checkout.disabled=true;}
 }
 for(const el of [els.search,els.min,els.max])el.addEventListener('input',render);
 for(const el of [els.category,els.sort,els.stock])el.addEventListener('change',render);
 $('aiva-reset-filters').addEventListener('click',()=>{els.search.value='';els.category.value='';els.sort.value='recommended';els.min.value='';els.max.value='';els.stock.checked=false;render()});
-async function startCheckout(provider){
-  const squareBtn=els.checkout;const paypalBtn=els.paypal;
-  if(squareBtn)squareBtn.disabled=true;
-  if(paypalBtn)paypalBtn.disabled=true;
-  if(provider==='paypal'&&paypalBtn)paypalBtn.textContent='Opening PayPal…';
-  else if(squareBtn)squareBtn.textContent='Opening Square checkout…';
-  els.error.hidden=true;
+els.checkout.addEventListener('click',async()=>{
+  if(els.checkout.disabled)return;els.checkout.disabled=true;els.checkout.textContent='Opening secure checkout…';els.error.hidden=true;
   try{
     const items=Object.entries(cart).map(([sku,quantity])=>({sku,quantity}));
-    const r=await fetch('/api/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items,provider})});
+    const r=await fetch('/api/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
     const info=await r.json();if(!r.ok||!info.url)throw new Error(info.error||'Checkout could not be opened.');
     const target=new URL(info.url);
     const host=target.hostname.toLowerCase();
+    const pageHost=location.hostname.toLowerCase();
+    const localPreview=pageHost==='127.0.0.1'||pageHost==='localhost';
     const trusted=
       host==='square.link'||host.endsWith('.square.link')||
       host==='checkout.square.site'||host.endsWith('.checkout.square.site')||
       host.endsWith('.squareup.com')||host.endsWith('.squareupsandbox.com')||
-      host==='www.paypal.com'||host.endsWith('.paypal.com')||
-      host==='www.sandbox.paypal.com'||host.endsWith('.sandbox.paypal.com');
-    if(target.protocol!=='https:'||!trusted)throw new Error('Unexpected checkout destination.');
+      (localPreview&&(host==='127.0.0.1'||host==='localhost')&&target.pathname.endsWith('/order-success.html'));
+    if(!((target.protocol==='https:'&&trusted)||(localPreview&&target.protocol==='http:'&&trusted)))throw new Error('Unexpected checkout destination.');
     if(typeof info.orderId==='string'&&/^[A-Za-z0-9_-]{8,191}$/.test(info.orderId)){
       try{sessionStorage.setItem('aiva_pending_checkout_ref',info.orderId)}catch{/* private browsing */}
     }
     location.assign(target.href);
   }catch(e){els.error.textContent=e.message||'Checkout is not available. Please contact Aiva.';els.error.hidden=false;updateCart()}
-}
-els.checkout.addEventListener('click',()=>{if(!els.checkout.disabled)startCheckout('square')});
-if(els.paypal)els.paypal.addEventListener('click',()=>{if(!els.paypal.disabled)startCheckout('paypal')});
+});
 load();
 })();

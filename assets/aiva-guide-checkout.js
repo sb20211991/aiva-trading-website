@@ -109,23 +109,25 @@
         formatPence(itemTotal) +
         (ship === null
           ? ' · Delivery confirmed at checkout'
-          : ' · Estimated delivery ' +
-            formatPence(ship) +
-            ' · Estimated total ' +
-            formatPence(itemTotal + ship));
+          : ship === 0
+            ? ' · Delivery included · Estimated total ' + formatPence(itemTotal)
+            : ' · Estimated delivery ' +
+              formatPence(ship) +
+              ' · Estimated total ' +
+              formatPence(itemTotal + ship));
     } else view.total.textContent = '';
     if (online.ready === true && online.mode === 'live')
       setMessage(
         unitCount
-          ? 'Secure checkout is available. Choose a payment option above; the eligible methods are shown on Square.'
-          : 'Choose an available product in the Shop to enable secure checkout.',
+          ? 'Secure card checkout is available. Continue above to pay on Square.'
+          : 'Choose an available product in the Shop to enable secure card checkout.',
         true
       );
     else if (online.ready === true && online.mode === 'test')
-      setMessage('TEST MODE ONLY — Square sandbox can simulate checkout but will not charge real money.');
+      setMessage('TEST MODE ONLY — Square sandbox can simulate card checkout but will not charge real money.');
     else
       setMessage(
-        'Live checkout is not yet available. Aiva must confirm products, prices, shipping, returns and activate Square before customer payments can begin.'
+        'Card checkout is not yet available. Add Square credentials in Cloudflare Pages, then deploy this shop.'
       );
   }
 
@@ -150,15 +152,20 @@
     render();
   }
 
-  function trustedCheckout(url) {
+  function trustedSquareCheckout(url) {
     const host = url.hostname.toLowerCase();
+    const pageHost = location.hostname.toLowerCase();
+    const localPreview = pageHost === '127.0.0.1' || pageHost === 'localhost';
     return (
       host === 'square.link' ||
       host.endsWith('.square.link') ||
       host === 'checkout.square.site' ||
       host.endsWith('.checkout.square.site') ||
       host.endsWith('.squareup.com') ||
-      host.endsWith('.squareupsandbox.com')
+      host.endsWith('.squareupsandbox.com') ||
+      (localPreview &&
+        (host === '127.0.0.1' || host === 'localhost') &&
+        url.pathname.endsWith('/order-success.html'))
     );
   }
 
@@ -184,7 +191,11 @@
       if (!response.ok || typeof data.url !== 'string')
         throw Error(data.error || 'Could not start checkout.');
       const url = new URL(data.url);
-      if (url.protocol !== 'https:' || !trustedCheckout(url))
+      const pageHost = location.hostname.toLowerCase();
+      const localPreview = pageHost === '127.0.0.1' || pageHost === 'localhost';
+      const protocolOk =
+        url.protocol === 'https:' || (localPreview && url.protocol === 'http:');
+      if (!protocolOk || !trustedSquareCheckout(url))
         throw Error('Unrecognized checkout destination.');
       if (typeof data.orderId === 'string' && /^[A-Za-z0-9_-]{8,191}$/.test(data.orderId)) {
         try {

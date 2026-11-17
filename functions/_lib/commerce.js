@@ -323,9 +323,7 @@ async function createSquareCheckout(env, site, basket, mode) {
     if (!orderId && str(link.id) && squareConfigured(env)) {
       try {
         const linkRes = await fetch(
-          squareApiBase(env) +
-            '/v2/online-checkout/payment-links/' +
-            encodeURIComponent(str(link.id)),
+          squareApiBase(env) + '/v2/online-checkout/payment-links/' + encodeURIComponent(str(link.id)),
           { headers: squareHeaders(env) }
         );
         if (linkRes.ok) {

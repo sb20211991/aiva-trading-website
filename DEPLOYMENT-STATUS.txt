@@ -1,0 +1,10 @@
+AIVA TRADING — DEPLOYMENT STATUS
+Updated: 17 November 2026 (Europe/London)
+
+Deploy repo: sb20211991/aiva-trading-website (NOT Aiva2026 zip-only repo)
+GitHub Cloudflare secrets: present
+Preview: working
+Production deploy: via cloudflare-pages-production.yml
+
+Payments: NOT live until Square runtime secrets + D1 exist on Pages.
+Checkout code creates Square Payment Links from catalogue prices (not a single static link).

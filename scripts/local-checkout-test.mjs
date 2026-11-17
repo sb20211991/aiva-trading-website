@@ -274,13 +274,13 @@ async function run() {
   assert.equal(retired.status, 410);
   console.log('stripe webhook retired ok');
 
-  // Live catalogue ships with one card-payable sample SKU
+  // Live catalogue ships with one card-payable sample fee SKU.
   const liveCat = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
   assert.equal(liveCat.shopEnabled, true);
   assert.equal(liveCat.products.length, 1);
   assert.equal(liveCat.products[0].sku, 'AIVA-SAMPLE-FEE');
-  assert.equal(liveCat.products[0].pricePence, 4900);
-  console.log('live catalogue has AIVA-SAMPLE-FEE');
+  assert.equal(liveCat.products[0].available, true);
+  console.log('live catalogue has sample fee SKU');
 
   console.log('ALL LOCAL CHECKOUT TESTS PASSED');
 }

@@ -18,8 +18,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const site = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const root = site;
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const site = path.join(root, 'website');
 const projectName = process.env.CF_PAGES_PROJECT || 'aiva-trading';
 
 const present = (name) => {
@@ -93,7 +93,7 @@ async function main() {
   console.log('');
 
   if (existsSync(path.join(site, '_worker.js'))) {
-    throw new Error('_worker.js exists. Remove it; Functions path only.');
+    throw new Error('website/_worker.js exists. Remove it; Functions path only.');
   }
 
   const required = [
@@ -106,11 +106,11 @@ async function main() {
   const need = missing(required);
   if (need.length) {
     console.log('BLOCKED: missing required secrets:', need.join(', '));
-    console.log('Add them in the Cursor secure secrets form, then re-run:');
+    console.log('Online website checkout code is ready; live Square charges need these values.');
+    console.log('Add them in the Cursor secure secrets form (never paste into chat), then re-run:');
     console.log('  npm run website:go-live-prep');
     console.log('No Cloudflare changes were made.');
-    process.exitCode = 2;
-    return;
+    process.exit(2);
   }
 
   const squareEnv = String(process.env.SQUARE_ENVIRONMENT).trim().toLowerCase();
@@ -169,7 +169,7 @@ async function main() {
   writeFileSync(
     wranglerPath,
     `# Cloudflare Pages project for aivatrading.uk
-# Generated/updated by scripts/go-live-prep.mjs
+# Generated/updated by website/scripts/go-live-prep.mjs
 name = "aiva-trading"
 compatibility_date = "2025-11-01"
 pages_build_output_dir = "."
@@ -180,7 +180,7 @@ database_name = "aiva_orders"
 database_id = "${databaseId}"
 `
   );
-  console.log('3) Applied ORDERS_DB binding in wrangler.toml');
+  console.log('3) Applied ORDERS_DB binding in website/wrangler.toml');
 
   console.log('4) Applying ORDER-DATABASE-SETUP.sql…');
   run(
@@ -246,7 +246,9 @@ database_id = "${databaseId}"
           json.shopEnabled
         );
         if (json.ready === true) {
-          console.log('   WARNING: ready=true while catalogue should stay closed until you approve.');
+          console.log('   Preview shop is ready for sandbox online card checkout (AIVA-SAMPLE-FEE).');
+        } else {
+          console.log('   Preview API is up; set remaining Square webhook/D1 secrets if ready=false.');
         }
       }
     } catch (e) {
@@ -257,7 +259,7 @@ database_id = "${databaseId}"
   console.log('\nDONE (sandbox prep only).');
   console.log('- Live production was NOT promoted.');
   console.log('- Real card charges were NOT taken.');
-  console.log('- Keep data/aiva-products.json shopEnabled=false until real products + your approval.');
+  console.log('- Catalogue has AIVA-SAMPLE-FEE; keep SQUARE_ENVIRONMENT=sandbox until a test payment succeeds.');
   console.log('- Next: open Square sandbox Payment Link from shop on the preview host, then refund via merchant tool.');
   if (!present('SQUARE_WEBHOOK_SIGNATURE_KEY')) {
     console.log('- Still missing SQUARE_WEBHOOK_SIGNATURE_KEY for signed webhook recording.');
