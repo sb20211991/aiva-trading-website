@@ -2,7 +2,7 @@
 # multi-account zone hunt, apex domain poll, D1 ORDERS_DB create+bind,
 # set non-secret env + generated MERCHANT_REFUND_SECRET, list existing var names.
 # Does NOT invent Square access tokens.
-# Redeploy trigger: 2026-11-17T14:55:00Z — stop wiping secrets via empty value PATCH
+# Redeploy trigger: 2026-11-17T15:00:00Z — try GitHub Square secrets → Pages if present
 name: Cloudflare finish infra
 on:
   workflow_dispatch:
@@ -637,6 +637,158 @@ jobs:
               'SQUARE_ACCESS_TOKEN', 'SQUARE_LOCATION_ID', 'SQUARE_WEBHOOK_SIGNATURE_KEY', 'MERCHANT_REFUND_SECRET'
           )})
           PY
+      - name: Push Square secrets from GitHub if present (never print values)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
+          SQUARE_LOCATION_ID: ${{ secrets.SQUARE_LOCATION_ID }}
+          SQUARE_WEBHOOK_SIGNATURE_KEY: ${{ secrets.SQUARE_WEBHOOK_SIGNATURE_KEY }}
+          MERCHANT_REFUND_SECRET_GH: ${{ secrets.MERCHANT_REFUND_SECRET }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.error
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          project = 'aiva-trading'
+          hdr = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+          def call(method, url, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(url, data=data, method=method, headers=hdr)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as res:
+                      return res.status, json.loads(res.read().decode() or '{}')
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode() or '{}')
+
+          # Map optional GitHub secrets → Pages secret_text. Only set when non-empty.
+          candidates = {
+              'SQUARE_ACCESS_TOKEN': os.environ.get('SQUARE_ACCESS_TOKEN', '').strip(),
+              'SQUARE_LOCATION_ID': os.environ.get('SQUARE_LOCATION_ID', '').strip(),
+              'SQUARE_WEBHOOK_SIGNATURE_KEY': os.environ.get('SQUARE_WEBHOOK_SIGNATURE_KEY', '').strip(),
+              'MERCHANT_REFUND_SECRET': os.environ.get('MERCHANT_REFUND_SECRET_GH', '').strip(),
+          }
+          to_set = {k: v for k, v in candidates.items() if v}
+          print('github_square_secrets_nonempty_count', len(to_set), 'names', sorted(to_set.keys()))
+          if not to_set:
+              print('No GitHub Square secret values available to push; Simon must paste into Pages dashboard.')
+              open('/tmp/skip-secret-redeploy', 'w').write('1')
+              raise SystemExit(0)
+          open('/tmp/skip-secret-redeploy', 'w').write('0')
+
+          code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
+          assert code == 200 and payload.get('success'), payload
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+
+          def sanitize(vars_dict):
+              out = {}
+              for name, meta in (vars_dict or {}).items():
+                  meta = dict(meta or {})
+                  if meta.get('type') == 'secret_text':
+                      out[name] = {'type': 'secret_text'}
+                  else:
+                      out[name] = meta
+              return out
+
+          prod = sanitize((dc.get('production') or {}).get('env_vars') or {})
+          prev = sanitize((dc.get('preview') or {}).get('env_vars') or {})
+          for name, value in to_set.items():
+              prod[name] = {'type': 'secret_text', 'value': value}
+              prev[name] = {'type': 'secret_text', 'value': value}
+              print('queued secret update for', name, '(value not printed)')
+
+          # Keep plains
+          prod['SQUARE_ENVIRONMENT'] = {'type': 'plain_text', 'value': 'sandbox'}
+          prod['SQUARE_WEBHOOK_NOTIFICATION_URL'] = {
+              'type': 'plain_text',
+              'value': 'https://app.aivatrading.uk/api/square-webhook',
+          }
+          prev['SQUARE_ENVIRONMENT'] = {'type': 'plain_text', 'value': 'sandbox'}
+          prev['SQUARE_WEBHOOK_NOTIFICATION_URL'] = {
+              'type': 'plain_text',
+              'value': 'https://app.aivatrading.uk/api/square-webhook',
+          }
+
+          db_id = 'd6791133-c5f2-4209-a9ab-91573e123939'
+          for env_name in ('production', 'preview'):
+              d1s = ((dc.get(env_name) or {}).get('d1_databases') or {})
+              item = d1s.get('ORDERS_DB') or d1s.get('ORDERS_D8') or {}
+              if item.get('id'):
+                  db_id = item['id']
+                  break
+
+          code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
+              'deployment_configs': {
+                  'production': {
+                      'env_vars': prod,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+                  'preview': {
+                      'env_vars': prev,
+                      'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None},
+                  },
+              }
+          })
+          print('secret push patch', code, 'success', payload.get('success'))
+          if not payload.get('success'):
+              raise SystemExit(json.dumps(payload)[:2000])
+          print('Secrets pushed; redeploying so live snapshot picks them up')
+          PY
+          if [[ "$(cat /tmp/skip-secret-redeploy 2>/dev/null || echo 1)" == "1" ]]; then
+            echo 'Skipping secret redeploy (no GitHub Square secret values).'
+            exit 0
+          fi
+          npx --yes wrangler@4 pages deploy . \
+            --project-name=aiva-trading \
+            --branch=main \
+            --commit-hash="${GITHUB_SHA}" \
+            --commit-message="Finish infra secrets ${GITHUB_SHA}" \
+            --commit-dirty=true
+          # Re-apply plains after possible wipe; preserve secrets as type-only
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.error
+          account = os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()
+          token = os.environ['CLOUDFLARE_API_TOKEN'].strip()
+          project = 'aiva-trading'
+          hdr = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+          def call(method, url, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(url, data=data, method=method, headers=hdr)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as res:
+                      return res.status, json.loads(res.read().decode() or '{}')
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode() or '{}')
+          code, payload = call('GET', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}')
+          dc = (payload.get('result') or {}).get('deployment_configs') or {}
+          def sanitize(vars_dict):
+              out = {}
+              for name, meta in (vars_dict or {}).items():
+                  meta = dict(meta or {})
+                  if meta.get('type') == 'secret_text':
+                      out[name] = {'type': 'secret_text'}
+                  else:
+                      out[name] = meta
+              return out
+          prod = sanitize((dc.get('production') or {}).get('env_vars') or {})
+          prev = sanitize((dc.get('preview') or {}).get('env_vars') or {})
+          for vars_dict in (prod, prev):
+              vars_dict['SQUARE_ENVIRONMENT'] = {'type': 'plain_text', 'value': 'sandbox'}
+              vars_dict['SQUARE_WEBHOOK_NOTIFICATION_URL'] = {
+                  'type': 'plain_text',
+                  'value': 'https://app.aivatrading.uk/api/square-webhook',
+              }
+          db_id = (((dc.get('production') or {}).get('d1_databases') or {}).get('ORDERS_DB') or {}).get('id') or 'd6791133-c5f2-4209-a9ab-91573e123939'
+          code, payload = call('PATCH', f'https://api.cloudflare.com/client/v4/accounts/{account}/pages/projects/{project}', {
+              'deployment_configs': {
+                  'production': {'env_vars': prod, 'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None}},
+                  'preview': {'env_vars': prev, 'd1_databases': {'ORDERS_DB': {'id': db_id}, 'ORDERS_D8': None}},
+              }
+          })
+          print('post-secret-deploy reapply', code, payload.get('success'))
+          PY
       - name: Verify live surfaces
         run: |
           set -euo pipefail
@@ -689,4 +841,4 @@ jobs:
           fi
           apex=$(curl -sS -o /dev/null -w '%{http_code}' -A "$UA" --max-time 25 https://aivatrading.uk/api/shop-status || true)
           echo "apex_shop_status_http=$apex"
-# Trigger workflow Tue Nov 17 14:55:00 UTC 2026
+# Trigger workflow Tue Nov 17 15:00:00 UTC 2026
