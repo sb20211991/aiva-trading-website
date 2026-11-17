@@ -52,31 +52,36 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          echo "Deploying PRODUCTION to Pages project aiva-trading"
+          # No --branch flag: Wrangler promotes this deploy to Pages production
+          # (custom domain aivatrading.uk). A --branch value creates a preview only.
+          echo "Deploying PRODUCTION to Pages project aiva-trading (no preview branch)"
           npx --yes wrangler@4 pages deploy . \
             --project-name=aiva-trading \
-            --branch=main \
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="Production deploy ${GITHUB_SHA}" \
             --commit-dirty=true
       - name: Verify live shop-status
         run: |
           set -euo pipefail
-          sleep 8
-          code=$(curl -sS -o /tmp/shop.json -w '%{http_code}' https://aivatrading.uk/api/shop-status || true)
-          echo "HTTP $code"
-          head -c 800 /tmp/shop.json || true
-          echo
-          if [[ "$code" != "200" ]]; then
-            echo "WARNING: live /api/shop-status is not HTTP 200 yet"
-            exit 1
-          fi
-          python3 - <<'PY'
+          for i in 1 2 3 4 5 6; do
+            sleep 10
+            code=$(curl -sS -o /tmp/shop.json -w '%{http_code}' https://aivatrading.uk/api/shop-status || true)
+            echo "Attempt $i HTTP $code"
+            head -c 400 /tmp/shop.json || true
+            echo
+            if [[ "$code" == "200" ]]; then
+              python3 - <<'PY'
           import json
           d=json.load(open('/tmp/shop.json'))
+          assert isinstance(d, dict), d
           print('shopEnabled=', d.get('shopEnabled'))
           print('publishedProducts=', d.get('publishedProducts'))
           print('merchantReady=', d.get('merchantReady'))
           print('ready=', d.get('ready'))
           print('mode=', d.get('mode'))
           PY
+              exit 0
+            fi
+          done
+          echo "WARNING: live /api/shop-status is not HTTP 200 yet after retries"
+          exit 1
