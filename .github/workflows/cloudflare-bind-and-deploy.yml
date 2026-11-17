@@ -1,0 +1,198 @@
+# Discovers which Cloudflare Pages project owns aivatrading.uk (if any),
+# attaches the custom domain to project aiva-trading when missing, then
+# deploys PRODUCTION. Uses existing CLOUDFLARE_* GitHub secrets only.
+name: Cloudflare bind domain and production deploy
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/cloudflare-github-deploy-1f19
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-bind-and-deploy
+  cancel-in-progress: true
+jobs:
+  bind-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require Cloudflare secrets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_ACCOUNT_ID}"
+          test -n "${CLOUDFLARE_API_TOKEN}"
+          echo "Cloudflare secrets present (values not printed)."
+      - name: Discover Pages projects and domain binding
+        id: discover
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TARGET_PROJECT: aiva-trading
+          CUSTOM_DOMAIN: aivatrading.uk
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.error
+          account = os.environ["CLOUDFLARE_ACCOUNT_ID"].strip()
+          token = os.environ["CLOUDFLARE_API_TOKEN"].strip()
+          target = os.environ["TARGET_PROJECT"]
+          domain = os.environ["CUSTOM_DOMAIN"]
+          base = f"https://api.cloudflare.com/client/v4/accounts/{account}"
+
+          def req(method, path, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              r = urllib.request.Request(
+                  base + path,
+                  data=data,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                      "User-Agent": "aiva-trading-deploy/1.0",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as res:
+                      raw = res.read().decode()
+                      return res.status, json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as e:
+                  raw = e.read().decode()
+                  try:
+                      payload = json.loads(raw) if raw else {}
+                  except Exception:
+                      payload = {"raw": raw[:500]}
+                  print(f"HTTP {e.code} {method} {path}")
+                  print(json.dumps(payload, indent=2)[:2000])
+                  return e.code, payload
+
+          # List Pages projects (paginate)
+          projects, page = [], 1
+          while True:
+              code, payload = req("GET", f"/pages/projects?per_page=50&page={page}")
+              if code != 200 or not payload.get("success"):
+                  print("Failed listing Pages projects")
+                  raise SystemExit(1)
+              batch = payload.get("result") or []
+              projects.extend(batch)
+              info = payload.get("result_info") or {}
+              total_pages = info.get("total_pages") or page
+              if page >= total_pages:
+                  break
+              page += 1
+
+          print(f"Found {len(projects)} Pages project(s):")
+          owners = []
+          for p in projects:
+              name = p.get("name")
+              domains = p.get("domains") or []
+              print(f"  - {name}: domains={domains}")
+              if domain in domains or f"www.{domain}" in domains:
+                  owners.append(name)
+
+          # Ensure target project exists
+          names = {p.get("name") for p in projects}
+          if target not in names:
+              print(f"Creating Pages project {target}")
+              code, payload = req("POST", "/pages/projects", {"name": target, "production_branch": "main"})
+              if code not in (200, 201) or not payload.get("success"):
+                  print("Could not create target project")
+                  raise SystemExit(1)
+
+          if owners and target not in owners:
+              print(f"NOTE: {domain} currently listed on project(s): {owners}")
+              print("Will still deploy to aiva-trading and attempt domain attach.")
+
+          # Attach custom domain to target project if missing
+          code, payload = req("GET", f"/pages/projects/{target}")
+          if code != 200 or not payload.get("success"):
+              print("Could not read target project")
+              raise SystemExit(1)
+          current_domains = (payload.get("result") or {}).get("domains") or []
+          print(f"Target project domains before attach: {current_domains}")
+          if domain not in current_domains:
+              print(f"Attaching custom domain {domain} to {target}")
+              code, payload = req("POST", f"/pages/projects/{target}/domains", {"name": domain})
+              # 409 often means already attached
+              if code not in (200, 201, 409) and not (isinstance(payload, dict) and payload.get("success")):
+                  print("Domain attach response not success; continuing to deploy anyway.")
+              else:
+                  print("Domain attach API call finished.")
+          else:
+              print(f"Domain {domain} already on {target}")
+
+          # Also try www
+          www = f"www.{domain}"
+          if www not in current_domains:
+              code, payload = req("POST", f"/pages/projects/{target}/domains", {"name": www})
+              print(f"www attach HTTP {code}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"project={target}\n")
+              fh.write(f"owners={','.join(owners)}\n")
+          PY
+      - name: Run local checks
+        run: npm test
+      - name: Refuse root worker static upload
+        run: |
+          set -euo pipefail
+          test ! -f _worker.js
+          test -f functions/api/shop-status.js
+      - name: Deploy production to discovered/target project
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PROJECT_NAME: ${{ steps.discover.outputs.project }}
+        run: |
+          set -euo pipefail
+          echo "Deploying PRODUCTION to project: ${PROJECT_NAME}"
+          # Force production by setting production branch alias explicitly via wrangler.
+          # First try no-branch production deploy.
+          npx --yes wrangler@4 pages deploy . \
+            --project-name="${PROJECT_NAME}" \
+            --commit-hash="${GITHUB_SHA}" \
+            --commit-message="Bind+production ${GITHUB_SHA}" \
+            --commit-dirty=true
+      - name: Verify pages.dev and custom domain
+        run: |
+          set -euo pipefail
+          echo "Checking https://aiva-trading.pages.dev/api/shop-status"
+          curl -sS https://aiva-trading.pages.dev/api/shop-status | tee /tmp/pages.json
+          echo
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/pages.json'))
+          assert d.get('shopEnabled') is True
+          assert d.get('publishedProducts') == 1
+          print('pages.dev OK')
+          PY
+          ok=0
+          for i in 1 2 3 4 5 6 7 8; do
+            sleep 15
+            code=$(curl -sS -o /tmp/live.json -w '%{http_code}' https://aivatrading.uk/api/shop-status || true)
+            echo "Attempt $i aivatrading.uk HTTP $code"
+            head -c 250 /tmp/live.json || true
+            echo
+            if [[ "$code" == "200" ]] && python3 - <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/live.json'))
+          sys.exit(0 if d.get('shopEnabled') is True and d.get('publishedProducts')==1 else 1)
+          PY
+            then
+              ok=1
+              break
+            fi
+          done
+          if [[ "$ok" != "1" ]]; then
+            echo "CUSTOM_DOMAIN_NOT_YET_SERVING_NEW_SITE"
+            echo "pages.dev is updated; aivatrading.uk DNS/custom-domain routing still points elsewhere."
+            exit 2
+          fi
+          echo "CUSTOM_DOMAIN_OK"

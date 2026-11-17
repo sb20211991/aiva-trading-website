@@ -3,10 +3,6 @@
 name: Cloudflare Pages production deploy
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - cursor/cloudflare-github-deploy-1f19
-      - main
 permissions:
   contents: read
   deployments: write
