@@ -5,12 +5,9 @@
 # Redeploy trigger: 2026-11-17T16:21:00Z after Simon refilled Square secrets
 name: Cloudflare finish infra
 on:
+  # Push trigger disabled — finish-infra env patches were wiping Square secret values.
+  # Use "Cloudflare safe redeploy" instead.
   workflow_dispatch:
-  push:
-    branches:
-      - cursor/cloudflare-github-deploy-1f19
-    paths:
-      - '.github/workflows/cloudflare-finish-infra.yml'
 permissions:
   contents: read
 jobs:
