@@ -4,9 +4,6 @@
 name: Cloudflare bind domain and production deploy
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - cursor/cloudflare-github-deploy-1f19
 permissions:
   contents: read
 concurrency:
