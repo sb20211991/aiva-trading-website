@@ -1,293 +1,160 @@
 #!/usr/bin/env node
-/**
- * Local checkout flow test with mocked Square/PayPal APIs.
- * Does not charge real money and does not publish a live shop.
- */
+/* Local Square checkout flow test: mocked Square API, real SQLite (D1-compatible) order database.
+   No network calls and no real money. */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const commerceUrl = pathToFileURL(path.join(root, 'functions/_lib/commerce.js')).href;
-const {
-  handleShopStatus,
-  handleCreateCheckout,
-  handleOrderStatus,
-  handleCreateRefund,
-  handleSquareWebhook,
-  handleStripeWebhook
-} = await import(commerceUrl);
+const m = await import(pathToFileURL(path.join(root, 'functions/_lib/commerce.js')).href);
 
-const catalogue = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
-const testCat = {
-  ...catalogue,
-  shopEnabled: true,
-  businessAddress: '153 Whitehill Road, Gravesend, DA12 5LS',
-  deliveryPolicy: 'UK mainland delivery within 5–10 working days after dispatch confirmation.',
-  returnsPolicy: 'Unused items may be returned within 14 days of delivery subject to written confirmation.',
-  shipping: { allowedCountries: ['GB'], flatRatePence: 495, freeShippingThresholdPence: 10000 },
-  products: [
-    {
-      sku: 'TEST-POWER-01',
-      name: 'Sandbox portable power station',
-      category: 'Energy & power',
-      description: 'Local sandbox-only test listing. Not for live sale.',
-      pricePence: 19900,
-      stock: 3,
-      available: true
-    },
-    {
-      sku: 'TEST-POUND-01',
-      name: 'Sandbox £1 verification charge',
-      category: 'Energy & power',
-      description: 'One-pound sandbox verification item. Not for live sale.',
-      pricePence: 100,
-      stock: 10,
-      available: true
-    }
-  ]
-};
-
-const env = {
-  SQUARE_ACCESS_TOKEN: 'sandbox-token',
-  SQUARE_LOCATION_ID: 'LOC_TEST',
-  SQUARE_ENVIRONMENT: 'sandbox',
-  PAYPAL_CLIENT_ID: 'paypal-client',
-  PAYPAL_CLIENT_SECRET: 'paypal-secret',
-  PAYPAL_ENVIRONMENT: 'sandbox',
-  MERCHANT_REFUND_SECRET: 'local-merchant-refund-secret-key-32',
-  SQUARE_WEBHOOK_SIGNATURE_KEY: 'local-square-webhook-signature-key',
-  SQUARE_WEBHOOK_NOTIFICATION_URL: 'http://127.0.0.1:8799/api/square-webhook',
-  ORDERS_DB: null,
-  ASSETS: {
-    async fetch() {
-      return new Response(JSON.stringify(testCat), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-  }
-};
-
-const originalFetch = globalThis.fetch;
-globalThis.fetch = async (input, init = {}) => {
-  const url = String(input);
-  if (url.includes('squareupsandbox.com') && url.includes('/payment-links')) {
-    return new Response(
-      JSON.stringify({
-        payment_link: {
-          id: 'PK_TEST',
-          order_id: 'SQ_ORDER_TEST_12345',
-          url: 'https://square.link/u/TESTCHECKOUT'
-        }
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-  if (url.includes('squareupsandbox.com') && url.includes('/orders/')) {
-    return new Response(
-      JSON.stringify({
-        order: {
-          id: 'SQ_ORDER_TEST_12345',
-          state: 'COMPLETED',
-          metadata: { source: 'aivatrading.uk' },
-          tenders: [{ amount_money: { amount: 20395, currency: 'GBP' } }]
-        }
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-  if (url.includes('paypal.com') && url.endsWith('/v1/oauth2/token')) {
-    return new Response(JSON.stringify({ access_token: 'paypal-access' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-  if (
-    url.includes('paypal.com') &&
-    /\/v2\/checkout\/orders\/?$/.test(new URL(url).pathname) &&
-    (init.method || 'GET').toUpperCase() === 'POST'
-  ) {
-    return new Response(
-      JSON.stringify({
-        id: 'PAYPALORDERTEST001',
-        status: 'CREATED',
-        links: [
-          {
-            rel: 'approve',
-            href: 'https://www.sandbox.paypal.com/checkoutnow?token=PAYPALORDERTEST001'
-          }
-        ]
-      }),
-      { status: 201, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-  if (url.includes('paypal.com') && url.includes('/v2/checkout/orders/PAYPALORDERTEST001') && !url.includes('/capture')) {
-    return new Response(
-      JSON.stringify({
-        id: 'PAYPALORDERTEST001',
-        status: 'APPROVED',
-        purchase_units: [{ reference_id: 'aivatrading.uk', custom_id: 'aivatrading.uk' }]
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-  if (url.includes('/capture')) {
-    return new Response(
-      JSON.stringify({
-        id: 'PAYPALORDERTEST001',
-        status: 'COMPLETED',
-        purchase_units: [{ reference_id: 'aivatrading.uk', custom_id: 'aivatrading.uk' }]
-      }),
-      { status: 201, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-  if (url.includes('squareupsandbox.com') && url.includes('/v2/refunds')) {
-    const body = JSON.parse(init.body || '{}');
-    return new Response(
-      JSON.stringify({
-        refund: {
-          id: 'REFUND_TEST_1',
-          status: 'COMPLETED',
-          payment_id: body.payment_id,
-          order_id: 'SQ_ORDER_TEST_12345',
-          amount_money: body.amount_money || { amount: 100, currency: 'GBP' }
-        }
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-  return originalFetch(input, init);
-};
-
-const base = 'http://127.0.0.1:8799';
-
-async function run() {
-  const statusRes = await handleShopStatus(new Request(base + '/api/shop-status'), env);
-  const status = await statusRes.json();
-  assert.equal(status.ready, true);
-  assert.equal(status.provider, 'square');
-  assert.ok(status.providers.includes('square'));
-  assert.ok(status.providers.includes('paypal'));
-  console.log('shop-status ok', status.provider, status.providers.join(','));
-
-  const squareCheckout = await handleCreateCheckout(
-    new Request(base + '/api/create-checkout-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: base },
-      body: JSON.stringify({ items: [{ sku: 'TEST-POWER-01', quantity: 1 }] })
-    }),
-    env
-  );
-  const squareBody = await squareCheckout.json();
-  assert.equal(squareCheckout.status, 200);
-  assert.equal(squareBody.provider, 'square');
-  assert.match(squareBody.url, /^https:\/\/square\.link\//);
-  console.log('square checkout ok');
-
-  const paypalCheckout = await handleCreateCheckout(
-    new Request(base + '/api/create-checkout-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: base },
-      body: JSON.stringify({
-        provider: 'paypal',
-        items: [{ sku: 'TEST-POWER-01', quantity: 1 }]
-      })
-    }),
-    env
-  );
-  const paypalBody = await paypalCheckout.json();
-  assert.equal(paypalCheckout.status, 200);
-  assert.equal(paypalBody.provider, 'paypal');
-  assert.match(paypalBody.url, /sandbox\.paypal\.com/);
-  console.log('paypal checkout ok');
-
-  const squareStatus = await handleOrderStatus(
-    new Request(base + '/api/order-status?order_id=SQ_ORDER_TEST_12345'),
-    env
-  );
-  const squarePaid = await squareStatus.json();
-  assert.equal(squarePaid.paid, true);
-  assert.equal(squarePaid.provider, 'square');
-  console.log('square order-status ok');
-
-  const paypalStatus = await handleOrderStatus(
-    new Request(base + '/api/order-status?token=PAYPALORDERTEST001&PayerID=TESTPAYER'),
-    env
-  );
-  const paypalPaid = await paypalStatus.json();
-  assert.equal(paypalPaid.paid, true);
-  assert.equal(paypalPaid.provider, 'paypal');
-  console.log('paypal order-status ok');
-
-  const poundCheckout = await handleCreateCheckout(
-    new Request(base + '/api/create-checkout-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: base },
-      body: JSON.stringify({ items: [{ sku: 'TEST-POUND-01', quantity: 1 }] })
-    }),
-    env
-  );
-  const poundBody = await poundCheckout.json();
-  assert.equal(poundCheckout.status, 200);
-  assert.equal(poundBody.provider, 'square');
-  console.log('£1 sandbox checkout session ok');
-
-  const badRefund = await handleCreateRefund(
-    new Request(base + '/api/create-refund', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Aiva-Merchant-Key': 'wrong' },
-      body: JSON.stringify({ paymentId: 'PAYMENT_TEST_1', amountPence: 100 })
-    }),
-    env
-  );
-  assert.equal(badRefund.status, 401);
-  console.log('refund auth rejection ok');
-
-  const refundRes = await handleCreateRefund(
-    new Request(base + '/api/create-refund', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Aiva-Merchant-Key': env.MERCHANT_REFUND_SECRET
-      },
-      body: JSON.stringify({
-        paymentId: 'PAYMENT_TEST_1',
-        orderId: 'SQ_ORDER_TEST_12345',
-        amountPence: 100,
-        reason: 'Sandbox £1 refund test'
-      })
-    }),
-    env
-  );
-  const refundBody = await refundRes.json();
-  assert.equal(refundRes.status, 200);
-  assert.equal(refundBody.ok, true);
-  assert.equal(refundBody.refundId, 'REFUND_TEST_1');
-  console.log('square refund api ok');
-
-  const unconfiguredStripe = await handleStripeWebhook(
-    new Request(base + '/api/stripe-webhook', { method: 'POST', body: '{}' }),
-    env
-  );
-  assert.equal(unconfiguredStripe.status, 503);
-  console.log('unconfigured stripe webhook fails closed');
-
-  // Public catalogue stays closed; all fake products live in isolated test fixtures.
-  const liveCat = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
-  assert.equal(liveCat.shopEnabled, false);
-  assert.equal(liveCat.products.length, 0);
-  console.log('public catalogue is empty and closed');
-
-  console.log('ALL LOCAL CHECKOUT TESTS PASSED');
+function d1() {
+  const db = new DatabaseSync(':memory:');
+  db.exec(readFileSync(path.join(root, 'ORDER-DATABASE-SETUP.sql'), 'utf8'));
+  for (const col of ['expected_total INTEGER', 'stock_applied INTEGER NOT NULL DEFAULT 0', 'payment_link_id TEXT',
+    'mode TEXT', 'paid_at INTEGER', 'refund_status TEXT', 'refunded_total INTEGER']) db.exec('ALTER TABLE orders ADD COLUMN ' + col);
+  const stmt = (sql, args = []) => ({
+    bind: (...a) => stmt(sql, a),
+    run: async () => ({ meta: { changes: Number(db.prepare(sql).run(...args).changes) } }),
+    first: async () => db.prepare(sql).get(...args) ?? null,
+    all: async () => ({ results: db.prepare(sql).all(...args) })
+  });
+  return { raw: db, prepare: (sql) => stmt(sql), batch: async (list) => Promise.all(list.map((s) => s.run())) };
 }
 
-run()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => {
-    globalThis.fetch = originalFetch;
-  });
+const catalogue = {
+  ...JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8')),
+  shipping: { allowedCountries: ['GB'], flatRatePence: 495, freeShippingThresholdPence: 10000 },
+  products: [
+    { sku: 'AIVA-TEST-1GBP', name: 'TEST £1', category: 'Test', description: 'test', pricePence: 100, stock: 5, available: true, testOnly: true },
+    { sku: 'AIVA-TEST-BIG', name: 'TEST big', category: 'Test', description: 'test', pricePence: 12000, stock: 2, available: true, testOnly: true }
+  ]
+};
+const base = 'https://aivatrading.uk';
+const NOTIFY = base + '/api/square-webhook';
+const env = {
+  ASSETS: { fetch: async () => new Response(JSON.stringify(catalogue), { headers: { 'Content-Type': 'application/json' } }) },
+  ORDERS_DB: d1(),
+  SQUARE_ACCESS_TOKEN: 'sandbox-token', SQUARE_LOCATION_ID: 'LOC_TEST', SQUARE_ENVIRONMENT: 'sandbox',
+  SQUARE_WEBHOOK_SIGNATURE_KEY: 'test-signature-key-123456', SQUARE_WEBHOOK_NOTIFICATION_URL: NOTIFY,
+  MERCHANT_ADMIN_KEY: 'merchant-admin-key-for-tests-0001'
+};
+
+const calls = [];
+let orderSeq = 0;
+globalThis.fetch = async (input, init = {}) => {
+  const url = String(input), body = init.body ? JSON.parse(init.body) : null;
+  calls.push({ url, body });
+  assert.ok(url.startsWith('https://connect.squareupsandbox.com/'), 'sandbox host only: ' + url);
+  if (url.endsWith('/v2/online-checkout/payment-links')) {
+    const id = 'ORDER_TEST_' + String(++orderSeq).padStart(4, '0');
+    return Response.json({ payment_link: { id: 'PL_' + orderSeq, order_id: id, url: 'https://sandbox.square.link/u/test' + orderSeq } });
+  }
+  if (url.endsWith('/v2/refunds')) return Response.json({ refund: { id: 'RF_' + body.amount_money.amount, status: 'PENDING' } });
+  if (url.includes('/v2/orders/')) return Response.json({ order: { id: url.split('/').pop(), state: 'COMPLETED', metadata: { source: 'aivatrading.uk' }, tenders: [{ amount_money: { amount: 595 } }] } });
+  return Response.json({ errors: [{ code: 'NOT_FOUND' }] }, { status: 404 });
+};
+
+const post = (p, body, headers = {}) => new Request(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+const checkout = (items) => m.handleCreateCheckout(post('/api/create-checkout-session', { items }), env);
+async function webhook(event, sig) {
+  const raw = JSON.stringify(event);
+  const s = sig ?? (await m.squareSignature(raw, env.SQUARE_WEBHOOK_SIGNATURE_KEY, NOTIFY));
+  return m.handleSquareWebhook(post('/api/square-webhook', raw, { 'x-square-hmacsha256-signature': s }), env);
+}
+const payment = (order, amount, status = 'COMPLETED') => ({ id: 'PAY_' + order, order_id: order, status, amount_money: { amount, currency: 'GBP' }, buyer_email_address: 'buyer@example.com' });
+const order = (id) => env.ORDERS_DB.raw.prepare('SELECT * FROM orders WHERE session_id=?').get(id);
+const stock = (sku) => env.ORDERS_DB.raw.prepare('SELECT stock FROM inventory WHERE sku=?').get(sku)?.stock;
+const admin = { Authorization: 'Bearer ' + env.MERCHANT_ADMIN_KEY };
+
+// Shop status
+let st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), env)).json();
+assert.equal(st.ready, true); assert.equal(st.mode, 'test'); assert.equal(st.provider, 'square');
+console.log('ok shop-status sandbox ready');
+
+// Production without approval stays disabled
+st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SQUARE_ENVIRONMENT: 'production' })).json();
+assert.equal(st.mode, 'disabled'); assert.equal(st.ready, false);
+st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SQUARE_ENVIRONMENT: 'production', SQUARE_LIVE_PAYMENTS_APPROVED: 'true' })).json();
+assert.equal(st.ready, false, 'test-only catalogue must never go live');
+console.log('ok live payments blocked without approval / with test catalogue');
+
+// Server-side pricing: browser-supplied price is ignored
+let r = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1, pricePence: 1 }]);
+let j = await r.json();
+assert.equal(r.status, 200); assert.match(j.url, /square\.link/);
+const created = calls.at(-1).body;
+assert.equal(created.order.line_items[0].base_price_money.amount, 100);
+assert.equal(created.checkout_options.shipping_fee.charge.amount, 495);
+assert.equal(order(j.orderId).expected_total, 595);
+const o1 = j.orderId;
+console.log('ok £1 checkout created with server price + delivery = £5.95');
+
+// Free delivery threshold, invalid quantity, unknown SKU, over-stock, bad origin
+r = await checkout([{ sku: 'AIVA-TEST-BIG', quantity: 1 }]); j = await r.json();
+assert.equal(calls.at(-1).body.checkout_options.shipping_fee, undefined); assert.equal(order(j.orderId).expected_total, 12000);
+for (const items of [[{ sku: 'AIVA-TEST-1GBP', quantity: 0 }], [{ sku: 'NOPE-SKU', quantity: 1 }], [{ sku: 'AIVA-TEST-BIG', quantity: 3 }], [{ sku: 'AIVA-TEST-1GBP', quantity: 1.5 }]]) {
+  assert.equal((await checkout(items)).status, 400);
+}
+assert.equal((await m.handleCreateCheckout(post('/api/create-checkout-session', { items: [{ sku: 'AIVA-TEST-1GBP', quantity: 1 }] }, { Origin: 'https://evil.example' }), env)).status, 403);
+console.log('ok basket validation (quantity, SKU, stock, origin)');
+
+// Webhook signature
+const evt = (id, type, obj) => ({ event_id: id, type, data: { object: obj } });
+assert.equal((await webhook(evt('E0', 'payment.updated', { payment: payment(o1, 595) }), 'bad')).status, 401);
+assert.equal(order(o1).payment_status, 'pending');
+console.log('ok invalid signature rejected');
+
+// Successful payment, then duplicate delivery
+j = await (await webhook(evt('E1', 'payment.updated', { payment: payment(o1, 595) }))).json();
+assert.equal(j.paid, true); assert.equal(order(o1).payment_status, 'paid'); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+j = await (await webhook(evt('E1', 'payment.updated', { payment: payment(o1, 595) }))).json();
+assert.equal(j.duplicate, true);
+j = await (await webhook(evt('E1b', 'payment.created', { payment: payment(o1, 595) }))).json();
+assert.equal(j.duplicate, true); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+console.log('ok payment recorded once, stock 5 -> 4, duplicates ignored');
+
+// Stock override now visible to shop
+st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), env)).json();
+assert.equal(st.stock['AIVA-TEST-1GBP'], 4);
+
+// Failed / cancelled payment
+j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 2 }])).json();
+const o2 = j.orderId;
+await webhook(evt('E2', 'payment.updated', { payment: payment(o2, 695, 'FAILED') }));
+assert.equal(order(o2).payment_status, 'failed'); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }])).json();
+await webhook(evt('E3', 'payment.updated', { payment: payment(j.orderId, 595, 'CANCELED') }));
+assert.equal(order(j.orderId).payment_status, 'failed');
+console.log('ok failed and cancelled payments recorded, no stock change');
+
+// Amount mismatch goes to review
+j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }])).json();
+await webhook(evt('E4', 'payment.updated', { payment: payment(j.orderId, 1, 'COMPLETED') }));
+assert.equal(order(j.orderId).payment_status, 'review'); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+console.log('ok amount mismatch flagged for review');
+
+// Order status
+j = await (await m.handleOrderStatus(new Request(base + '/api/order-status?orderId=' + o1), env)).json();
+assert.equal(j.paid, true);
+
+// Merchant admin + refunds
+assert.equal((await m.handleAdminOrders(new Request(base + '/api/admin-orders'), env)).status, 401);
+j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders?status=paid', { headers: admin }), env)).json();
+assert.equal(j.orders.length, 1); assert.equal(j.orders[0].orderId, o1);
+j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ orderId: o1, fulfillmentStatus: 'shipped' }) }), env)).json();
+assert.equal(j.ok, true); assert.equal(order(o1).fulfillment_status, 'shipped');
+assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }), env)).status, 401);
+assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 600 }, admin), env)).status, 400);
+j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 95 }, admin), env)).json();
+assert.equal(j.ok, true); assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95);
+j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).json();
+assert.equal(j.amountPence, 500); assert.equal(order(o1).payment_status, 'refunded');
+assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).status, 409);
+await webhook(evt('E5', 'refund.updated', { refund: { id: 'RF_500', status: 'COMPLETED', order_id: o1, payment_id: 'PAY_' + o1, amount_money: { amount: 500, currency: 'GBP' } } }));
+assert.equal(order(o1).refund_status, 'COMPLETED'); assert.equal(order(o1).fulfillment_status, 'refunded');
+console.log('ok merchant listing, fulfilment update, partial + full refunds');
+
+console.log('LOCAL SQUARE CHECKOUT TESTS PASSED');

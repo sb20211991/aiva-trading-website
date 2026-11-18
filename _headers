@@ -31,3 +31,13 @@
 /order-*.html
   Cache-Control: no-store
   Referrer-Policy: no-referrer
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(self), geolocation=(), payment=(self)
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+/merchant-tools/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer

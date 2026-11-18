@@ -1,24 +1,19 @@
 # Existing Pages project. Verified domain: app.aivatrading.uk, NOT the requested apex.
 # Root promotion must verify the custom domain first: scripts/promote-production.mjs.
 # Static design and legacy providers are preserved; encrypted keys never enter assets.
-# This configuration deliberately leaves both real charges and preview fixtures disabled.
+# Square sandbox only; production charges stay disabled until approved.
 name = "aiva-trading"
 compatibility_date = "2025-11-01"
 pages_build_output_dir = ".pages-output"
 
 # Keep plain vars in wrangler.toml so `wrangler pages deploy` does not wipe them.
 [vars]
-CHECKOUT_PROVIDER = "stripe"
-STRIPE_MODE = "test"
-STRIPE_LIVE_PAYMENTS_APPROVED = "false"
-# Empty public shop by default. Enable the test fixture ONLY on an explicit Pages preview origin.
-STRIPE_TEST_CHECKOUT_ENABLED = "false"
-# STRIPE_TEST_ORIGIN must be the exact https://<preview>.pages.dev origin (no trailing slash).
-# Add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET as encrypted PREVIEW secrets.
-# Bind a SEPARATE test D1 database as STRIPE_TEST_ORDERS_DB in preview configuration.
-# Never reuse ORDERS_DB for Stripe test records.
+CHECKOUT_PROVIDER = "square"
 SQUARE_ENVIRONMENT = "sandbox"
+# Real charges need SQUARE_ENVIRONMENT="production" AND this flag set to "true" after owner approval.
+SQUARE_LIVE_PAYMENTS_APPROVED = "false"
 SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
+MERCHANT_SUPPORT_EMAIL = "Aivatradingltd2026@gmail.com"
 
 [[d1_databases]]
 binding = "ORDERS_DB"

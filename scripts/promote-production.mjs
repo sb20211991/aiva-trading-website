@@ -26,9 +26,8 @@ async function main() {
     'import json,tomllib; print(json.dumps(tomllib.load(open("wrangler.toml","rb"))))'
   ], { encoding: 'utf8' }));
   assert.equal(config.name, 'aiva-trading');
-  assert.equal(config.vars?.STRIPE_MODE, 'test');
-  assert.equal(config.vars?.STRIPE_LIVE_PAYMENTS_APPROVED, 'false');
-  assert.equal(config.vars?.STRIPE_TEST_CHECKOUT_ENABLED, 'false');
+  assert.equal(config.vars?.CHECKOUT_PROVIDER, 'square');
+  assert.equal(config.vars?.SQUARE_LIVE_PAYMENTS_APPROVED, 'false');
   const catalogue = JSON.parse(readFileSync('data/aiva-products.json', 'utf8'));
   assert.equal(catalogue.shopEnabled, false, 'This initial production release must keep sales closed.');
   assert.deepEqual(catalogue.products, [], 'Do not replace or publish a populated catalogue with this closed-shop release.');
@@ -50,7 +49,7 @@ async function main() {
   const domain = await get(api + '/domains/aivatrading.uk');
   verifyProductionTarget(project, domain, env.EXPECTED_PRODUCTION_ORIGIN || '');
   const previous = project.deployment_configs?.production?.env_vars || {};
-  assert.notEqual(previous.STRIPE_LIVE_PAYMENTS_APPROVED?.value, 'true',
+  assert.notEqual(previous.SQUARE_LIVE_PAYMENTS_APPROVED?.value, 'true',
     'Production already has live-payment approval; do not overwrite it with this initial release.');
   execFileSync('node', ['scripts/build-pages-assets.mjs'], {
     stdio: 'inherit', env: { ...env, GITHUB_SHA: sha }

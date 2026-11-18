@@ -44,8 +44,7 @@ const requiredFunctions = [
   'functions/api/create-checkout-session.js',
   'functions/api/order-status.js',
   'functions/api/square-webhook.js',
-  'functions/api/stripe-webhook.js',
-  'functions/_lib/stripe-test.js',
+  'functions/api/admin-orders.js',
   'functions/api/create-refund.js',
   'functions/_lib/commerce.js',
   '_routes.json',
@@ -70,37 +69,32 @@ assert.match(index, /language-switcher/);
 assert.match(index, /#enquiry/);
 
 const shop = readFileSync(path.join(root, 'shop.html'), 'utf8');
-assert.match(shop, /Stripe/);
-assert.doesNotMatch(shop, /through Stripe/);
+assert.match(shop, /Square/);
+for (const rel of ['shop.html', 'buying-guide.html', 'order-success.html', 'assets/aiva-commerce.js', 'assets/aiva-guide-checkout.js']) {
+  assert.doesNotMatch(readFileSync(path.join(root, rel), 'utf8'), /stripe/i, 'Obsolete Stripe reference in ' + rel);
+}
 
 const company = readFileSync(path.join(root, 'company.html'), 'utf8');
 assert.match(company, /Chia Sabir/);
 assert.match(company, /Aivatradingltd2026@gmail\.com/);
 
 const catalogue = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
-assert.equal(catalogue.shopEnabled, false);
-assert.equal(catalogue.products.length, 0);
+for (const p of catalogue.products) {
+  assert.ok(p.testOnly === true && /TEST/.test(p.name), 'Only clearly labelled test products may be published: ' + p.sku);
+}
+if (catalogue.products.length) assert.equal(catalogue.testOnly, true, 'Test catalogue must be flagged testOnly');
 assert.ok(String(catalogue.businessAddress || '').includes('Whitehill'));
 assert.ok(String(catalogue.deliveryPolicy || '').length >= 15);
 assert.ok(String(catalogue.returnsPolicy || '').length >= 15);
 assert.ok(Number.isSafeInteger(catalogue.shipping?.flatRatePence));
 assert.ok(Array.isArray(catalogue.categories) && catalogue.categories.length >= 8);
-assert.ok(existsSync(path.join(root, 'data/aiva-products.sandbox.example.json')));
 
 const commerce = readFileSync(path.join(root, 'functions/_lib/commerce.js'), 'utf8');
-assert.match(commerce, /createSquareCheckout/);
+assert.match(commerce, /online-checkout\/payment-links/);
 assert.match(commerce, /handleCreateRefund/);
-assert.match(commerce, /apple_pay:\s*false/);
-assert.match(commerce, /google_pay:\s*false/);
-assert.match(commerce, /cash_app_pay:\s*false/);
-assert.match(commerce, /afterpay_clearpay:\s*false/);
-assert.match(commerce, /createStripeCheckout/);
-const stripe = readFileSync(path.join(root, 'functions/_lib/stripe-test.js'), 'utf8');
-assert.match(stripe, /STRIPE_TEST_ORDERS_DB/);
-assert.match(stripe, /session\.livemode === p\.live/);
-const fixture = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.stripe-test.json'), 'utf8'));
-assert.equal(fixture.testOnly, true);
-assert.equal(fixture.products[0].pricePence, 100);
+assert.match(commerce, /SQUARE_LIVE_PAYMENTS_APPROVED === 'true'/);
+assert.match(commerce, /x-square-hmacsha256-signature/);
+assert.doesNotMatch(commerce, /stripe|paypal/i);
 
 const assetCount = readdirSync(path.join(root, 'assets')).filter((name) =>
   /\.(webp|svg|css|js)$/i.test(name)
@@ -109,5 +103,5 @@ assert.ok(assetCount >= 40, 'Expected rich asset set, found ' + assetCount);
 
 console.log('WEBSITE INTEGRITY CHECKS PASSED');
 console.log('- pages, assets, company details and payment Functions present');
-console.log('- public shop closed and empty; Stripe test fixture isolated');
+console.log('- Square-only checkout; only labelled TEST products published');
 console.log('- root _worker.js absent (Functions deploy path)');

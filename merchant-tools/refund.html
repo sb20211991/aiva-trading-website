@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Merchant refund tool | Aiva Trading Limited</title>
+<title>Merchant orders and refunds | Aiva Trading Limited</title>
 <link rel="icon" href="../assets/mark.svg">
 <link rel="stylesheet" href="../assets/style.css?v=trade-10">
 <link rel="stylesheet" href="../assets/aiva-commerce.css?v=3">
@@ -14,68 +14,95 @@
 <header>
   <a class="brand" href="../index.html"><span class="brand-wordmark">AIVA</span><span class="brand-caption">TRADING LIMITED</span></a>
   <nav><a href="../shop.html">Shop</a><a href="../index.html#contact">Contact</a></nav>
-</header>
-<main id="main" class="section shop-page">
+</h<main id="main" class="section shop-page">
   <section class="aiva-commerce">
     <p class="eyebrow">MERCHANT ONLY</p>
-    <h1>Square refund</h1>
-    <p>Use this after a real or sandbox Square payment when you need to refund a customer. The merchant key never leaves your browser except as a request header to your own Cloudflare function.</p>
-    <form id="refund-form" class="aiva-shop-terms">
-      <label>Square payment ID
-        <input id="payment-id" name="paymentId" required autocomplete="off" maxlength="191" placeholder="e.g. payment id from Square Dashboard">
+    <h1>Orders, fulfilment and refunds</h1>
+    <p>Enter your merchant admin key to view website orders and stock, mark orders as processing or shipped, and refund Square payments. The key stays in this browser tab only.</p>
+    <form id="key-form" class="aiva-shop-terms">
+      <label>Merchant admin key
+        <input id="merchant-key" type="password" required autocomplete="off" minlength="24">
       </label>
-      <label>Square order ID (optional, updates local order record)
-        <input id="order-id" name="orderId" autocomplete="off" maxlength="191">
+      <label>Payment status
+        <select id="status-filter"><option value="">All</option><option>paid</option><option>pending</option><option>failed</option><option>review</option><option>refunded</option></select>
       </label>
-      <label>Amount in pence (optional — leave blank for full refund)
-        <input id="amount-pence" name="amountPence" type="number" min="1" step="1" placeholder="100 for £1.00">
-      </label>
-      <label>Reason
-        <input id="reason" name="reason" maxlength="192" value="Customer refund">
-      </label>
-      <label>Merchant refund key
-        <input id="merchant-key" name="merchantKey" type="password" required autocomplete="off" minlength="24">
-      </label>
-      <button class="button" type="submit">Create Square refund</button>
+      <button class="button" type="submit">Load orders</button>
     </form>
-    <p id="refund-result" class="aiva-store-status" role="status"></p>
-    <p class="aiva-small-print">You can also refund from the Square Dashboard. Website checkout does not require a physical card reader.</p>
+    <p id="admin-result" class="aiva-store-status" role="status"></p>
+    <div id="orders"></div>
+    <h2>Stock (sold SKUs)</h2>
+    <div id="inventory"></div>
+    <p class="aiva-small-print">Refunds go back to the customer's original payment method through Square. You can also refund from the Square Dashboard.</p>
   </section>
 </main>
 <script>
 (() => {
-  const form = document.getElementById('refund-form');
-  const out = document.getElementById('refund-result');
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    out.textContent = 'Submitting refund…';
-    const amountRaw = document.getElementById('amount-pence').value;
-    const body = {
-      paymentId: document.getElementById('payment-id').value.trim(),
-      orderId: document.getElementById('order-id').value.trim() || undefined,
-      reason: document.getElementById('reason').value.trim() || 'Customer refund'
-    };
-    if (amountRaw !== '') body.amountPence = Number(amountRaw);
+  const $ = (id) => document.getElementById(id);
+  const out = $('admin-result');
+  const key = () => $('merchant-key').value;
+  const money = (p) => p == null ? '' : '£' + (p / 100).toFixed(2);
+  const text = (tag, value) => { const el = document.createElement(tag); el.textContent = value == null ? '' : String(value); return el; };
+  async function api(path, body) {
+    const res = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: { Authorization: 'Bearer ' + key(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed (' + res.status + ')');
+    return data;
+  }
+  async function load() {
+    out.textContent = 'Loading…';
     try {
-      const response = await fetch('/api/create-refund', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Aiva-Merchant-Key': document.getElementById('merchant-key').value
-        },
-        body: JSON.stringify(body)
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Refund failed');
-      out.textContent =
-        'Refund ' + (data.status || 'submitted') +
-        (data.refundId ? ' · id ' + data.refundId : '') +
-        (data.mode === 'test' ? ' · SANDBOX (no real money)' : '');
-    } catch (err) {
-      out.textContent = err.message || 'Refund failed';
-    }
-  });
+      const status = $('status-filter').value;
+      const data = await api('/api/admin-orders' + (status ? '?status=' + encodeURIComponent(status) : ''));
+      const table = document.createElement('table');
+      table.className = 'aiva-admin-table';
+      const head = table.insertRow();
+      for (const h of ['Created', 'Order', 'Customer', 'Items', 'Total', 'Payment', 'Fulfilment', 'Actions']) head.append(text('th', h));
+      for (const o of data.orders) {
+        const row = table.insertRow();
+        let items = [];
+        try { items = JSON.parse(o.line_items_json || '[]'); } catch {}
+        row.append(text('td', new Date(o.created_at * 1000).toLocaleString('en-GB')),
+          text('td', o.orderId.slice(-10) + (o.mode === 'test' ? ' (SANDBOX)' : '')),
+          text('td', [o.customer_name, o.customer_email].filter(Boolean).join(' · ')),
+          text('td', items.map((i) => i.quantity + ' × ' + i.sku).join(', ')),
+          text('td', money(o.amount_total) + (o.refunded_total ? ' (refunded ' + money(o.refunded_total) + ')' : '')),
+          text('td', o.payment_status), text('td', o.fulfillment_status));
+        const actions = document.createElement('td');
+        for (const f of ['processing', 'shipped', 'cancelled']) {
+          const b = text('button', f); b.type = 'button';
+          b.onclick = async () => { try { await api('/api/admin-orders', { orderId: o.orderId, fulfillmentStatus: f }); load(); } catch (e) { out.textContent = e.message; } };
+          actions.append(b);
+        }
+        if (o.payment_status === 'paid') {
+          const b = text('button', 'Refund'); b.type = 'button';
+          b.onclick = async () => {
+            const left = o.amount_total - (o.refunded_total || 0);
+            const v = prompt('Refund amount in pence (max ' + left + ')', String(left));
+            if (!v) return;
+            try {
+              const r = await api('/api/create-refund', { orderId: o.orderId, amountPence: Number(v), reason: 'Customer refund' });
+              out.textContent = 'Refund ' + r.status + ' · ' + money(r.amountPence) + (r.mode === 'test' ? ' · SANDBOX (no real money)' : '');
+              load();
+            } catch (e) { out.textContent = e.message; }
+          };
+          actions.append(b);
+        }
+        row.append(actions);
+      }
+      $('orders').replaceChildren(table);
+      const inv = document.createElement('ul');
+      for (const i of data.inventory) inv.append(text('li', i.sku + ': ' + i.stock + ' left'));
+      $('inventory').replaceChildren(inv);
+      out.textContent = data.orders.length + ' order(s) loaded.';
+    } catch (e) { out.textContent = e.message; }
+  }
+  $('key-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
 })();
 </script>
+cript>
 </body>
 </html>

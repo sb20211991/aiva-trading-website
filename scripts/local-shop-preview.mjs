@@ -21,7 +21,6 @@ const {
   handleShopStatus,
   handleCreateCheckout,
   handleOrderStatus,
-  handleStripeWebhook
 } = await import(commerceUrl);
 
 const paidOrders = new Map();
@@ -156,7 +155,6 @@ const server = createServer(async (req, res) => {
           );
         }
       } else if (pathname === '/api/order-status') response = await handleOrderStatus(request, env);
-      else if (pathname === '/api/stripe-webhook') response = await handleStripeWebhook(request, env);
       else {
         response = new Response(JSON.stringify({ error: 'Not found' }), {
           status: 404,

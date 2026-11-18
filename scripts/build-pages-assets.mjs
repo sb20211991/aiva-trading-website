@@ -21,7 +21,7 @@ for (const entry of readdirSync(root, { withFileTypes: true })) {
   if (entry.isFile() && /^[a-z0-9-]+\.html$/.test(entry.name)) copy(entry.name);
 }
 for (const relative of ['robots.txt', 'sitemap.xml', '_headers', '_routes.json',
-  'data/aiva-products.json', 'data/aiva-products.stripe-test.json']) copy(relative);
+  'data/aiva-products.json']) copy(relative);
 for (const entry of readdirSync(join(root, 'assets'), { withFileTypes: true })) {
   if (entry.isFile() && /^[a-zA-Z0-9_-]+\.(css|js|svg|webp|png|jpe?g|avif|gif|woff2?)$/.test(entry.name)) {
     copy('assets/' + entry.name);
@@ -38,11 +38,11 @@ for (const directory of ['functions/api', 'functions/_lib']) {
   }
 }
 for (const excluded of ['.github', '.git', '.dev.vars', '.env', '_archive', 'README.md',
-  'STRIPE-TEST-SETUP.md', 'wrangler.toml', 'scripts', 'package.json', 'ORDER-DATABASE-SETUP.sql']) {
+  'wrangler.toml', 'scripts', 'package.json', 'ORDER-DATABASE-SETUP.sql']) {
   assert.equal(existsSync(join(output, excluded)), false, 'Private source copied: ' + excluded);
 }
 for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js',
-  'functions/api/shop-status.js', 'functions/_lib/commerce.js', 'functions/_lib/stripe-test.js']) {
+  'functions/api/shop-status.js', 'functions/_lib/commerce.js']) {
   assert.ok(existsSync(join(output, required)), 'Missing deployment file: ' + required);
 }
 console.log('Pages upload directory built and checked: .pages-output (no repository metadata, scripts, docs or archives).');

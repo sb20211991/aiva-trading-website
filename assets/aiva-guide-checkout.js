@@ -140,8 +140,7 @@
       const r2 = await fetch('/api/shop-status', { cache: 'no-store' });
       if (!r2.ok) throw Error('Cannot verify store readiness.');
       online = await r2.json();
-      const cataloguePath = online.cataloguePath === '/data/aiva-products.stripe-test.json'
-        ? online.cataloguePath : '/data/aiva-products.json';
+      const cataloguePath = '/data/aiva-products.json';
       const r1 = await fetch(cataloguePath, { cache: 'no-store' });
       if (!r1.ok || !r2.ok) throw Error('Cannot verify store readiness.');
       catalog = normaliseCatalogue(await r1.json());
@@ -158,7 +157,6 @@
     const pageHost = location.hostname.toLowerCase();
     const localPreview = pageHost === '127.0.0.1' || pageHost === 'localhost';
     return (
-      host === 'checkout.stripe.com' ||
       host === 'square.link' ||
       host.endsWith('.square.link') ||
       host === 'checkout.square.site' ||

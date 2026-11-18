@@ -74,7 +74,7 @@ function render(){if(!catalog)return;
 async function load(){try{
   const statusRes=await fetch('/api/shop-status',{cache:'no-store'});
   if(statusRes.ok){shopStatus=await statusRes.json()} else shopStatus={ready:false,mode:'disabled'};
-  const cataloguePath=shopStatus.cataloguePath==='/data/aiva-products.stripe-test.json'?shopStatus.cataloguePath:'/data/aiva-products.json';
+  const cataloguePath='/data/aiva-products.json';
   const dataRes=await fetch(cataloguePath,{cache:'no-store'});
   if(!dataRes.ok)throw new Error('Product catalogue unavailable.'); catalog=normaliseCatalogue(await dataRes.json());
   for(const input of [els.min,els.max]){
@@ -110,7 +110,6 @@ els.checkout.addEventListener('click',async()=>{
     const pageHost=location.hostname.toLowerCase();
     const localPreview=pageHost==='127.0.0.1'||pageHost==='localhost';
     const trusted=
-      host==='checkout.stripe.com'||
       host==='square.link'||host.endsWith('.square.link')||
       host==='checkout.square.site'||host.endsWith('.checkout.square.site')||
       host.endsWith('.squareup.com')||host.endsWith('.squareupsandbox.com')||

@@ -3,11 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity && npm run test:deployment && npm run build:pages",
+    "test": "npm run test:checkout && npm run test:integrity && npm run test:deployment && npm run build:pages",
     "test:deployment": "node scripts/deployment-safety-test.mjs",
     "build:pages": "node scripts/build-pages-assets.mjs",
-    "test:stripe": "node scripts/stripe-test.mjs",
-    "stripe:preview": "node scripts/stripe-test-preview.mjs",
     "test:checkout": "node scripts/local-checkout-test.mjs",
     "test:integrity": "node scripts/website-integrity.mjs",
     "website:go-live-prep": "node scripts/go-live-prep.mjs",
