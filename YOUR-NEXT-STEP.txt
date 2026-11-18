@@ -1,44 +1,54 @@
 AIVA TRADING — ONLY ACTIONS THAT STILL NEED YOU
-Updated: 16 November 2026 (Europe/London)
+Updated: 18 November 2026 (Europe/London)
 
-Tap to Pay on iPhone = Active (thank you). That helps in-person sales.
-GitHub Cloudflare secrets are done; preview redeployed with sample catalogue.
-Square + D1 on Cloudflare Pages are still required. Production was not promoted.
-Do NOT buy Square Reader / Terminal.
+Checkout provider is Square (Stripe is retired). No real card charges without your approval.
+CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN are already configured — do not redo those.
 
 ==================================================
 YOU MUST DO
 ==================================================
 
-1. In Square Dashboard (desktop), confirm:
-   - No open identity / business verification banners
-   - Balances / Banking → UK bank account verified for payouts
-   - Payments → Payment links works (create a link if useful — no hardware)
+1. Add these three secrets to GitHub Actions for repo sb20211991/aiva-trading-website
+   (Settings → Secrets and variables → Actions → New repository secret):
+   - SQUARE_ACCESS_TOKEN   = Square Developer → Sandbox Access Token
+   - SQUARE_LOCATION_ID    = Square Developer → Sandbox Location ID
+   - SQUARE_WEBHOOK_SIGNATURE_KEY = Signature key from the webhook subscription below
 
-2. Developer Dashboard → https://developer.squareup.com/apps
-   - Sandbox Access Token + Sandbox Location ID
-   - Webhook: https://aivatrading.uk/api/square-webhook
-     Events: payment.updated, order.updated, refund.created, refund.updated
-   - Copy Signature Key into Cloudflare Pages secrets (not chat)
+   Prefer GitHub Actions secrets (the safe-redeploy workflow pushes them into Cloudflare
+   Production without wiping other env vars). You may instead paste the same three values
+   into Cloudflare Pages → aiva-trading → Settings → Environment variables → Production
+   as Encrypt secrets, then trigger a redeploy — but GitHub is the reliable path.
 
-3. On Cloudflare Pages (preview + later production), set Square env vars
-   listed in MISSING-CONFIG.txt, plus MERCHANT_REFUND_SECRET and ORDERS_DB (D1).
-   SQUARE_ENVIRONMENT = sandbox until you approve live charges.
-   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN are already in GitHub Actions.
+2. In Square Developer Dashboard → Webhooks, subscribe:
+   URL: https://app.aivatrading.uk/api/square-webhook
+   Events: payment.updated, order.updated, refund.created, refund.updated
+   (Keep SQUARE_ENVIRONMENT = sandbox until you approve live charges.)
 
-4. After Square + D1 are set, sandbox-test AIVA-SAMPLE-FEE (£49) on the preview URL.
-   Keep production closed until that test succeeds and you explicitly approve go-live.
+3. Reply here with “secrets done” (do not paste token values). I will redeploy, confirm
+   shop-status shows sandbox ready, then walk you through one £1 sandbox payment test
+   (success + decline cards) on https://app.aivatrading.uk/shop.html
 
-SECURE LOCATION (do not paste tokens into chat):
-https://cursor.com/dashboard/cloud-agents → Secrets / My Secrets → Add Secrets
-Also use the secure form prompted by this agent if shown.
+4. Before customer launch (after you approve): tell me to hide/remove AIVA-TEST-1GBP
+   and switch catalogue to your real products. Do not set Square to production yourself
+   until you approve real charges.
 
 ==================================================
 ALREADY DONE WITHOUT YOU
 ==================================================
 
-- Square Functions checkout (card-only; wallets disabled)
-- Sample catalogue enabled (AIVA-SAMPLE-FEE £49)
-- Refunds, webhooks handlers, local tests green
-- GitHub Actions Cloudflare secrets added; preview redeployed (16 Nov 2026)
-- Live site production not promoted
+- Temporary £1 sandbox SKU AIVA-TEST-1GBP deployed on app.aivatrading.uk
+- shopEnabled=true; checkout stays disabled until Square secrets have real values
+- Basket UI, create-checkout-session, order-success / cancelled redirects, Square
+  webhook + order confirmation handlers, local checkout/integrity tests all green
+- Stripe webhook returns 410; D1 ORDERS_DB binding present
+- Product add/edit/price/remove via data/aiva-products.json (+ merchant-tools/
+  catalogue-builder.html) then redeploy — documented in MERCHANT-SETUP-CHECKLIST.txt
+- No production/live Square charges activated
+
+==================================================
+PRODUCT MANAGEMENT (NO EXTRA ACCOUNT SETUP)
+==================================================
+
+Edit data/aiva-products.json (pricePence is integer pence: 100 = £1.00), set
+available true/false, or use merchant-tools/catalogue-builder.html locally, then
+redeploy. Keep shopEnabled=false when you are not ready for customers.
