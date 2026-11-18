@@ -4,7 +4,9 @@ Cloudflare Pages website for **Aiva Trading Limited** (company no. 17485509), se
 
 ## Checkout
 
-Online checkout uses **Square Payment Links** via Cloudflare Pages Functions under `functions/`. Customers pay on Square-hosted checkout (card, Apple Pay, and Google Pay where eligible). Optional PayPal can be enabled with separate secrets.
+The requested payment provider is now **Stripe in test mode only**, via Cloudflare Pages Functions under `functions/`. Existing Square Payment Links and optional PayPal code are preserved. `CHECKOUT_PROVIDER=stripe` prevents fallback to those providers.
+
+See **[STRIPE-TEST-SETUP.md](STRIPE-TEST-SETUP.md)** for the test preview, separate test database, encrypted secret names, validation, and required approvals. Stripe live keys and live events are refused. No real products have been added.
 
 The shop catalogue stays closed until real products are published:
 
@@ -13,7 +15,11 @@ The shop catalogue stays closed until real products are published:
 
 ## Required Cloudflare secrets
 
-Set these in the Cloudflare Pages project (never commit values):
+For Stripe: encrypted **preview-only** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`,
+with a separate `STRIPE_TEST_ORDERS_DB` binding. Do not reuse the Square database.
+The public shop stays closed. The £1 fixture is available only on an explicitly enabled matching preview origin.
+
+The preserved Square integration uses the following (never commit values):
 
 - `SQUARE_ACCESS_TOKEN`
 - `SQUARE_LOCATION_ID`

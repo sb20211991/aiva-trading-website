@@ -10,6 +10,12 @@ DESIGN-RESEARCH.md
 .env
 .env.*
 .git/
+.github/
+.openai/
+_archive/
+wrangler*.toml
+README.md
+functions/_lib/
 HARDWARE-BYPASS-GUIDE.txt
 LANGUAGE-UPDATE-README.txt
 MERCHANT-SETUP-CHECKLIST.txt
@@ -29,6 +35,7 @@ scripts/
 *secret*
 TAP-TO-PAY-AND-IN-PERSON.txt
 *.tmp
+STRIPE-TEST-SETUP.md
 *token*
 UPGRADE-NOTES.txt
 _worker.js

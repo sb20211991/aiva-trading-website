@@ -1,4 +1,4 @@
-name: Square sandbox deployment preflight
+name: Payment deployment preflight
 on:
   workflow_dispatch:
   pull_request:
@@ -37,7 +37,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: python
         run: |
-          import json, os, urllib.request, urllib.error, sys
+          import json, os, urllib.request, urllib.error, sys, tomllib
+          with open("wrangler.toml", "rb") as config_file:
+              repo_config = tomllib.load(config_file)
+          selected_provider = repo_config.get("vars", {}).get("CHECKOUT_PROVIDER")
           names = ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN")
           missing = [name for name in names if not os.environ.get(name, "").strip()]
           if missing:
@@ -78,8 +81,13 @@ jobs:
           matches = [p for p in projects if
                      any(d in ("aivatrading.uk", "www.aivatrading.uk")
                          for d in p.get("domains", []))]
+          if not matches:
+              # Use the explicit existing deployment target, not a guessed Worker name.
+              matches = [p for p in projects if p.get("name") == repo_config.get("name")]
+              if matches:
+                  print("WARNING: Pages project found by repository configuration; apex domain association was not verified.")
           if len(matches) != 1:
-              print("BLOCKED: could not uniquely identify a Pages project for aivatrading.uk.")
+              print("BLOCKED: could not uniquely identify the configured Pages project.")
               print("No Worker name or deployment target has been assumed.")
               sys.exit(1)
           project = matches[0]
@@ -91,6 +99,11 @@ jobs:
           keys = ("SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_ENVIRONMENT",
                   "SQUARE_WEBHOOK_SIGNATURE_KEY", "SQUARE_WEBHOOK_NOTIFICATION_URL",
                   "MERCHANT_REFUND_SECRET")
+          binding = "ORDERS_DB"
+          if selected_provider == "stripe":
+              keys = ("CHECKOUT_PROVIDER", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
+                      "STRIPE_TEST_CHECKOUT_ENABLED", "STRIPE_TEST_ORIGIN")
+              binding = "STRIPE_TEST_ORDERS_DB"
           for environment in ("preview", "production"):
               config = (project.get("deployment_configs") or {}).get(environment) or {}
               variables = config.get("env_vars") or {}
@@ -99,5 +112,5 @@ jobs:
                   entry = variables.get(key)
                   print("  " + key + ": " + ("PRESENT (" + str(entry.get("type")) + ")" if entry else "MISSING"))
               databases = config.get("d1_databases") or {}
-              print("  ORDERS_DB binding: " + ("PRESENT" if "ORDERS_DB" in databases else "MISSING"))
+              print("  " + binding + " binding: " + ("PRESENT" if binding in databases else "MISSING"))
           print("READ-ONLY PREFLIGHT COMPLETE. No deployment, secret update or payment was performed.")

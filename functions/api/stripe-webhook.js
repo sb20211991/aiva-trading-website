@@ -1,6 +1,6 @@
 import { handleStripeWebhook } from '../_lib/commerce.js';
 
-/** Legacy path kept so old Stripe webhook bookmarks return a clear retired response. */
+/** Signed Stripe test events only. Live events are rejected. */
 export async function onRequestPost(context) {
   return handleStripeWebhook(context.request, context.env);
 }

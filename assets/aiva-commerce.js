@@ -1,4 +1,4 @@
-/* Aiva Commerce: product discovery and basket. No card data or Square secrets in this file. */
+/* Aiva Commerce: product discovery and basket. No card data or payment secrets in this file. */
 (() => {
 'use strict';
 const root = document.getElementById('aiva-online-store');
@@ -70,12 +70,14 @@ function render(){if(!catalog)return;
   updateCart();
 }
 async function load(){try{
-  const [dataRes,statusRes]=await Promise.all([fetch('data/aiva-products.json',{cache:'no-store'}),fetch('/api/shop-status',{cache:'no-store'})]);
+  const statusRes=await fetch('/api/shop-status',{cache:'no-store'});
+  if(statusRes.ok){shopStatus=await statusRes.json()} else shopStatus={ready:false,mode:'disabled'};
+  const cataloguePath=shopStatus.cataloguePath==='/data/aiva-products.stripe-test.json'?shopStatus.cataloguePath:'/data/aiva-products.json';
+  const dataRes=await fetch(cataloguePath,{cache:'no-store'});
   if(!dataRes.ok)throw new Error('Product catalogue unavailable.'); catalog=await dataRes.json();
   if(!catalog||!Array.isArray(catalog.products))throw new Error('Product catalogue is invalid.');
   products=catalog.products.filter(listed);
   const seen=new Set();products=products.filter(p=>{if(seen.has(p.sku))return false;seen.add(p.sku);return true});
-  if(statusRes.ok){shopStatus=await statusRes.json()} else shopStatus={ready:false,mode:'disabled'};
   const categories=new Set(Array.isArray(catalog.categories)?catalog.categories.filter(x=>typeof x==='string'&&x.length<80):[]);products.forEach(p=>categories.add(p.category));
   for(const c of categories){els.category.add(new Option(c,c));}
   if(typeof catalog.deliveryPolicy==='string'&&catalog.deliveryPolicy.trim()&&typeof catalog.returnsPolicy==='string'&&catalog.returnsPolicy.trim()){
@@ -83,7 +85,7 @@ async function load(){try{
   }
   if(shopStatus.ready&&shopStatus.mode==='live')setStatus('Online checkout is available for confirmed in-stock products.','info');
   else if(shopStatus.ready&&shopStatus.mode==='test')setStatus('TEST CHECKOUT ONLY — this shop is not taking real payments.','warning');
-  else setStatus('Browse products and request information. Secure payments will open after product listings, delivery terms and Square setup are confirmed.','warning');
+  else setStatus('Browse products and request information. Secure payments will open after product listings, delivery terms and payment setup are confirmed.','warning');
   render();
  }catch(e){setStatus('Shop listings are temporarily unavailable. Our sourcing enquiry form is still available below.','warning');els.results.replaceChildren(text('p','Product catalogue could not load.'));els.checkout.disabled=true;}
 }
@@ -101,6 +103,7 @@ els.checkout.addEventListener('click',async()=>{
     const pageHost=location.hostname.toLowerCase();
     const localPreview=pageHost==='127.0.0.1'||pageHost==='localhost';
     const trusted=
+      host==='checkout.stripe.com'||
       host==='square.link'||host.endsWith('.square.link')||
       host==='checkout.square.site'||host.endsWith('.checkout.square.site')||
       host.endsWith('.squareup.com')||host.endsWith('.squareupsandbox.com')||

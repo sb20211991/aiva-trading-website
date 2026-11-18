@@ -89,7 +89,7 @@
     buttons.forEach((button) => {
       button.disabled = busy || !ready;
       button.textContent = busy
-        ? 'Opening Square checkout…'
+        ? 'Opening secure checkout…'
         : button.dataset.aivaOriginalLabel || button.textContent;
     });
     view.basket.textContent = unitCount
@@ -119,15 +119,15 @@
     if (online.ready === true && online.mode === 'live')
       setMessage(
         unitCount
-          ? 'Secure card checkout is available. Continue above to pay on Square.'
+          ? 'Secure card checkout is available. Continue above to pay.'
           : 'Choose an available product in the Shop to enable secure card checkout.',
         true
       );
     else if (online.ready === true && online.mode === 'test')
-      setMessage('TEST MODE ONLY — Square sandbox can simulate card checkout but will not charge real money.');
+      setMessage('TEST MODE ONLY — simulated checkout; no real money is charged and no goods are dispatched.');
     else
       setMessage(
-        'Card checkout is not yet available. Add Square credentials in Cloudflare Pages, then deploy this shop.'
+        'Card checkout is not yet available. Online orders remain closed while payment setup and products are prepared.'
       );
   }
 
@@ -137,13 +137,14 @@
     });
     cart = loadSavedCart();
     try {
-      const [r1, r2] = await Promise.all([
-        fetch('/data/aiva-products.json', { cache: 'no-store' }),
-        fetch('/api/shop-status', { cache: 'no-store' })
-      ]);
+      const r2 = await fetch('/api/shop-status', { cache: 'no-store' });
+      if (!r2.ok) throw Error('Cannot verify store readiness.');
+      online = await r2.json();
+      const cataloguePath = online.cataloguePath === '/data/aiva-products.stripe-test.json'
+        ? online.cataloguePath : '/data/aiva-products.json';
+      const r1 = await fetch(cataloguePath, { cache: 'no-store' });
       if (!r1.ok || !r2.ok) throw Error('Cannot verify store readiness.');
       catalog = await r1.json();
-      online = await r2.json();
       if (!Array.isArray(catalog?.products)) throw Error('Invalid catalogue.');
     } catch {
       online = { ready: false, mode: 'disabled' };
@@ -152,11 +153,12 @@
     render();
   }
 
-  function trustedSquareCheckout(url) {
+  function trustedCheckout(url) {
     const host = url.hostname.toLowerCase();
     const pageHost = location.hostname.toLowerCase();
     const localPreview = pageHost === '127.0.0.1' || pageHost === 'localhost';
     return (
+      host === 'checkout.stripe.com' ||
       host === 'square.link' ||
       host.endsWith('.square.link') ||
       host === 'checkout.square.site' ||
@@ -195,7 +197,7 @@
       const localPreview = pageHost === '127.0.0.1' || pageHost === 'localhost';
       const protocolOk =
         url.protocol === 'https:' || (localPreview && url.protocol === 'http:');
-      if (!protocolOk || !trustedSquareCheckout(url))
+      if (!protocolOk || !trustedCheckout(url))
         throw Error('Unrecognized checkout destination.');
       if (typeof data.orderId === 'string' && /^[A-Za-z0-9_-]{8,191}$/.test(data.orderId)) {
         try {

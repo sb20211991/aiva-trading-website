@@ -34,7 +34,7 @@
         out.textContent =
           (a.mode === 'test'
             ? 'TEST PAYMENT CONFIRMED — no real money charged.'
-            : 'Payment confirmed by Square.') +
+            : 'Payment confirmed by the payment provider.') +
           ' Your reference ends in ' +
           a.reference +
           '. Aiva will review the order and delivery arrangements.';
@@ -45,6 +45,6 @@
     })
     .catch(() => {
       out.textContent =
-        'We could not verify this payment automatically. Please check your Square receipt or contact Aiva before making another payment.';
+        'We could not verify this payment automatically. Please check your payment receipt or contact Aiva before making another payment.';
     });
 })();

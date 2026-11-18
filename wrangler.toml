@@ -14,6 +14,13 @@ pages_build_output_dir = "."
 
 # Keep plain vars in wrangler.toml so `wrangler pages deploy` does not wipe them.
 [vars]
+CHECKOUT_PROVIDER = "stripe"
+# Empty public shop by default. Enable the test fixture ONLY on an explicit Pages preview origin.
+STRIPE_TEST_CHECKOUT_ENABLED = "false"
+# STRIPE_TEST_ORIGIN must be the exact https://<preview>.pages.dev origin (no trailing slash).
+# Add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET as encrypted PREVIEW secrets.
+# Bind a SEPARATE test D1 database as STRIPE_TEST_ORDERS_DB in preview configuration.
+# Never reuse ORDERS_DB for Stripe test records.
 SQUARE_ENVIRONMENT = "sandbox"
 SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
 
