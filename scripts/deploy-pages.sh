@@ -39,4 +39,4 @@ echo "    → must be 404"
 echo
 echo "Add Square secrets in Cloudflare Pages → Settings → Environment variables"
 echo "(Production + Preview), or via Cursor Secrets then re-deploy."
-echo "Catalogue already has AIVA-SAMPLE-FEE; confirm sandbox payment before production."
+echo "Catalogue already has AIVA-TEST-1GBP £1 sandbox test; confirm sandbox payment before production."

@@ -76,8 +76,8 @@ assert.match(company, /Aivatradingltd2026@gmail\.com/);
 const catalogue = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
 assert.equal(catalogue.shopEnabled, true);
 assert.equal(catalogue.products.length, 1);
-assert.equal(catalogue.products[0].sku, 'AIVA-SAMPLE-FEE');
-assert.equal(catalogue.products[0].pricePence, 4900);
+assert.equal(catalogue.products[0].sku, 'AIVA-TEST-1GBP');
+assert.equal(catalogue.products[0].pricePence, 100);
 assert.equal(catalogue.products[0].available, true);
 assert.ok(String(catalogue.businessAddress || '').includes('Whitehill'));
 assert.ok(String(catalogue.deliveryPolicy || '').length >= 15);
@@ -103,5 +103,5 @@ assert.ok(assetCount >= 40, 'Expected rich asset set, found ' + assetCount);
 
 console.log('WEBSITE INTEGRITY CHECKS PASSED');
 console.log('- pages, assets, company details and Square Functions present');
-console.log('- shop enabled with one card-only SKU (AIVA-SAMPLE-FEE)');
+console.log('- shop enabled with one temporary £1 sandbox SKU (AIVA-TEST-1GBP)');
 console.log('- root _worker.js absent (Functions deploy path)');

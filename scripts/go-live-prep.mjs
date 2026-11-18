@@ -246,7 +246,7 @@ database_id = "${databaseId}"
           json.shopEnabled
         );
         if (json.ready === true) {
-          console.log('   Preview shop is ready for sandbox online card checkout (AIVA-SAMPLE-FEE).');
+          console.log('   Preview shop is ready for sandbox online card checkout (AIVA-TEST-1GBP).');
         } else {
           console.log('   Preview API is up; set remaining Square webhook/D1 secrets if ready=false.');
         }
@@ -259,7 +259,7 @@ database_id = "${databaseId}"
   console.log('\nDONE (sandbox prep only).');
   console.log('- Live production was NOT promoted.');
   console.log('- Real card charges were NOT taken.');
-  console.log('- Catalogue has AIVA-SAMPLE-FEE; keep SQUARE_ENVIRONMENT=sandbox until a test payment succeeds.');
+  console.log('- Catalogue has AIVA-TEST-1GBP; keep SQUARE_ENVIRONMENT=sandbox until a test payment succeeds.');
   console.log('- Next: open Square sandbox Payment Link from shop on the preview host, then refund via merchant tool.');
   if (!present('SQUARE_WEBHOOK_SIGNATURE_KEY')) {
     console.log('- Still missing SQUARE_WEBHOOK_SIGNATURE_KEY for signed webhook recording.');

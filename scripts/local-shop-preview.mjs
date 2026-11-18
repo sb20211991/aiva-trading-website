@@ -85,8 +85,8 @@ globalThis.fetch = async (input, init = {}) => {
           id: orderId,
           state: known ? 'COMPLETED' : 'OPEN',
           metadata: { source: 'aivatrading.uk' },
-          tenders: known ? [{ amount_money: { amount: 4900, currency: 'GBP' } }] : [],
-          total_money: { amount: 4900, currency: 'GBP' }
+          tenders: known ? [{ amount_money: { amount: 100, currency: 'GBP' } }] : [],
+          total_money: { amount: 100, currency: 'GBP' }
         }
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }

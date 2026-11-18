@@ -3,8 +3,8 @@
   "currency": "GBP",
   "shopEnabled": true,
   "businessAddress": "Aiva Trading Ltd, 153 Whitehill Road, Gravesend, Kent, DA12 5LS, United Kingdom",
-  "deliveryPolicy": "This catalogue currently sells a UK sample coordination fee only. After payment, Aiva confirms the exact sample model, any additional sample cost, and UK delivery arrangements by email within 2 business days. Physical goods are not dispatched until those details are agreed in writing. Delivery within Great Britain only.",
-  "returnsPolicy": "The sample coordination fee is non-refundable once Aiva has begun arranging the sample, except where required by UK consumer law or where Aiva cannot proceed with the agreed sample. Contact Aivatradingltd2026@gmail.com with your Square payment reference within 14 days of purchase for any return or refund request.",
+  "deliveryPolicy": "TEMPORARY SANDBOX TEST CATALOGUE. This £1 item exists only to verify Square sandbox checkout. No physical goods are dispatched for this SKU. Remove or set available=false before customer launch. Delivery within Great Britain only when real products are added later.",
+  "returnsPolicy": "The temporary £1 sandbox test charge is for integration testing only. Contact Aivatradingltd2026@gmail.com with your Square sandbox payment reference if you need a refund arranged in the Square sandbox dashboard. Real customer products and policies will replace this text before go-live.",
   "shipping": {
     "allowedCountries": [
       "GB"
@@ -25,12 +25,12 @@
   ],
   "products": [
     {
-      "sku": "AIVA-SAMPLE-FEE",
-      "name": "UK sample coordination fee",
-      "description": "One-off fee so Aiva can coordinate a confirmed product sample for a UK buyer. Exact model, any extra sample cost, and delivery are agreed by email after payment. This fee is credited against the agreed sample invoice when you proceed.",
+      "sku": "AIVA-TEST-1GBP",
+      "name": "Temporary £1 sandbox checkout test",
+      "description": "TEMPORARY — Square sandbox only. One-pound test item to verify basket and hosted checkout. Not a real product. Do not leave available for customers. Delete this SKU or set available=false before live launch.",
       "category": "Home essentials",
-      "pricePence": 4900,
-      "stock": 100,
+      "pricePence": 100,
+      "stock": 50,
       "available": true
     }
   ]
