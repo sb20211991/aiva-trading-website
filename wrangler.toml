@@ -1,19 +1,22 @@
-# Cloudflare Pages project for aivatrading.uk
-# Deploy with: ./website/scripts/deploy-pages.sh
-#
-# Uses Pages Functions (website/functions/) as the Worker backend.
-# Static HTML/CSS/images stay unchanged. Square tokens are NOT in frontend code.
-# After deploy, set encrypted secrets in Cloudflare Pages → Settings → Variables:
-#   SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, SQUARE_ENVIRONMENT,
-#   SQUARE_WEBHOOK_SIGNATURE_KEY, SQUARE_WEBHOOK_NOTIFICATION_URL,
-#   MERCHANT_REFUND_SECRET
-# Ready when GET /api/shop-status returns JSON (not HTML 404).
+# Existing Pages project. Verified domain: app.aivatrading.uk, NOT the requested apex.
+# Root promotion must verify the custom domain first: scripts/promote-production.mjs.
+# Static design and legacy providers are preserved; encrypted keys never enter assets.
+# This configuration deliberately leaves both real charges and preview fixtures disabled.
 name = "aiva-trading"
 compatibility_date = "2025-11-01"
-pages_build_output_dir = "."
+pages_build_output_dir = ".pages-output"
 
 # Keep plain vars in wrangler.toml so `wrangler pages deploy` does not wipe them.
 [vars]
+CHECKOUT_PROVIDER = "stripe"
+STRIPE_MODE = "test"
+STRIPE_LIVE_PAYMENTS_APPROVED = "false"
+# Empty public shop by default. Enable the test fixture ONLY on an explicit Pages preview origin.
+STRIPE_TEST_CHECKOUT_ENABLED = "false"
+# STRIPE_TEST_ORIGIN must be the exact https://<preview>.pages.dev origin (no trailing slash).
+# Add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET as encrypted PREVIEW secrets.
+# Bind a SEPARATE test D1 database as STRIPE_TEST_ORDERS_DB in preview configuration.
+# Never reuse ORDERS_DB for Stripe test records.
 SQUARE_ENVIRONMENT = "sandbox"
 SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
 

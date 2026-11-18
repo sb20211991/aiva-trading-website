@@ -85,7 +85,8 @@ jobs:
           echo "Pages project: ${PROJECT_NAME}"
           echo "Preview branch label: ${PREVIEW_BRANCH}"
           echo "Commit: ${GITHUB_SHA}"
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name="${PROJECT_NAME}" \
             --branch="${PREVIEW_BRANCH}" \
             --commit-hash="${GITHUB_SHA}" \

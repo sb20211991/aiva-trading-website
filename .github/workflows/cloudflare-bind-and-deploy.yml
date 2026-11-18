@@ -11,6 +11,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   bind-and-deploy:
+    # Archived recovery code: use the reviewed, domain-verified production workflow.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -128,7 +130,8 @@ jobs:
           echo "Deploying PRODUCTION to project: ${PROJECT_NAME}"
           # Force production by setting production branch alias explicitly via wrangler.
           # First try no-branch production deploy.
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name="${PROJECT_NAME}" \
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="Bind+production ${GITHUB_SHA}" \

@@ -1,7 +1,10 @@
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
 .env
 .env.*
 !.env.example
 node_modules/
 .wrangler/
+.pages-output/
 *.pem

@@ -267,21 +267,18 @@ async function run() {
   assert.equal(refundBody.refundId, 'REFUND_TEST_1');
   console.log('square refund api ok');
 
-  const retired = await handleStripeWebhook(
+  const unconfiguredStripe = await handleStripeWebhook(
     new Request(base + '/api/stripe-webhook', { method: 'POST', body: '{}' }),
     env
   );
-  assert.equal(retired.status, 410);
-  console.log('stripe webhook retired ok');
+  assert.equal(unconfiguredStripe.status, 503);
+  console.log('unconfigured stripe webhook fails closed');
 
-  // Live catalogue ships with one card-payable sample fee SKU.
+  // Public catalogue stays closed; all fake products live in isolated test fixtures.
   const liveCat = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
-  assert.equal(liveCat.shopEnabled, true);
-  assert.equal(liveCat.products.length, 1);
-  assert.equal(liveCat.products[0].sku, 'AIVA-TEST-1GBP');
-  assert.equal(liveCat.products[0].pricePence, 100);
-  assert.equal(liveCat.products[0].available, true);
-  console.log('live catalogue has temporary £1 sandbox SKU');
+  assert.equal(liveCat.shopEnabled, false);
+  assert.equal(liveCat.products.length, 0);
+  console.log('public catalogue is empty and closed');
 
   console.log('ALL LOCAL CHECKOUT TESTS PASSED');
 }

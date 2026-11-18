@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   reactivate:
+    # Archived: merging website code must not automatically change domain routing.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -87,7 +89,8 @@ jobs:
           set -euo pipefail
           npm test
           test ! -f _worker.js
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name=aiva-trading \
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="Reactivate apex ${GITHUB_SHA}" \

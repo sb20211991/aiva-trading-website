@@ -1,4 +1,17 @@
-# Copy to website/.dev.vars for local wrangler testing. Never commit real values.
+# Copy to .dev.vars for local wrangler testing. Never commit real values.
+
+CHECKOUT_PROVIDER=stripe
+STRIPE_MODE=test
+STRIPE_LIVE_PAYMENTS_APPROVED=false
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_TEST_CHECKOUT_ENABLED=true
+STRIPE_TEST_ORIGIN=http://127.0.0.1:8788
+# Bind a separate local D1 database as STRIPE_TEST_ORDERS_DB (see STRIPE-TEST-SETUP.md).
+# Future live mode needs separate encrypted STRIPE_LIVE_SECRET_KEY and
+# STRIPE_LIVE_WEBHOOK_SECRET, a separate STRIPE_LIVE_ORDERS_DB binding,
+# STRIPE_LIVE_ORIGIN=https://aivatrading.uk, and explicit owner activation approval.
+# Do not put live credentials in local test configuration.
 
 SQUARE_ACCESS_TOKEN=
 SQUARE_LOCATION_ID=

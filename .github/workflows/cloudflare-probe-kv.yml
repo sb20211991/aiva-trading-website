@@ -8,6 +8,8 @@ permissions:
   contents: read
 jobs:
   probe:
+    # Archived: a permissions check must not create KV/R2 resources on a code merge.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - name: Probe KV/R2 permissions
