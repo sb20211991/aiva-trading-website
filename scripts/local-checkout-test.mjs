@@ -161,6 +161,7 @@ const rf = (id, status, amount) => ({ refund: { id, status, payment_id: 'PAY_' +
 await webhook(evt('E5', 'refund.updated', rf('RF_DASH_0001', 'FAILED', 300)));
 assert.equal(order(o1).refunded_total, 595, 'unrelated failed refund must not release website refunds');
 await webhook(evt('E6', 'refund.updated', rf('RF_TEST_0002', 'FAILED', 500)));
+await webhook(evt('E6b', 'refund.created', rf('RF_TEST_0002', 'PENDING', 500)));
 assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95); assert.equal(order(o1).fulfillment_status, 'shipped');
 const k1 = calls.filter((c) => c.url.endsWith('/v2/refunds')).at(-1).body.idempotency_key;
 j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).json();

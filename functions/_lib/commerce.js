@@ -455,7 +455,7 @@ async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook
   await db.prepare(
     fromWebhook
       ? `INSERT INTO refunds (refund_id, payment_id, amount, status, updated_at) VALUES (?,?,?,?,?)
-         ON CONFLICT(refund_id) DO UPDATE SET status=excluded.status, amount=excluded.amount, updated_at=excluded.updated_at`
+         ON CONFLICT(refund_id) DO UPDATE SET status=CASE WHEN refunds.status IN ('COMPLETED','FAILED','REJECTED') THEN refunds.status ELSE excluded.status END, amount=excluded.amount, updated_at=excluded.updated_at`
       : `INSERT INTO refunds (refund_id, payment_id, amount, status, updated_at) VALUES (?,?,?,?,?)
          ON CONFLICT(refund_id) DO NOTHING`
   ).bind(refundId, paymentId, amount, status, t).run();
@@ -485,10 +485,14 @@ export async function handleCreateRefund(request, env) {
   const remaining = Number(row.amount_total) - already;
   const amount = data?.amountPence === undefined ? remaining : data.amountPence;
   if (!Number.isSafeInteger(amount) || amount < 1 || amount > remaining) return respond({ error: 'Invalid refund amount.' }, 400);
+  /* Same key until Square's answer for this attempt is recorded, so a lost response cannot refund twice. */
+  const attempts = (await env.ORDERS_DB.prepare('SELECT COUNT(*) AS n FROM refunds WHERE payment_id=?').bind(row.payment_id).first())?.n || 0;
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(orderId)));
+  const key = ('r' + attempts + '_' + amount + '_' + Array.from(digest.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('')).slice(0, 45);
   const result = await squareFetch(env, '/v2/refunds', {
     method: 'POST',
     body: JSON.stringify({
-      idempotency_key: 'rf_' + crypto.randomUUID(),
+      idempotency_key: key,
       payment_id: row.payment_id,
       amount_money: { amount, currency: 'GBP' },
       reason: str(data?.reason || 'Customer refund').slice(0, 192)
