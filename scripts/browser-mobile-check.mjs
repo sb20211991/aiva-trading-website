@@ -147,5 +147,5 @@ try {
   await new Promise(resolve => { if (browser.exitCode !== null) resolve(); else browser.once('exit', resolve); });
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
-  rmSync(profile, { recursive: true, force: true });
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }

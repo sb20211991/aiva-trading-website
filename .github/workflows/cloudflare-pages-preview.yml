@@ -86,8 +86,9 @@ jobs:
           echo "Preview branch label: ${PREVIEW_BRANCH}"
           echo "Commit: ${GITHUB_SHA}"
           node scripts/build-pages-assets.mjs
-          npx --yes wrangler@4 pages deploy .pages-output \
-            --config=wrangler.toml \
+          node scripts/prepare-pages-deploy.mjs
+          cd .pages-deploy
+          npx --yes wrangler@4 pages deploy public \
             --project-name="${PROJECT_NAME}" \
             --branch="${PREVIEW_BRANCH}" \
             --commit-hash="${GITHUB_SHA}" \

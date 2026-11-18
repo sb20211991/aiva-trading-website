@@ -28,22 +28,14 @@ for (const entry of readdirSync(join(root, 'assets'), { withFileTypes: true })) 
     copy('assets/' + entry.name);
   }
 }
-// Merchant tools stay in the repository for the owner, never in public assets.
-copy('functions/_middleware.js');
-// Wrangler recognizes this special source directory and bundles it as Functions;
-// it does not upload it as ordinary static files.
-for (const directory of ['functions/api', 'functions/_lib']) {
-  for (const entry of readdirSync(join(root, directory), { withFileTypes: true })) {
-    if (entry.isFile() && /^[a-z0-9-]+\.js$/.test(entry.name)) copy(directory + '/' + entry.name);
-  }
-}
+// Backend and merchant sources are never ordinary public assets. The Pages
+// deployment preparer supplies Functions beside, not inside, the asset folder.
 for (const excluded of ['.github', '.git', '.dev.vars', '.env', '_archive', 'README.md',
-  'STRIPE-TEST-SETUP.md', 'wrangler.toml', 'wrangler.jsonc', 'workers', 'merchant-tools',
+  'STRIPE-TEST-SETUP.md', 'wrangler.toml', 'wrangler.jsonc', 'functions', 'workers', 'merchant-tools',
   'scripts', 'package.json', 'ORDER-DATABASE-SETUP.sql']) {
   assert.equal(existsSync(join(output, excluded)), false, 'Private source copied: ' + excluded);
 }
-for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js',
-  'functions/api/shop-status.js', 'functions/_lib/commerce.js', 'functions/_lib/stripe-test.js']) {
+for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js', 'assets/aiva-money.js']) {
   assert.ok(existsSync(join(output, required)), 'Missing deployment file: ' + required);
 }
 console.log('Pages upload directory built and checked: .pages-output (no repository metadata, scripts, docs or archives).');

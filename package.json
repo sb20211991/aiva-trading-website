@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity && npm run test:deployment && npm run test:security && npm run build:worker",
+    "build": "npm test",
+    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity && npm run test:deployment && npm run test:security && npm run test:pages && npm run build:worker",
+    "test:pages": "node scripts/pages-staging-test.mjs",
     "test:security": "node scripts/worker-security-test.mjs",
     "test:browser": "node scripts/browser-mobile-check.mjs",
     "test:deployment": "node scripts/deployment-safety-test.mjs",

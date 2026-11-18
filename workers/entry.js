@@ -31,7 +31,9 @@ export default {
         } else {
           const handler = route.module['onRequest' + method[0] + method.slice(1).toLowerCase()]
             || route.module.onRequest;
-          response = await handler({ request, env, waitUntil: executionContext?.waitUntil?.bind(executionContext) });
+          const routedRequest = request.method === 'HEAD' ? new Request(request, { method: 'GET' }) : request;
+          response = await handler({ request: routedRequest, env,
+            waitUntil: executionContext?.waitUntil?.bind(executionContext) });
         }
       } else if (path === '/merchant-tools' || path.startsWith('/merchant-tools/') || path.startsWith('/api/')) {
         response = Response.json({ error: 'Not found.' }, { status: 404 });

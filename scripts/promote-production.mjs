@@ -1,5 +1,6 @@
 /* Explicit, reviewed CLOSED-SHOP release only. Never changes DNS or enables payments. */
 import assert from 'node:assert/strict';
+import { preparePagesDeployment } from './prepare-pages-deploy.mjs';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -55,11 +56,11 @@ async function main() {
   execFileSync('node', ['scripts/build-pages-assets.mjs'], {
     stdio: 'inherit', env: { ...env, GITHUB_SHA: sha }
   });
-  execFileSync('npx', ['--yes', 'wrangler@4.164.0', 'pages', 'deploy', '.pages-output',
-    '--config=wrangler.toml',
+  const deploymentDirectory = preparePagesDeployment();
+  execFileSync('npx', ['--yes', 'wrangler@4.164.0', 'pages', 'deploy', 'public',
     '--project-name=aiva-trading', '--branch=' + project.production_branch,
     '--commit-hash=' + sha, '--commit-message=Approved closed-shop release',
-    '--commit-dirty=false'], { stdio: 'inherit' });
+    '--commit-dirty=false'], { stdio: 'inherit', cwd: deploymentDirectory });
   for (let attempt = 0; attempt < 6; attempt++) {
     await new Promise(resolve => setTimeout(resolve, 10000));
     try {
