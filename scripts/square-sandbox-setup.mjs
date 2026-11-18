@@ -47,7 +47,8 @@ const k = await sq(SANDBOX, `/v2/webhooks/subscriptions/${sub.id}/signature-key`
 const sigKey = k.data.signature_key;
 if (k.status !== 200 || !sigKey) { console.log('Signature key rotation failed HTTP', k.status); ghOut('configured', 'false'); process.exit(1); }
 mask(sigKey);
-const merchant = (process.env.GH_MERCHANT_REFUND_SECRET || '').trim().length >= 24 ? process.env.GH_MERCHANT_REFUND_SECRET.trim() : randomBytes(32).toString('hex');
+const merchant = (process.env.GH_MERCHANT_REFUND_SECRET || '').trim();
+if (merchant.length < 24) { console.log('GitHub secret MERCHANT_REFUND_SECRET is missing or shorter than 24 characters; not replacing the merchant key.'); ghOut('configured', 'false'); process.exit(1); }
 mask(merchant);
 writeFileSync(out, JSON.stringify({ SQUARE_ACCESS_TOKEN: token, SQUARE_LOCATION_ID: loc.id, SQUARE_WEBHOOK_SIGNATURE_KEY: sigKey, MERCHANT_ADMIN_KEY: merchant }));
 writeFileSync(out + '.e2e', JSON.stringify({ sigKey, merchant, locationId: loc.id }));

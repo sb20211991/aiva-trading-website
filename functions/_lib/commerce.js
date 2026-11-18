@@ -439,6 +439,12 @@ export async function handleAdminOrders(request, env) {
   if (request.method === 'POST') {
     let data;
     try { data = JSON.parse(await readLimitedText(request, 4096)); } catch { return respond({ error: 'Invalid JSON.' }, 400); }
+    if (data?.sku !== undefined) {
+      if (!validSku(data.sku) || !validStock(data.stock)) return respond({ error: 'Invalid stock update.' }, 400);
+      await env.ORDERS_DB.prepare('INSERT INTO inventory (sku, stock, updated_at) VALUES (?,?,?) ON CONFLICT(sku) DO UPDATE SET stock=excluded.stock, updated_at=excluded.updated_at')
+        .bind(data.sku, data.stock, now()).run();
+      return respond({ ok: true });
+    }
     const orderId = str(data?.orderId), fulfilment = str(data?.fulfillmentStatus);
     if (!validId(orderId) || !['new', 'processing', 'shipped', 'cancelled'].includes(fulfilment)) return respond({ error: 'Invalid update.' }, 400);
     const r = await env.ORDERS_DB.prepare('UPDATE orders SET fulfillment_status=?, updated_at=? WHERE session_id=?').bind(fulfilment, now(), orderId).run();

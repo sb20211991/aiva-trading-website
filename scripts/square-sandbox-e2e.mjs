@@ -108,4 +108,7 @@ const sqr = await sq('/v2/refunds?location_id=' + encodeURIComponent(p.data.paym
 const mine = (sqr.data.refunds || []).filter((x) => x.payment_id === p.data.payment.id);
 ok(`Square shows ${mine.length} refunds for the payment: ${mine.map((x) => x.amount_money.amount + 'p ' + x.status).join(', ')}`);
 
+const restore = await site('/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ sku: 'AIVA-TEST-1GBP', stock: stock0 }) });
+assert.equal(restore.status, 200);
+ok(`merchant stock update: test stock restored to ${stock0}`);
 console.log('\nSQUARE SANDBOX E2E PASSED\n' + results.join('\n'));

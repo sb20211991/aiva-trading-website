@@ -150,6 +150,9 @@ j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders?statu
 assert.equal(j.orders.length, 1); assert.equal(j.orders[0].orderId, o1);
 j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ orderId: o1, fulfillmentStatus: 'shipped' }) }), env)).json();
 assert.equal(j.ok, true); assert.equal(order(o1).fulfillment_status, 'shipped');
+j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ sku: 'AIVA-TEST-1GBP', stock: 4 }) }), env)).json();
+assert.equal(j.ok, true); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+assert.equal((await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ sku: 'AIVA-TEST-1GBP', stock: -1 }) }), env)).status, 400);
 assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }), env)).status, 401);
 assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 600 }, admin), env)).status, 400);
 j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 95 }, admin), env)).json();
