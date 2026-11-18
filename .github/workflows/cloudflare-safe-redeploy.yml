@@ -168,7 +168,8 @@ jobs:
           set -euo pipefail
           test ! -f _worker.js
           test -f functions/api/shop-status.js
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name=aiva-trading \
             --branch=main \
             --commit-hash="${GITHUB_SHA}" \

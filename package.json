@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity",
+    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity && npm run build:pages",
+    "build:pages": "node scripts/build-pages-assets.mjs",
     "test:stripe": "node scripts/stripe-test.mjs",
     "stripe:preview": "node scripts/stripe-test-preview.mjs",
     "test:checkout": "node scripts/local-checkout-test.mjs",

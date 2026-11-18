@@ -6,4 +6,5 @@
 !.env.example
 node_modules/
 .wrangler/
+.pages-output/
 *.pem

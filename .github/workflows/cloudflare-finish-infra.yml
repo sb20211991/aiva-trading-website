@@ -429,7 +429,8 @@ jobs:
           set -euo pipefail
           npm test
           test ! -f _worker.js
-          npx --yes wrangler@4 pages deploy .             --project-name=aiva-trading             --branch=main             --commit-hash="${GITHUB_SHA}"             --commit-message="Finish infra ${GITHUB_SHA}"             --commit-dirty=true
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output             --project-name=aiva-trading             --branch=main             --commit-hash="${GITHUB_SHA}"             --commit-message="Finish infra ${GITHUB_SHA}"             --commit-dirty=true
       - name: Re-apply ORDERS_DB + env after wrangler (deploy can wipe plains)
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -538,7 +539,8 @@ jobs:
           set -euo pipefail
           # Wrangler may wipe plains during deploy #1; env was re-applied above.
           # Deploy again with wrangler.toml [vars] + ORDERS_DB so the live snapshot is correct.
-          npx --yes wrangler@4 pages deploy .             --project-name=aiva-trading             --branch=main             --commit-hash="${GITHUB_SHA}"             --commit-message="Finish infra post-env ${GITHUB_SHA}"             --commit-dirty=true
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output             --project-name=aiva-trading             --branch=main             --commit-hash="${GITHUB_SHA}"             --commit-message="Finish infra post-env ${GITHUB_SHA}"             --commit-dirty=true
       - name: Final patch + diagnostics after second deploy
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -737,7 +739,8 @@ jobs:
             echo 'Skipping secret redeploy (no GitHub Square secret values).'
             exit 0
           fi
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name=aiva-trading \
             --branch=main \
             --commit-hash="${GITHUB_SHA}" \

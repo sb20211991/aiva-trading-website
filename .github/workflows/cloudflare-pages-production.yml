@@ -51,7 +51,8 @@ jobs:
           # No --branch flag: Wrangler promotes this deploy to Pages production
           # (custom domain aivatrading.uk). A --branch value creates a preview only.
           echo "Deploying PRODUCTION to Pages project aiva-trading (no preview branch)"
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name=aiva-trading \
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="Production deploy ${GITHUB_SHA}" \

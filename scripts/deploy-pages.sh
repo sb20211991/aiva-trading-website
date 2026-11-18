@@ -2,8 +2,7 @@
 # Deploy Aiva Trading website with Cloudflare Pages Functions (functions/ directory).
 # This must NOT upload a root _worker.js as a static asset.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SITE="$ROOT/website"
+SITE="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="${1:-aiva-trading}"
 
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
@@ -26,7 +25,9 @@ fi
 echo "Deploying Pages project '$PROJECT' WITH Functions Worker backend (functions/)…"
 echo "Static design/pages are preserved; only /api/* is handled by the Worker."
 
-npx --yes wrangler@4 pages deploy "$SITE" \
+cd "$SITE"
+node scripts/build-pages-assets.mjs
+npx --yes wrangler@4 pages deploy "$SITE/.pages-output" \
   --project-name="$PROJECT" \
   --commit-dirty=true
 
@@ -39,4 +40,4 @@ echo "    → must be 404"
 echo
 echo "Add Square secrets in Cloudflare Pages → Settings → Environment variables"
 echo "(Production + Preview), or via Cursor Secrets then re-deploy."
-echo "Catalogue already has AIVA-TEST-1GBP £1 sandbox test; confirm sandbox payment before production."
+echo "The public catalogue is empty and closed. See STRIPE-TEST-SETUP.md for the separate approved Stripe test preview."

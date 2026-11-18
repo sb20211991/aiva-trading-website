@@ -10,6 +10,7 @@ DESIGN-RESEARCH.md
 .env
 .env.*
 .git/
+.pages-output/
 .github/
 .openai/
 _archive/

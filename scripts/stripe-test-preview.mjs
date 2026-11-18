@@ -60,11 +60,16 @@ for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) {
 }
 const directory = mkdtempSync(join(tmpdir(), 'aiva-stripe-preview-'));
 try {
+  const build = spawnSync(process.execPath, ['scripts/build-pages-assets.mjs'], {
+    cwd: root, stdio: 'inherit'
+  });
+  if (build.error || build.status !== 0) fail('Website packaging failed. No deployment attempted.');
+  const upload = join(root, '.pages-output');
   const config = join(directory, 'wrangler.toml');
   writeFileSync(config, [
     `name = "${project}"`,
     'compatibility_date = "2025-11-01"',
-    `pages_build_output_dir = ${JSON.stringify(root)}`,
+    `pages_build_output_dir = ${JSON.stringify(upload)}`,
     '[vars]',
     'CHECKOUT_PROVIDER = "stripe"',
     'STRIPE_TEST_CHECKOUT_ENABLED = "true"',
@@ -74,7 +79,7 @@ try {
     'database_name = "aiva_stripe_test_orders"',
     `database_id = ${JSON.stringify(databaseId)}`
   ].join('\n') + '\n', { mode: 0o600 });
-  const result = spawnSync('npx', ['--yes', 'wrangler@4', 'pages', 'deploy', root,
+  const result = spawnSync('npx', ['--yes', 'wrangler@4', 'pages', 'deploy', upload,
     '--config', config, `--project-name=${project}`, `--branch=${branch}`,
     '--commit-dirty=true'], { cwd: root, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
   if (result.error || result.status !== 0) fail('Stripe test preview deployment failed. Production was not requested.');

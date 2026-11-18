@@ -10,7 +10,7 @@
 # Ready when GET /api/shop-status returns JSON (not HTML 404).
 name = "aiva-trading"
 compatibility_date = "2025-11-01"
-pages_build_output_dir = "."
+pages_build_output_dir = ".pages-output"
 
 # Keep plain vars in wrangler.toml so `wrangler pages deploy` does not wipe them.
 [vars]

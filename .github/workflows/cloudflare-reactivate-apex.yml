@@ -87,7 +87,8 @@ jobs:
           set -euo pipefail
           npm test
           test ! -f _worker.js
-          npx --yes wrangler@4 pages deploy . \
+          node scripts/build-pages-assets.mjs
+          npx --yes wrangler@4 pages deploy .pages-output \
             --project-name=aiva-trading \
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="Reactivate apex ${GITHUB_SHA}" \

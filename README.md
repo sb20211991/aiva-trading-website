@@ -45,6 +45,11 @@ npm test
 
 Use Cloudflare Pages with this repository as the project root (Functions from `functions/`). Do not restore a root `_worker.js`.
 
+Build command: `npm run build:pages`. Upload directory: `.pages-output`.
+Pages ignores `.assetsignore`, so never deploy the repository root directly.
+The packaging script includes only website assets and the special Functions directory,
+not workflow files, scripts, documentation or the original ZIP archive.
+
 ### GitHub Actions (preview only)
 
 Workflows under `.github/workflows/` run tests and can deploy a **Cloudflare Pages preview**:

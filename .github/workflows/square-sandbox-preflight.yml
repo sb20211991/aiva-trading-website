@@ -37,7 +37,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: python
         run: |
-          import json, os, urllib.request, urllib.error, sys, tomllib
+          import json, os, urllib.request, urllib.error, sys, tomllib, re
           with open("wrangler.toml", "rb") as config_file:
               repo_config = tomllib.load(config_file)
           selected_provider = repo_config.get("vars", {}).get("CHECKOUT_PROVIDER")
@@ -61,6 +61,13 @@ jobs:
                       result = json.load(response)
               except urllib.error.HTTPError as error:
                   print("Cloudflare API access failed (HTTP " + str(error.code) + ").")
+                  try:
+                      details = json.load(error)
+                      codes = [str(e.get("code")) for e in details.get("errors", [])
+                               if isinstance(e.get("code"), int)]
+                      print("Cloudflare API error codes: " + ", ".join(codes))
+                  except Exception:
+                      pass
                   sys.exit(1)
               except Exception:
                   print("Cloudflare API could not be reached. No changes made.")
@@ -69,28 +76,16 @@ jobs:
                   print("Cloudflare rejected the read-only request. No changes made.")
                   sys.exit(1)
               return result
-          projects, page = [], 1
-          while True:
-              response = get("/pages/projects?per_page=100&page=" + str(page))
-              batch = response.get("result", [])
-              projects.extend(batch)
-              info = response.get("result_info", {})
-              if page >= info.get("total_pages", page):
-                  break
-              page += 1
-          matches = [p for p in projects if
-                     any(d in ("aivatrading.uk", "www.aivatrading.uk")
-                         for d in p.get("domains", []))]
-          if not matches:
-              # Use the explicit existing deployment target, not a guessed Worker name.
-              matches = [p for p in projects if p.get("name") == repo_config.get("name")]
-              if matches:
-                  print("WARNING: Pages project found by repository configuration; apex domain association was not verified.")
-          if len(matches) != 1:
-              print("BLOCKED: could not uniquely identify the configured Pages project.")
-              print("No Worker name or deployment target has been assumed.")
+          target = repo_config.get("name", "")
+          if not re.fullmatch(r"[a-z0-9-]+", target):
+              print("BLOCKED: invalid Pages project name in repository configuration.")
               sys.exit(1)
-          project = matches[0]
+          project = get("/pages/projects/" + target).get("result") or {}
+          if project.get("name") != target:
+              print("BLOCKED: Cloudflare returned a different Pages project.")
+              sys.exit(1)
+          if not any(d in ("aivatrading.uk", "www.aivatrading.uk") for d in project.get("domains", [])):
+              print("WARNING: configured Pages project found; apex domain association was not verified.")
           print("Verified Pages project: " + project["name"])
           print("Production branch: " + str(project.get("production_branch")))
           deployment = project.get("canonical_deployment") or {}

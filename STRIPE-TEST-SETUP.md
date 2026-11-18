@@ -34,7 +34,14 @@ database failure, atomic rollback, and retry recovery.
 
 Wrangler 4 also compiled the Pages Functions successfully. The preview deployment
 helper was checked to refuse execution without its explicit approval flag; no
-deployment was made during these checks.
+manual deployment was made during these checks. Existing PR automation created a
+closed-shop preview, which confirmed the API works and checkout is disabled.
+
+That preview also revealed that Pages does not honor `.assetsignore`: a workflow
+file was publicly served. Deployment entry points now build and upload an explicit
+`.pages-output` directory instead of the repository root. No existing website
+pages/assets are removed. The packaging check prevents repository metadata,
+configuration, scripts, documentation and archives from entering the upload directory.
 
 **These checks are not a completed hosted Stripe payment.**
 `/api/shop-status` reports local configuration readiness, not proven Stripe
