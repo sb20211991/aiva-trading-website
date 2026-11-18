@@ -14,11 +14,13 @@ function d1() {
   const db = new DatabaseSync(':memory:');
   // Legacy production schema (with CHECK constraints) to prove the in-place self-migration.
   db.exec(`CREATE TABLE orders (session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL,
-    payment_status TEXT NOT NULL CHECK(payment_status IN ('pending','paid','failed','refunded')),
+    payment_status TEXT NOT NULL CHECK(payment_status IN ('pending','paid','failed')),
     fulfillment_status TEXT NOT NULL DEFAULT 'new' CHECK(fulfillment_status IN ('new','processing','shipped','cancelled','refunded')),
     customer_email TEXT, customer_name TEXT, amount_total INTEGER, currency TEXT, shipping_details_json TEXT, line_items_json TEXT,
-    payment_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-    CREATE TABLE payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL);`);
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE stripe_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL);
+    CREATE INDEX orders_payment_created ON orders(payment_status,created_at);
+    INSERT INTO orders (session_id,last_event_id,payment_status,created_at,updated_at) VALUES ('LEGACY_ORDER_0001','evt','paid',1,1);`);
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     run: async () => ({ meta: { changes: Number(db.prepare(sql).run(...args).changes) } }),
@@ -147,7 +149,7 @@ assert.equal(j.paid, true);
 // Merchant admin + refunds
 assert.equal((await m.handleAdminOrders(new Request(base + '/api/admin-orders'), env)).status, 401);
 j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders?status=paid', { headers: admin }), env)).json();
-assert.equal(j.orders.length, 1); assert.equal(j.orders[0].orderId, o1);
+assert.equal(j.orders.length, 2); assert.equal(j.orders[0].orderId, o1); assert.equal(j.orders[1].orderId, 'LEGACY_ORDER_0001', 'legacy rows kept by migration');
 j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ orderId: o1, fulfillmentStatus: 'shipped' }) }), env)).json();
 assert.equal(j.ok, true); assert.equal(order(o1).fulfillment_status, 'shipped');
 j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ sku: 'AIVA-TEST-1GBP', stock: 4 }) }), env)).json();

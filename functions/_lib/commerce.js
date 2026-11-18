@@ -33,26 +33,41 @@ function squareConfigured(env) {
 function hasDb(env) {
   return !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function';
 }
-/* Self-migrating schema: the Function's D1 binding upgrades older order tables in place.
-   payment_status keeps the original pending/paid/failed/refunded values; mismatches use review_reason. */
-const SCHEMA_COLUMNS = ['expected_total INTEGER', 'stock_applied INTEGER NOT NULL DEFAULT 0', 'payment_link_id TEXT',
-  'mode TEXT', 'paid_at INTEGER', 'refund_status TEXT', 'refunded_total INTEGER', 'review_reason TEXT'];
+/* Self-migrating schema: older order tables (no payment_id, payment_status CHECK without 'refunded')
+   are rebuilt once inside a D1 batch transaction, keeping every existing row. */
+const ORDER_COLUMNS = `session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL,
+  payment_status TEXT NOT NULL CHECK(payment_status IN ('pending','paid','failed','refunded')),
+  fulfillment_status TEXT NOT NULL DEFAULT 'new' CHECK(fulfillment_status IN ('new','processing','shipped','cancelled','refunded')),
+  customer_email TEXT, customer_name TEXT, amount_total INTEGER, currency TEXT, shipping_details_json TEXT, line_items_json TEXT,
+  payment_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expected_total INTEGER,
+  stock_applied INTEGER NOT NULL DEFAULT 0, payment_link_id TEXT, mode TEXT, paid_at INTEGER, refund_status TEXT,
+  refunded_total INTEGER, review_reason TEXT`;
+const ORDER_COLUMN_NAMES = ORDER_COLUMNS.split(/,\s*(?![^()]*\))/).map((c) => c.trim().split(/\s+/)[0]);
 const schemaReady = new WeakSet();
 async function ensureSchema(env) {
   const db = env.ORDERS_DB;
   if (schemaReady.has(db)) return;
   await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS orders (session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL, payment_status TEXT NOT NULL,
-      fulfillment_status TEXT NOT NULL DEFAULT 'new', customer_email TEXT, customer_name TEXT, amount_total INTEGER, currency TEXT,
-      shipping_details_json TEXT, line_items_json TEXT, payment_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    db.prepare('CREATE TABLE IF NOT EXISTS orders (' + ORDER_COLUMNS + ')'),
     db.prepare('CREATE TABLE IF NOT EXISTS payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL)'),
     db.prepare('CREATE TABLE IF NOT EXISTS refunds (refund_id TEXT PRIMARY KEY, payment_id TEXT NOT NULL, amount INTEGER NOT NULL, status TEXT NOT NULL, updated_at INTEGER NOT NULL)'),
     db.prepare('CREATE TABLE IF NOT EXISTS inventory (sku TEXT PRIMARY KEY, stock INTEGER NOT NULL, updated_at INTEGER NOT NULL)')
   ]);
   const { results } = await db.prepare('PRAGMA table_info(orders)').all();
-  const have = new Set((results || []).map((c) => c.name));
-  for (const col of SCHEMA_COLUMNS) {
-    if (!have.has(col.split(' ')[0])) await db.prepare('ALTER TABLE orders ADD COLUMN ' + col).run();
+  const have = (results || []).map((c) => c.name);
+  const ddl = (await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").first())?.sql || '';
+  const current = ORDER_COLUMN_NAMES.every((c) => have.includes(c)) && /'refunded'\s*\)\s*\)\s*,\s*fulfillment_status/i.test(ddl.replace(/\s+/g, ' '));
+  if (!current) {
+    const common = ORDER_COLUMN_NAMES.filter((c) => have.includes(c)).join(', ');
+    await db.batch([
+      db.prepare('DROP TABLE IF EXISTS orders_v2'),
+      db.prepare('CREATE TABLE orders_v2 (' + ORDER_COLUMNS + ')'),
+      db.prepare(`INSERT INTO orders_v2 (${common}) SELECT ${common} FROM orders`),
+      db.prepare('DROP TABLE orders'),
+      db.prepare('ALTER TABLE orders_v2 RENAME TO orders'),
+      db.prepare('CREATE INDEX IF NOT EXISTS orders_payment_created ON orders(payment_status,created_at)'),
+      db.prepare('CREATE INDEX IF NOT EXISTS orders_payment_id ON orders(payment_id)')
+    ]);
   }
   schemaReady.add(db);
 }

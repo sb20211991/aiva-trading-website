@@ -37,7 +37,7 @@ for (const directory of ['functions/api', 'functions/_lib']) {
     if (entry.isFile() && /^[a-z0-9-]+\.js$/.test(entry.name)) copy(directory + '/' + entry.name);
   }
 }
-for (const excluded of ['.github', '.git', '.dev.vars', '.env', '_archive', 'README.md',
+for (const excluded of ['.github', '.git', 'deploy', '.dev.vars', '.env', '_archive', 'README.md',
   'wrangler.toml', 'scripts', 'package.json', 'ORDER-DATABASE-SETUP.sql']) {
   assert.equal(existsSync(join(output, excluded)), false, 'Private source copied: ' + excluded);
 }
