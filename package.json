@@ -20,5 +20,6 @@
     "website:square-check": "node scripts/square-account-check.mjs"
   },
   "engines": { "node": ">=22.13.0" },
-  "dependencies": { "qrcode-generator": "2.0.4" }
+  "dependencies": { "qrcode-generator": "2.0.4" },
+  "devDependencies": { "jsqr": "1.4.0" }
 }

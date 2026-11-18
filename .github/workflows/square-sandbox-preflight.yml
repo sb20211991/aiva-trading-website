@@ -29,6 +29,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install pinned build and verification dependencies
+        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
       - name: Run local checkout and website checks
         run: npm test
       - name: Inspect existing payment resources and domain routing without changing them

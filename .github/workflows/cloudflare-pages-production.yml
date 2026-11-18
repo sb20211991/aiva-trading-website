@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install pinned build dependency
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
       - name: Require Cloudflare deploy secrets
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

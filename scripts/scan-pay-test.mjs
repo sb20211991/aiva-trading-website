@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { checkoutQrMatrix, productPaymentUrl, validateStripeCheckout, verifiedScanPayment }
+import jsQR from 'jsqr';
+import { checkoutQrMatrix, productPaymentUrl, productQrMatrix, validateStripeCheckout, verifiedScanPayment }
   from '../.worker-assets/assets/aiva-scan-pay.js';
 import { stripeTestCataloguePath } from '../functions/_lib/stripe-test.js';
 
@@ -19,11 +20,26 @@ assert.ok(matrix.length >= 21 && (matrix.length - 21) % 4 === 0);
 assert.ok(matrix.every(row => row.length === matrix.length && row.every(value => typeof value === 'boolean')));
 const finder = ['1111111', '1000001', '1011101', '1011101', '1011101', '1000001', '1111111'];
 assert.deepEqual(matrix.slice(0, 7).map(row => row.slice(0, 7).map(Number).join('')), finder);
+function independentlyDecode(modules) {
+  const scale = 5, quiet = 4, size = (modules.length + quiet * 2) * scale;
+  const pixels = new Uint8ClampedArray(size * size * 4).fill(255);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const row = Math.floor(y / scale) - quiet, column = Math.floor(x / scale) - quiet;
+    if (modules[row]?.[column]) {
+      const offset = (y * size + x) * 4;
+      pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = 0;
+    }
+  }
+  return jsQR(pixels, size, size, { inversionAttempts: 'dontInvert' })?.data;
+}
+assert.equal(independentlyDecode(matrix), url, 'An independent QR scanner must recover the exact Stripe URL.');
 const productUrl = new URL(productPaymentUrl('UNIT_TEST_SKU', 2));
 assert.equal(productUrl.origin, 'https://aivatrading.uk');
 assert.equal(productUrl.searchParams.get('sku'), 'UNIT_TEST_SKU');
 assert.equal(productUrl.searchParams.get('quantity'), '2');
 assert.equal(productUrl.searchParams.has('amount'), false);
+assert.equal(independentlyDecode(await productQrMatrix('UNIT_TEST_SKU', 2)), productUrl.href,
+  'Future product QR codes must decode to a SKU/quantity review link, never a client-supplied price.');
 assert.throws(() => productPaymentUrl('invalid/sku'));
 assert.throws(() => productPaymentUrl('UNIT_TEST_SKU', 11));
 assert.equal(verifiedScanPayment({ paid: true, mode: 'test', provider: 'stripe',
@@ -64,4 +80,4 @@ assert.ok((await successPage(false)).cart);
 assert.ok((await successPage('true')).cart);
 assert.ok((await successPage(true, true)).cart);
 assert.ok((await successPage(true, false, false)).cart); // Another device must not lose an unrelated basket.
-console.log('SCAN-TO-PAY CHECKS PASSED: local QR encoding, trusted Stripe links, future SKU links, test isolation and verified-payment-only basket clearing.');
+console.log('SCAN-TO-PAY CHECKS PASSED: independent QR decoding, trusted Stripe links, future SKU links, test isolation and verified-payment-only basket clearing.');

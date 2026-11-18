@@ -184,6 +184,7 @@
     if (
       busy ||
       online.ready !== true ||
+      (scan && online.provider !== 'stripe') ||
       !['live', 'test'].includes(online.mode) ||
       !Object.keys(cart).length
     )

@@ -110,7 +110,7 @@ for(const el of [els.search,els.min,els.max])el.addEventListener('input',render)
 for(const el of [els.category,els.sort,els.stock])el.addEventListener('change',render);
 $('aiva-reset-filters').addEventListener('click',()=>{els.search.value='';els.category.value='';els.sort.value='recommended';els.min.value='';els.max.value='';els.stock.checked=false;render()});
 async function beginCheckout(scan = false){
-  if(els.checkout.disabled||checkoutBusy)return;
+  if(els.checkout.disabled||checkoutBusy||(scan&&shopStatus.provider!=='stripe'))return;
   checkoutBusy=true;updateCart();els.error.hidden=true;
   try{
     const items=Object.entries(cart).map(([sku,quantity])=>({sku,quantity}));

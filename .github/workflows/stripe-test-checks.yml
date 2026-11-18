@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install pinned build dependency
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
       - name: Check Stripe test flow and existing website
         run: npm test
       - name: Check real mobile and desktop browser behaviour
