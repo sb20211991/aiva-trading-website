@@ -28,6 +28,8 @@ for (const entry of readdirSync(join(root, 'assets'), { withFileTypes: true })) 
     copy('assets/' + entry.name);
   }
 }
+copy('assets/aiva-qr-license.txt');
+copyFileSync(fileURLToPath(import.meta.resolve('qrcode-generator')), join(output, 'assets/aiva-qr-encoder.js'));
 // Backend and merchant sources are never ordinary public assets. The Pages
 // deployment preparer supplies Functions beside, not inside, the asset folder.
 for (const excluded of ['.github', '.git', '.dev.vars', '.env', '_archive', 'README.md',

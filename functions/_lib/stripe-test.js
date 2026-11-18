@@ -61,8 +61,9 @@ export function stripeTestCataloguePath(request, env) {
   let allowed = false;
   try {
     const preview = new URL(text(env.STRIPE_TEST_ORIGIN));
-    allowed = preview.origin === url.origin && (
-      (preview.protocol === 'https:' && preview.hostname.endsWith('.pages.dev')) ||
+    allowed = preview.origin === text(env.STRIPE_TEST_ORIGIN) && preview.origin === url.origin && (
+      (preview.protocol === 'https:' && (preview.hostname.endsWith('.pages.dev') ||
+        preview.hostname.endsWith('.sb20211991.workers.dev'))) ||
       (preview.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(preview.hostname))
     );
   } catch { /* No explicit preview origin: keep the empty public catalogue. */ }

@@ -55,7 +55,7 @@ const profile = mkdtempSync(join(tmpdir(), 'aiva-chromium-'));
 const browser = spawn(chrome, ['--headless', '--no-sandbox', '--disable-dev-shm-usage',
   '--disable-gpu', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
   '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore' });
-let socket;
+let socket, shutdown;
 const errors = [];
 try {
   for (let i = 0; i < 200 && !existsSync(join(profile, 'DevToolsActivePort')); i++) {
@@ -89,6 +89,11 @@ try {
       reject: error => { clearTimeout(timer); reject(error); } });
     socket.send(JSON.stringify({ id, method, params }));
   });
+  socket.onclose = () => {
+    for (const entry of pending.values()) entry.reject(Error('Browser connection closed.'));
+    pending.clear();
+  };
+  shutdown = async () => { try { await send('Browser.close'); } catch { /* Already closed. */ } };
   const evaluate = async expression => {
     const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
     if (result.exceptionDetails) throw Error(result.exceptionDetails.text);
@@ -133,17 +138,64 @@ try {
         assert.equal(open.targets, true, page + ' has small mobile navigation targets at ' + width);
         assert.ok(open.scroll <= open.width + 1, page + ' open navigation overflows at ' + width);
         await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
         assert.equal(await evaluate(`document.querySelector('#site-navigation').hidden &&
           document.activeElement === document.querySelector('.menu-toggle')`), true, 'Escape must close and return focus.');
       }
       checked++;
     }
   }
+  assert.equal(await evaluate(`document.querySelectorAll('.aiva-guide-payment-options article').length`), 3);
+  assert.equal(await evaluate(`document.querySelector('[data-aiva-scan-pay]').disabled`), true);
+  await viewport(375);
+  await evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+  await evaluate(`document.querySelector('.menu-toggle').click()`);
+  await viewport(1280);
+  await evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+  await viewport(375);
+  await evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+  assert.equal(await evaluate(`document.querySelector('#site-navigation').hidden`), true,
+    'Resizing must not leave mobile navigation open.');
+  const qr = await evaluate(`(async () => {
+    const launcher = document.createElement('button'); launcher.id = 'qr-test-launcher';
+    launcher.textContent = 'Test launcher'; document.body.append(launcher); launcher.focus();
+    const module = await import('/assets/aiva-scan-pay.js');
+    const dialog = await module.showScanToPay({
+      url: 'https://checkout.stripe.com/c/pay/cs_test_SyntheticQrUnitTest123456',
+      mode: 'test', poll: false, returnFocus: launcher
+    });
+    const image = dialog.querySelector('svg');
+    return { open: dialog.open, qr: !!image, width: image?.getBoundingClientRect().width,
+      fits: dialog.getBoundingClientRect().right <= innerWidth,
+      safeLink: dialog.querySelector('a').hostname === 'checkout.stripe.com',
+      testLabel: dialog.textContent.includes('TEST MODE') };
+  })()`);
+  assert.equal(qr.open, true); assert.equal(qr.qr, true);
+  assert.equal(qr.fits, true); assert.equal(qr.safeLink, true); assert.equal(qr.testLabel, true);
+  assert.ok(qr.width > 200, 'Payment QR should remain large enough to scan on mobile.');
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
+  const closedQr = await evaluate(`(async () => {
+    for (let i = 0; i < 40; i++) {
+      if (!document.getElementById('aiva-scan-pay-dialog') &&
+          document.activeElement.id === 'qr-test-launcher') return { closed: true };
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    return { closed: false, exists: !!document.getElementById('aiva-scan-pay-dialog'),
+      open: document.getElementById('aiva-scan-pay-dialog')?.open,
+      focus: document.activeElement.id || document.activeElement.tagName };
+  })()`);
+  assert.equal(closedQr.closed, true, 'QR modal must close and restore focus: ' + JSON.stringify(closedQr));
   assert.deepEqual(errors, [], 'Browser JavaScript or security-policy errors: ' + errors.join('; '));
-  console.log('REAL CHROMIUM CHECKS PASSED: ' + checked + ' page/viewport combinations, menu taps, focus, Escape and overflow.');
+  console.log('REAL CHROMIUM CHECKS PASSED: ' + checked + ' page/viewport combinations, restored wallet sections, responsive navigation and branded QR modal.');
 } finally {
+  await shutdown?.();
   socket?.close();
-  browser.kill('SIGTERM');
+  if (browser.exitCode === null) {
+    await Promise.race([new Promise(resolve => browser.once('exit', resolve)),
+      new Promise(resolve => setTimeout(resolve, 2000))]);
+  }
+  if (browser.exitCode === null) browser.kill('SIGTERM');
   await new Promise(resolve => { if (browser.exitCode !== null) resolve(); else browser.once('exit', resolve); });
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));

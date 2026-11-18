@@ -21,6 +21,12 @@
     <article><span class="aiva-guide-method-glyph" aria-hidden="true">G</span><h3>Google Pay</h3><p>Where offered by Stripe on a compatible device and browser.</p><button type="button" class="aiva-guide-pay-button" data-aiva-checkout disabled>Continue to checkout</button></article>
   </div>
   <p class="aiva-guide-payment-disclaimer">All three buttons open the same secure Stripe checkout. The methods actually available depend on Stripe, your device and currency; these buttons do not guarantee or preselect a wallet. Card details are never collected by Aiva’s website. Test mode never charges real money. Real payments remain subject to Aiva’s separate approval.</p>
+  <div class="aiva-guide-scan-panel">
+    <h3>AIVA · Scan to pay</h3>
+    <p>Create a QR code for your confirmed basket, then scan it with your phone camera to open secure Stripe checkout. This is Aiva’s branded checkout handoff, not a separate wallet or payment network.</p>
+    <button type="button" class="aiva-guide-pay-button" data-aiva-checkout data-aiva-scan-pay disabled>Create secure payment QR code</button>
+    <p>No real money is charged in test mode. QR checkout requires an available product and a verified Stripe setup.</p>
+  </div>
   <div class="aiva-guide-order-panel" aria-labelledby="aiva-guide-basket-heading">
     <div><h3 id="aiva-guide-basket-heading">Your basket</h3><p id="aiva-guide-basket-status" aria-live="polite">Checking your basket and online payment availability…</p></div>
     <div id="aiva-guide-basket-items" class="aiva-guide-basket-items"></div>
