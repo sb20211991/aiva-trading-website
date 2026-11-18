@@ -16,15 +16,50 @@ The two existing Square pull requests are not merged or superseded by this chang
 - A clearly labelled £1 fixture is used only when all three conditions match:
   `STRIPE_TEST_CHECKOUT_ENABLED=true`, `CHECKOUT_PROVIDER=stripe`, and the request
   comes from the exact `STRIPE_TEST_ORIGIN`, which must be a `.pages.dev` HTTPS
-  preview (or localhost for local development).
+  preview, an HTTPS Worker preview on this account's `.sb20211991.workers.dev`
+  subdomain, or localhost for local development. Root-domain fixtures stay prohibited.
 - The fixture cannot be purchased through Square/PayPal live mode, even if copied into their catalogue.
 - Test orders use **STRIPE_TEST_ORDERS_DB**, never the existing `ORDERS_DB`.
 - No test order triggers fulfilment. Test refunds are managed in the Stripe test dashboard;
   the existing Square refund tool is NOT a Stripe refund tool.
 
+## Owner authorization without manual technical setup
+
+Use the existing repository's **Settings → Secrets and variables → Actions**.
+The owner supplies only these encrypted credentials, never their values in chat:
+
+- `CLOUDFLARE_API_TOKEN`: restricted to the existing account, with Pages Edit and
+  D1 Edit for the sandbox, plus Workers Scripts Edit and Workers CI Read for
+  diagnosing and verifying the existing production deployment. Do not grant billing
+  changes or change DNS as part of this setup.
+- `STRIPE_TEST_SECRET_KEY`: a standard Stripe secret key from test mode, not a live
+  key or a publishable key.
+
+The existing account ID is already configured. On this repair pull request only,
+the integration workflow waits for the automated tests, then runs
+`scripts/stripe-test-bootstrap.mjs`. Missing credentials produce an explicit
+**SETUP NOT RUN** message without creating resources. After credentials are saved,
+the maintainer can rerun the workflow; the owner does not need to edit code.
+
+With valid permissions, the script creates or reuses a dedicated test-bound D1
+database, applies the existing schema, registers a Stripe **test-only** webhook,
+saves both Stripe secrets as encrypted **preview-only** settings, and deploys the
+isolated `stripe-test` alias. It never deploys the production branch or root domain.
+Preview configuration changes are serialized against the ordinary preview workflow.
+
+The script then creates an actual unpaid Stripe test session, expires it, and checks
+that Stripe's real webhook persisted its event in D1. This is a configuration and
+webhook smoke test—not a successful or declined card transaction. Hosted card
+success, decline, cancellation and wallet eligibility still require separate
+verification. The script reports those as untested rather than claiming completion.
+All automated bootstrap unit tests use mocked provider APIs.
+
 ## What has been verified locally
 
-Run `npm test` with Node 22.13+ or Node 24. No npm dependencies are needed.
+Use Node 22.13+ or Node 24. Install the pinned dependencies with
+`npm ci --include=dev --ignore-scripts`, then run `npm test`.
+The only shipped library is the MIT-licensed local QR encoder; the independent QR
+decoder is a development-only verification dependency and is not uploaded.
 
 The existing mocked Square/PayPal checkout and static website checks pass.
 The Stripe suite uses mocked HTTP and a real in-memory SQLite database loaded
@@ -50,6 +85,58 @@ pages/assets are removed. The packaging check prevents repository metadata,
 configuration, scripts, documentation and archives from entering the upload directory.
 
 **These checks are not a completed hosted Stripe payment.**
+
+## Buying guide, wallet sections and AIVA scan-to-pay
+
+The card, Apple Pay and Google Pay sections have been restored to the live site's
+three-card layout. They use the same Stripe-hosted checkout; actual wallet
+availability still depends on Stripe, browser, device and account eligibility.
+The non-payment buying-guide content is preserved.
+
+The additional **AIVA · Scan to pay** control creates a QR locally after the server
+creates a checkout session. It encodes only a validated HTTPS Stripe checkout URL,
+not an API credential, card details, or a caller-supplied amount. The modal clearly
+labels test mode, polls the existing verified status endpoint, restores keyboard
+focus when dismissed, and never treats a redirect alone as payment confirmation.
+Checkout QR codes expire with their Stripe sessions and are not permanent merchant
+codes.
+
+`productPaymentUrl` and `productQrMatrix` prepare permanent, branded product links
+for future real SKUs. A product link opens the existing buying guide, where a valid,
+available catalogue SKU and quantity must be reviewed before payment. No real
+products or prices have been invented.
+
+Independent decoding tests recover the exact checkout and future-product URLs.
+Real Chromium checks cover 24 page/viewport combinations plus navigation resizing,
+the restored wallet sections, QR rendering, dismissal and focus restoration.
+These are synthetic/local checks, not completed Stripe transactions.
+
+## Deployment packaging and remaining access
+
+Pages and Workers configuration are deliberately separate. `wrangler.toml` remains
+the existing Pages configuration; `wrangler.jsonc` supplies the existing Worker's
+entry point and a thin adapter around the same payment handlers. No website is
+rebuilt. Pages deployments use `scripts/prepare-pages-deploy.mjs` in an isolated
+directory because Pages deploy rejects custom `--config` paths. Backend Functions
+remain outside the public upload directory.
+
+New preview uploads exclude merchant administration pages and repository internals.
+The existing production deployment and older immutable previews are not changed by
+that exclusion. The refund API continues to require the merchant secret.
+
+GitHub's Pages preview now deploys successfully. The separate native Cloudflare
+Worker build still fails; the connected account cannot read its build logs or
+verify the root Worker domain binding. Do not guess the cause, reassign root DNS,
+or promote an unverified build. The production branch guard blocks native Worker
+publication while this repair branch is being reviewed.
+
+The inspected Pages preview configuration has no Stripe test API key, webhook
+secret or dedicated test orders database. The available GitHub Cloudflare token
+cannot administer D1, and the conversational Cloudflare connection currently has
+identity/account scope only. Owner authorization is needed to access those
+resources. Credentials must use encrypted settings, never chat or repository files.
+Until then, actual hosted success, decline and webhook delivery remain **not run**.
+Final publication and live-charge activation are separate owner approvals.
 `/api/shop-status` reports local configuration readiness, not proven Stripe
 account readiness or successful deployment. A real test-session API call and
 Stripe-hosted test checkout are still required after configuration.

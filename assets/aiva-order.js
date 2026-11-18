@@ -25,12 +25,16 @@
     .then(async (r) => {
       const a = await r.json();
       if (!r.ok) throw Error(a.error || 'Status unavailable');
-      try {
-        sessionStorage.removeItem(PENDING_KEY);
-      } catch {
-        /* private browsing */
-      }
-      if (a.paid) {
+      if (a.paid === true && ['test', 'live'].includes(a.mode)) {
+        try {
+          const snapshot = sessionStorage.getItem('aiva_pending_checkout_cart');
+          const current = JSON.stringify(Object.entries(JSON.parse(localStorage.getItem('aiva_cart_v2') || '{}')).sort());
+          if (stored === ref && snapshot && snapshot === current) localStorage.removeItem('aiva_cart_v2');
+          sessionStorage.removeItem(PENDING_KEY);
+          sessionStorage.removeItem('aiva_pending_checkout_cart');
+        } catch {
+          /* Storage is optional; payment is still verified by the server. */
+        }
         out.textContent =
           (a.mode === 'test'
             ? 'TEST PAYMENT CONFIRMED — no real money charged.'

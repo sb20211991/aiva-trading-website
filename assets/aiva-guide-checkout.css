@@ -1,3 +1,4 @@
+@import url('./aiva-scan-pay.css');
 /* Add-on only. Aiva homepage, global CSS and existing guide copy are untouched. */
 .aiva-guide-checkout{--guide-emerald:#173d33;--guide-gold:#a7813b;--guide-line:#d4ded6;margin:clamp(32px,5vw,64px) 0;padding:clamp(18px,3vw,34px);background:#f6f9f5;border:1px solid var(--guide-line);border-radius:20px;color:var(--guide-emerald);scroll-margin-top:85px}
 .aiva-guide-checkout *{box-sizing:border-box}

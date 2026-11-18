@@ -1,0 +1,34 @@
+{
+  "name": "black-scene-993d",
+  "account_id": "b2c18cf1451c6d64889a0b1f6e885f33",
+  "main": "workers/entry.js",
+  "compatibility_date": "2025-11-01",
+  "keep_vars": true,
+  "build": {
+    "command": "npm test && node scripts/worker-preview-guard.mjs"
+  },
+  "assets": {
+    "directory": ".worker-assets",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/merchant-tools", "/merchant-tools/*"],
+    "not_found_handling": "none"
+  },
+  "vars": {
+    "CHECKOUT_PROVIDER": "stripe",
+    "STRIPE_MODE": "test",
+    "STRIPE_LIVE_PAYMENTS_APPROVED": "false",
+    "STRIPE_TEST_CHECKOUT_ENABLED": "false"
+  },
+  "unsafe": {
+    "metadata": {
+      "keep_bindings": [
+        "plain_text", "json", "secret_text", "secret_key", "d1", "kv_namespace",
+        "r2_bucket", "service", "durable_object_namespace", "queue",
+        "analytics_engine", "hyperdrive", "send_email", "ai", "vectorize",
+        "browser", "version_metadata", "ratelimit", "dispatch_namespace",
+        "mtls_certificate", "logfwdr", "pipeline", "secrets_store_secret",
+        "workflow", "images"
+      ]
+    }
+  }
+}

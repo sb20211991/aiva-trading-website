@@ -6,13 +6,22 @@ const root = document.getElementById('aiva-online-store');
 if (!root) return;
 const $ = id => document.getElementById(id);
 const els = {status:$('aiva-store-status'),search:$('aiva-search'),category:$('aiva-category'),sort:$('aiva-sort'),min:$('aiva-price-min'),max:$('aiva-price-max'),stock:$('aiva-in-stock'),results:$('aiva-product-results'),count:$('aiva-results-count'),lines:$('aiva-basket-lines'),summary:$('aiva-basket-summary'),cartCount:$('aiva-cart-count'),checkout:$('aiva-checkout'),error:$('aiva-checkout-error'),terms:$('aiva-shop-terms'),delivery:$('aiva-delivery-text'),returns:$('aiva-returns-text')};
+const scanButton = document.createElement('button');
+scanButton.type = 'button'; scanButton.className = 'aiva-scan-pay-trigger';
+scanButton.textContent = 'AIVA · Scan to pay'; scanButton.dataset.aivaScanPay = '';
+scanButton.disabled = true; els.checkout.after(scanButton);
+let checkoutBusy = false;
 const money = n => formatMoney(n, catalog?.currency || 'GBP');
 const validMoney = n => Number.isSafeInteger(n) && n > 0 && n <= 100000000;
 const validStock = n => Number.isSafeInteger(n) && n >= 0 && n <= 100000;
 let catalog = null, products=[], shopStatus = {ready:false,mode:'disabled'};
 const cart = {};
 const CART_KEY='aiva_cart_v2';
+function restoreSavedCart() {
+for (const sku of Object.keys(cart)) delete cart[sku];
 try {const saved=JSON.parse(localStorage.getItem(CART_KEY)||'{}');if(saved && typeof saved==='object' && !Array.isArray(saved))for(const [sku,qty] of Object.entries(saved))if(/^[A-Za-z0-9_-]{2,60}$/.test(sku) && Number.isSafeInteger(qty)&&qty>0&&qty<=10)cart[sku]=qty;}catch{/* private browsing or storage denied */}
+}
+restoreSavedCart();
 function saveCart(){try{localStorage.setItem(CART_KEY,JSON.stringify(cart))}catch{/* storage not available */}}
 function setStatus(message,kind) {els.status.textContent=message; els.status.dataset.kind=kind||'info';}
 function text(tag,value,css) {const e=document.createElement(tag);e.textContent=String(value); if(css)e.className=css;return e;}
@@ -40,8 +49,9 @@ function updateCart(){sanitizeCart();els.lines.replaceChildren();let amount=0,to
     }}
   saveCart();
   els.cartCount.textContent=String(total);
-  els.checkout.disabled=!(total>0&&shopStatus.ready===true);
-  els.checkout.textContent=shopStatus.mode==='test'?'Continue to test online checkout':'Pay online by card';
+  els.checkout.disabled=checkoutBusy||!(total>0&&shopStatus.ready===true);
+  scanButton.disabled=els.checkout.disabled||shopStatus.provider!=='stripe';
+  els.checkout.textContent=checkoutBusy?'Opening secure checkout…':shopStatus.mode==='test'?'Continue to test online checkout':'Pay online by card';
 }
 function modify(sku,delta){const p=products.find(p=>p.sku===sku);if(!p||!available(p))return;cart[sku]=Math.max(0,Math.min(getQuantityLimit(p),(cart[sku]||0)+delta));if(!cart[sku])delete cart[sku];updateCart();}
 function card(p){const item=document.createElement('article');item.className='aiva-product-item';
@@ -99,10 +109,12 @@ async function load(){try{
 for(const el of [els.search,els.min,els.max])el.addEventListener('input',render);
 for(const el of [els.category,els.sort,els.stock])el.addEventListener('change',render);
 $('aiva-reset-filters').addEventListener('click',()=>{els.search.value='';els.category.value='';els.sort.value='recommended';els.min.value='';els.max.value='';els.stock.checked=false;render()});
-els.checkout.addEventListener('click',async()=>{
-  if(els.checkout.disabled)return;els.checkout.disabled=true;els.checkout.textContent='Opening secure checkout…';els.error.hidden=true;
+async function beginCheckout(scan = false){
+  if(els.checkout.disabled||checkoutBusy||(scan&&shopStatus.provider!=='stripe'))return;
+  checkoutBusy=true;updateCart();els.error.hidden=true;
   try{
     const items=Object.entries(cart).map(([sku,quantity])=>({sku,quantity}));
+    const cartSnapshot=JSON.stringify(Object.entries(cart).sort());
     const r=await fetch('/api/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
     const info=await r.json();if(!r.ok||!info.url)throw new Error(info.error||'Checkout could not be opened.');
     const target=new URL(info.url);
@@ -117,10 +129,28 @@ els.checkout.addEventListener('click',async()=>{
       (localPreview&&(host==='127.0.0.1'||host==='localhost')&&target.pathname.endsWith('/order-success.html'));
     if(!((target.protocol==='https:'&&trusted)||(localPreview&&target.protocol==='http:'&&trusted)))throw new Error('Unexpected checkout destination.');
     if(typeof info.orderId==='string'&&/^[A-Za-z0-9_-]{8,191}$/.test(info.orderId)){
-      try{sessionStorage.setItem('aiva_pending_checkout_ref',info.orderId)}catch{/* private browsing */}
+      try{sessionStorage.setItem('aiva_pending_checkout_ref',info.orderId);
+        sessionStorage.setItem('aiva_pending_checkout_cart',cartSnapshot)}catch{/* private browsing */}
+    }
+    if(scan){
+      const {showScanToPay}=await import('./aiva-scan-pay.js');
+      await showScanToPay({url:target.href,mode:shopStatus.mode,reference:info.orderId,returnFocus:scanButton});
+      checkoutBusy=false;updateCart();return;
     }
     location.assign(target.href);
-  }catch(e){els.error.textContent=e.message||'Checkout is not available. Please contact Aiva.';els.error.hidden=false;updateCart()}
+  }catch(e){checkoutBusy=false;els.error.textContent=e.message||'Checkout is not available. Please contact Aiva.';els.error.hidden=false;updateCart()}
+}
+els.checkout.addEventListener('click',()=>beginCheckout());
+scanButton.addEventListener('click',()=>beginCheckout(true));
+window.addEventListener('pageshow', event => {
+  if (event.persisted && catalog) {
+    checkoutBusy = false; restoreSavedCart(); updateCart();
+  }
+});
+window.addEventListener('storage', event => {
+  if ((event.key === CART_KEY || event.key === null) && catalog) {
+    restoreSavedCart(); updateCart();
+  }
 });
 load();
 })();

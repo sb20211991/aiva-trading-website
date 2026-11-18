@@ -5,6 +5,7 @@ import { readdirSync, statSync, mkdirSync, copyFileSync, rmSync, existsSync, wri
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const output = join(root, '.pages-output');
@@ -27,25 +28,24 @@ for (const entry of readdirSync(join(root, 'assets'), { withFileTypes: true })) 
     copy('assets/' + entry.name);
   }
 }
-for (const entry of readdirSync(join(root, 'merchant-tools'), { withFileTypes: true })) {
-  if (entry.isFile() && /^[a-z0-9-]+\.html$/.test(entry.name)) copy('merchant-tools/' + entry.name);
-}
-// Wrangler recognizes this special source directory and bundles it as Functions;
-// it does not upload it as ordinary static files.
-for (const directory of ['functions/api', 'functions/_lib']) {
-  for (const entry of readdirSync(join(root, directory), { withFileTypes: true })) {
-    if (entry.isFile() && /^[a-z0-9-]+\.js$/.test(entry.name)) copy(directory + '/' + entry.name);
-  }
-}
+copy('assets/aiva-qr-license.txt');
+copyFileSync(fileURLToPath(import.meta.resolve('qrcode-generator')), join(output, 'assets/aiva-qr-encoder.js'));
+// Backend and merchant sources are never ordinary public assets. The Pages
+// deployment preparer supplies Functions beside, not inside, the asset folder.
 for (const excluded of ['.github', '.git', '.dev.vars', '.env', '_archive', 'README.md',
-  'STRIPE-TEST-SETUP.md', 'wrangler.toml', 'scripts', 'package.json', 'ORDER-DATABASE-SETUP.sql']) {
+  'STRIPE-TEST-SETUP.md', 'wrangler.toml', 'wrangler.jsonc', 'functions', 'workers', 'merchant-tools',
+  'scripts', 'package.json', 'ORDER-DATABASE-SETUP.sql']) {
   assert.equal(existsSync(join(output, excluded)), false, 'Private source copied: ' + excluded);
 }
-for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js',
-  'functions/api/shop-status.js', 'functions/_lib/commerce.js', 'functions/_lib/stripe-test.js']) {
+for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js', 'assets/aiva-money.js']) {
   assert.ok(existsSync(join(output, required)), 'Missing deployment file: ' + required);
 }
 console.log('Pages upload directory built and checked: .pages-output (no repository metadata, scripts, docs or archives).');
+let revision = process.env.GITHUB_SHA || process.env.WORKERS_CI_COMMIT_SHA || '';
+if (!/^[a-f0-9]{40}$/.test(revision)) {
+  try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(); }
+  catch { revision = 'unreleased'; }
+}
 writeFileSync(join(output, 'deployment.json'), JSON.stringify({
-  revision: /^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA || '') ? process.env.GITHUB_SHA : 'unreleased'
+  revision: /^[a-f0-9]{40}$/.test(revision) ? revision : 'unreleased'
 }) + '\n');

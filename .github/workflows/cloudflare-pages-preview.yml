@@ -21,12 +21,17 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: aiva-pages-preview-configuration
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install pinned build dependency
+        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
 
       - name: Require Cloudflare deploy secrets
         env:
@@ -86,7 +91,9 @@ jobs:
           echo "Preview branch label: ${PREVIEW_BRANCH}"
           echo "Commit: ${GITHUB_SHA}"
           node scripts/build-pages-assets.mjs
-          npx --yes wrangler@4 pages deploy .pages-output \
+          node scripts/prepare-pages-deploy.mjs
+          cd .pages-deploy
+          npx --yes wrangler@4 pages deploy public \
             --project-name="${PROJECT_NAME}" \
             --branch="${PREVIEW_BRANCH}" \
             --commit-hash="${GITHUB_SHA}" \

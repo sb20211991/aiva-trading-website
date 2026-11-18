@@ -3,14 +3,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity && npm run test:deployment && npm run build:pages",
+    "build": "npm test",
+    "test": "npm run test:checkout && npm run test:stripe && npm run test:integrity && npm run test:deployment && npm run test:security && npm run test:pages && npm run build:worker && npm run test:scan && npm run test:setup",
+    "test:setup": "node scripts/stripe-test-bootstrap-test.mjs",
+    "stripe:setup": "node scripts/stripe-test-bootstrap.mjs",
+    "test:scan": "node scripts/scan-pay-test.mjs",
+    "test:pages": "node scripts/pages-staging-test.mjs",
+    "test:security": "node scripts/worker-security-test.mjs",
+    "test:browser": "node scripts/browser-mobile-check.mjs",
     "test:deployment": "node scripts/deployment-safety-test.mjs",
     "build:pages": "node scripts/build-pages-assets.mjs",
+    "build:worker": "node scripts/build-worker-assets.mjs",
     "test:stripe": "node scripts/stripe-test.mjs",
     "stripe:preview": "node scripts/stripe-test-preview.mjs",
     "test:checkout": "node scripts/local-checkout-test.mjs",
     "test:integrity": "node scripts/website-integrity.mjs",
     "website:go-live-prep": "node scripts/go-live-prep.mjs",
     "website:square-check": "node scripts/square-account-check.mjs"
-  }
+  },
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": { "qrcode-generator": "2.0.4" },
+  "devDependencies": { "jsqr": "1.4.0" }
 }

@@ -1,3 +1,4 @@
+@import url('./aiva-scan-pay.css');
 /* Additive styles scoped to new Shop components only; original Aiva styles unchanged. */
 .aiva-commerce{--aiva-ink:#173d33;--aiva-gold:#b08a47;--aiva-line:#d5ddd5;--aiva-muted:#4b625a;margin:clamp(24px,5vw,60px) 0;padding:clamp(14px,3vw,30px);border:1px solid #cbd9d1;border-radius:20px;background:#f8faf7;color:var(--aiva-ink);}
 .aiva-commerce *{box-sizing:border-box}.aiva-commerce h2,.aiva-commerce h3{color:var(--aiva-ink)}

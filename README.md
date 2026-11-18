@@ -39,17 +39,31 @@ Website Payment Links do **not** require a physical Square card reader. In-perso
 ## Local checks
 
 ```bash
+npm ci --include=dev --ignore-scripts
 npm test
+npm run test:browser
 ```
 
 ## Deploy
 
-Use Cloudflare Pages with this repository as the project root (Functions from `functions/`). Do not restore a root `_worker.js`.
+Preserve the existing hosting configuration. Cloudflare currently has both an
+`aiva-trading` Pages project and a native `black-scene-993d` Worker build connected
+to this repository. Root-domain ownership must be verified before any production
+promotion or DNS changes. Do not restore a root `_worker.js`.
 
 Build command: `npm run build:pages`. Upload directory: `.pages-output`.
 Pages ignores `.assetsignore`, so never deploy the repository root directly.
-The packaging script includes only website assets and the special Functions directory,
-not workflow files, scripts, documentation or the original ZIP archive.
+The public packaging script includes only website assets, not Functions source,
+merchant administration pages, workflow files, scripts, documentation or the ZIP.
+Use `node scripts/prepare-pages-deploy.mjs`, then deploy `public` from the resulting
+staging directory. Functions are staged privately alongside `public`. Pages deploy
+does not accept a custom `--config` path.
+
+For the existing Worker, `wrangler.jsonc` uses a thin adapter around the same payment
+handlers. Its build is guarded against production publication from other branches
+until final owner review. Native Cloudflare build-log access is still required to
+resolve the external Worker build failure; a successful Pages preview is not proof
+that the root website was deployed.
 
 ### GitHub Actions (preview only)
 

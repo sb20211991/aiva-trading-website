@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /* Explicit, preview-only deployment. Never called by npm test or on push.
    Credentials are inherited from the environment and never printed. */
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { preparePagesDeployment } from './prepare-pages-deploy.mjs';
 
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const origin = process.env.STRIPE_TEST_ORIGIN || '';
@@ -64,24 +65,16 @@ try {
     cwd: root, stdio: 'inherit'
   });
   if (build.error || build.status !== 0) fail('Website packaging failed. No deployment attempted.');
-  const upload = join(root, '.pages-output');
-  const config = join(directory, 'wrangler.toml');
-  writeFileSync(config, [
-    `name = "${project}"`,
-    'compatibility_date = "2025-11-01"',
-    `pages_build_output_dir = ${JSON.stringify(upload)}`,
-    '[vars]',
-    'CHECKOUT_PROVIDER = "stripe"',
-    'STRIPE_TEST_CHECKOUT_ENABLED = "true"',
-    `STRIPE_TEST_ORIGIN = ${JSON.stringify(origin)}`,
-    '[[d1_databases]]',
-    'binding = "STRIPE_TEST_ORDERS_DB"',
-    'database_name = "aiva_stripe_test_orders"',
-    `database_id = ${JSON.stringify(databaseId)}`
-  ].join('\n') + '\n', { mode: 0o600 });
-  const result = spawnSync('npx', ['--yes', 'wrangler@4', 'pages', 'deploy', upload,
-    '--config', config, `--project-name=${project}`, `--branch=${branch}`,
-    '--commit-dirty=true'], { cwd: root, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+  preparePagesDeployment({ directory, overrides: {
+    vars: { CHECKOUT_PROVIDER: 'stripe', STRIPE_MODE: 'test',
+      STRIPE_LIVE_PAYMENTS_APPROVED: 'false', STRIPE_TEST_CHECKOUT_ENABLED: 'true',
+      STRIPE_TEST_ORIGIN: origin },
+    d1_databases: [{ binding: 'STRIPE_TEST_ORDERS_DB',
+      database_name: 'aiva_stripe_test_orders', database_id: databaseId }]
+  } });
+  const result = spawnSync('npx', ['--yes', 'wrangler@4.164.0', 'pages', 'deploy', 'public',
+    `--project-name=${project}`, `--branch=${branch}`,
+    '--commit-dirty=true'], { cwd: directory, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
   if (result.error || result.status !== 0) fail('Stripe test preview deployment failed. Production was not requested.');
   console.log('Stripe preview deployed. Verify the preview endpoints; production was not requested.');
 } finally {
