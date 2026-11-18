@@ -56,7 +56,11 @@ for item in pages_projects:
     registered = get(prefix + "/pages/projects/" + name + "/domains")
     if isinstance(registered, list):
         print("PAGES_REGISTERED_DOMAINS", name, json.dumps([
-            {"name": domain.get("name"), "status": domain.get("status")}
+            {"name": domain.get("name"), "status": domain.get("status"),
+             "verification": {key: (domain.get("verification_data") or {}).get(key)
+                              for key in ("status", "error_message")},
+             "validation": {key: (domain.get("validation_data") or {}).get(key)
+                            for key in ("status", "error_message")}}
             for domain in registered
         ]))
         if any(domain.get("name") == "aivatrading.uk" for domain in registered):
@@ -69,6 +73,24 @@ for item in pages_projects:
                         "database_bindings": sorted((config.get("d1_databases") or {}).keys()),
                     }))
 project = get(prefix + "/pages/projects/aiva-trading")
+failed_build = get(prefix + "/builds/builds/4e89a8e7-4f2e-4d72-9712-2b48bee8d1d4")
+if isinstance(failed_build, dict):
+    trigger = failed_build.get("build_trigger_metadata") or {}
+    def safe_command(value):
+        if not isinstance(value, str):
+            return None
+        if re.search(r"secret|token|password|authorization|(?:sk|rk)_", value, re.I):
+            return "SUPPRESSED_CREDENTIAL_BEARING_COMMAND"
+        return value[:300]
+    print("EXISTING_WORKER_BUILD_CONFIGURATION", json.dumps({
+        "status": failed_build.get("status"),
+        "outcome": failed_build.get("build_outcome"),
+        "branch": trigger.get("branch"),
+        "repository": trigger.get("repo_name"),
+        "build_command": safe_command(trigger.get("build_command")),
+        "deploy_command": safe_command(trigger.get("deploy_command")),
+        "root_directory": trigger.get("root_directory"),
+    }))
 if isinstance(project, dict):
     print("PAGES_TARGET", json.dumps({
         "name": project.get("name"),
