@@ -9,7 +9,9 @@ The two existing Square pull requests are not merged or superseded by this chang
 ## Safety defaults
 
 - `CHECKOUT_PROVIDER=stripe` explicitly selects Stripe. Missing Stripe configuration cannot fall back to Square.
-- Stripe accepts **test keys only**. Live keys, live sessions and live webhook events are rejected.
+- Stripe defaults to **test mode**. Live keys/events cannot enter the test environment.
+  A future live code path is present but locked behind the independent approval,
+  credentials, account and database checks described below. No live settings are enabled.
 - The public catalogue stays empty with `shopEnabled:false`.
 - A clearly labelled £1 fixture is used only when all three conditions match:
   `STRIPE_TEST_CHECKOUT_ENABLED=true`, `CHECKOUT_PROVIDER=stripe`, and the request
@@ -31,6 +33,10 @@ preview-only fixtures, missing/live credentials, foreign origins, trusted Stripe
 redirects, API failures, unpaid vs paid session verification, webhook HMAC and
 five-minute replay tolerance, signature rotation, duplicates, event ordering,
 database failure, atomic rollback, and retry recovery.
+There are now 31 payment test groups, including EUR/JPY prices, bounded streaming request-size
+limits, line-item/shipping persistence, synthetic live-account approval failures,
+strict live origins, and test/live database separation. Every Stripe HTTP call
+in these tests is mocked, including those exercising the future live code path.
 
 Wrangler 4 also compiled the Pages Functions successfully. The preview deployment
 helper was checked to refuse execution without its explicit approval flag; no
@@ -54,18 +60,25 @@ Stripe-hosted test checkout are still required after configuration.
    branch, not the ZIP-only `main` branch. Do not run old infrastructure workflows
    that replace Cloudflare environment variables. Existing PR workflows may
    automatically build a closed-shop preview; that is not the configured Stripe test preview.
-2. **Restore Cloudflare API access in Replit Integrations.** The saved connection
-   returned `Invalid format for Authorization header`. Supply a raw valid API token
-   in its credential field, not a `Bearer ` prefix. Never put credentials in chat,
-   repository files, documentation, workflow logs, or PR comments.
-   GitHub deployment credentials are separate from this conversation's connection.
+2. **Extend the existing GitHub deployment connection only where necessary.**
+   Its encrypted Cloudflare credentials successfully read and deploy the existing
+   Pages project. A read-only inventory verified `app.aivatrading.uk` is attached,
+   but `aivatrading.uk` is not in that project's domain list. D1 listing returned
+   HTTP 401 and Worker custom-domain listing returned HTTP 403. Allow D1 edit for
+   the dedicated test database and read access to the actual root zone, DNS and
+   Worker routing. Keep the existing Pages access. Confirm the correct owning
+   Cloudflare account instead of blindly moving DNS. Update the existing
+   encrypted GitHub deployment credential only if needed; never paste it in chat.
+   Repairing the separate Replit Cloudflare connection is optional, not a
+   prerequisite when the GitHub route has adequate permissions.
 3. **Approve a separate test D1 database.** Create `aiva_stripe_test_orders`,
    run `ORDER-DATABASE-SETUP.sql` against that database only, and use its ID for
    `STRIPE_TEST_ORDERS_DB`. Do not run migrations or test inserts against the
    existing Square order database. Creating resources may affect Cloudflare usage.
 4. **Configure encrypted Cloudflare Pages PREVIEW secrets**, not production:
-   `STRIPE_SECRET_KEY` (a Stripe test-mode secret or restricted key with Checkout
-   Sessions write/read permissions) and `STRIPE_WEBHOOK_SECRET` (the signing secret
+   `STRIPE_SECRET_KEY` (a Stripe test-mode server secret; restricted keys must also
+   allow the Checkout and expanded product/line-item reads used here) and
+   `STRIPE_WEBHOOK_SECRET` (the signing secret
    for the exact test webhook endpoint). Enter them in Cloudflare's encrypted
    secret controls. Hosted Checkout does not need a publishable key in this site.
 5. **Approve creation of a Stripe test webhook endpoint** in the Stripe test
@@ -117,7 +130,8 @@ Stripe-hosted test checkout are still required after configuration.
 3. Add the labelled £1 test fixture to the basket. Continue from both the shop
    and buying guide. Confirm the total on Stripe hosted Checkout and its test-mode
    banner. Use Stripe's documented test card details only, never a real card.
-4. Cancel: return to the shop without a paid order or fulfilment.
+4. Cancel: return to `order-cancelled.html`, with the basket retained. That page
+   must not claim an order was paid or imply a refund was issued.
 5. Complete a successful test payment. The return page must say
    `TEST PAYMENT CONFIRMED — no real money charged`.
    A visit to the success URL alone must never mark an unpaid session paid.
@@ -129,14 +143,72 @@ Stripe-hosted test checkout are still required after configuration.
    Unpaid sessions must not be shown as paid.
 8. Confirm the public domain never exposes a buyable fixture.
 
-## Not authorized or implemented by this test-only change
+## Future currencies and product editing
 
-- No live-mode Stripe payments, real products, shipping/tax decisions, fulfilment,
-  production database changes, payout verification, or production promotion.
-- Production release needs separate approval of the code/deployment, merchant
-  activation, real catalogue and stock, policies, tax/shipping, refund workflow
-  and live payment support. This code deliberately refuses live keys.
+The existing catalogue builder now imports/exports GBP, EUR, USD, CAD, AUD, NZD,
+CHF, JPY, SEK, NOK, DKK, SGD, HKD, AED, SAR and QAR. One catalogue/order uses one
+currency; there is no automatic exchange conversion. Currency cannot be changed
+over existing products in the editor. Import an independently repriced catalogue
+or start empty. Merchant-country, currency minimums and Stripe availability still apply.
+
+Use integer `priceMinor`, `shipping.flatRateMinor` and optional
+`shipping.freeShippingThresholdMinor`. For example, EUR 12.50 is `1250`; JPY 1250
+is `1250`. Legacy `pricePence`/shipping pence fields remain supported for GBP only.
+Mixed-currency products are unavailable; fractional minor units are rejected.
+The browser and server share the same rules, but the server remains authoritative.
+The public catalogue is still empty and disabled; no real products were invented.
+
+## Future live mode — prepared, NOT activated or verified with Stripe
+
+All of the following are required, not just adding a live key:
+
+- Owner approval **after** the hosted test acceptance checklist succeeds.
+- `STRIPE_MODE=live`, `STRIPE_LIVE_PAYMENTS_APPROVED=true`, and
+  `STRIPE_LIVE_ORIGIN=https://aivatrading.uk` (or its explicitly selected `www` origin).
+- Separate encrypted `STRIPE_LIVE_SECRET_KEY` and `STRIPE_LIVE_WEBHOOK_SECRET`.
+- A separate production D1 binding `STRIPE_LIVE_ORDERS_DB`, not the test or Square
+  database, initialized with the order schema. Validate the actual database IDs.
+- A live-mode webhook for the real site's endpoint. Test/live keys, event modes,
+  session IDs, integration metadata and database bindings are kept separate.
+- A live Stripe `/account` response confirming submitted business details,
+  enabled charges and payouts, and active card-payments capability.
+- Owner-approved genuine products, stock, shipping countries/prices, tax treatment,
+  address, delivery/returns terms, refund operations and order-fulfilment process.
+
+The live path refuses arbitrary origins and Pages previews, never loads the
+temporary test fixture, and does not create a Session for an unapproved account.
+It supports card payments through hosted Checkout. Apple Pay/Google Pay are
+eligible wallet options on Stripe Checkout, not guaranteed buttons on every
+device/account. Their actual appearance still needs supported-device testing.
+No real charge, payout, account approval or wallet-device test has been performed.
+No automatic stock reservation, order fulfilment or Stripe refund automation is
+claimed. Manage refunds in the appropriate Stripe dashboard; do not use the
+preserved Square refund tool for Stripe orders.
+
+## Production deployment safeguards
+
+The existing automatic closed-shop PR preview remains available. Historical
+infrastructure/recovery workflow files are retained, but their mutating jobs are
+disabled: a catalogue merge must not create KV/R2, replace secrets, change root
+routing or silently promote production.
+
+The initial production workflow now requires an explicit approval checkbox and
+the exact reviewed commit, then reads Cloudflare to verify the requested root
+custom domain is attached and active. It explicitly deploys to the verified Pages
+production branch; omitting `--branch` does **not** reliably mean production.
+It verifies the exact public `deployment.json` revision and closed-shop API state,
+not merely an HTTP 200. It never changes DNS.
+
+This initial release helper accepts only the closed, empty public catalogue and
+disabled payment flags. Live activation is a separate owner-reviewed release,
+not a side effect of approving this code. Do not dispatch it until root ownership
+and routing have been investigated and the exact release is approved.
+GitHub manual workflows may first need an approved default-branch setup because
+the current `main` branch contains only the original ZIP.
 
 References: [Stripe Checkout Sessions](https://docs.stripe.com/api/checkout/sessions/create),
 [webhook signatures](https://docs.stripe.com/webhooks/signature),
-[Stripe testing](https://docs.stripe.com/testing).
+[Stripe testing](https://docs.stripe.com/testing),
+[supported currencies](https://docs.stripe.com/currencies),
+[Apple Pay with hosted Checkout](https://docs.stripe.com/apple-pay),
+[Google Pay](https://docs.stripe.com/google-pay).

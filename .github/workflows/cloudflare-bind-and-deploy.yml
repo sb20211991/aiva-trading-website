@@ -11,6 +11,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   bind-and-deploy:
+    # Archived recovery code: use the reviewed, domain-verified production workflow.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

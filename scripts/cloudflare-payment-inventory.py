@@ -65,6 +65,8 @@ if isinstance(domains, list):
         for item in domains if item.get("hostname") in ("aivatrading.uk", "www.aivatrading.uk", "app.aivatrading.uk")
     ]))
 zones = get("/zones?name=aivatrading.uk")
+if isinstance(zones, list):
+    print("APEX_ZONE_MATCH_COUNT", len(zones))
 if isinstance(zones, list) and len(zones) == 1:
     zone_id = zones[0].get("id", "")
     if re.fullmatch(r"[a-f0-9]{32}", zone_id):

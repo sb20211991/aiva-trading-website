@@ -16,6 +16,7 @@ const requiredPages = [
   'buying-guide.html',
   'privacy.html',
   'order-success.html',
+  'order-cancelled.html',
   '404.html',
   'electronics.html',
   'smart-home.html',
@@ -32,6 +33,7 @@ const requiredAssets = [
   'assets/aiva-emerald-gold.webp',
   'assets/style.css',
   'assets/aiva-commerce.js',
+  'assets/aiva-money.js',
   'assets/aiva-commerce.css',
   'assets/language-switcher.js',
   'assets/language-switcher.css',
@@ -92,10 +94,10 @@ assert.match(commerce, /apple_pay:\s*false/);
 assert.match(commerce, /google_pay:\s*false/);
 assert.match(commerce, /cash_app_pay:\s*false/);
 assert.match(commerce, /afterpay_clearpay:\s*false/);
-assert.match(commerce, /createStripeTestCheckout/);
+assert.match(commerce, /createStripeCheckout/);
 const stripe = readFileSync(path.join(root, 'functions/_lib/stripe-test.js'), 'utf8');
 assert.match(stripe, /STRIPE_TEST_ORDERS_DB/);
-assert.match(stripe, /session\.livemode === false/);
+assert.match(stripe, /session\.livemode === p\.live/);
 const fixture = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.stripe-test.json'), 'utf8'));
 assert.equal(fixture.testOnly, true);
 assert.equal(fixture.products[0].pricePence, 100);

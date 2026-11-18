@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* Pages deploy does not honor .assetsignore. Build an explicit upload directory.
    No deployment, credentials, or configuration changes are performed here. */
-import { readdirSync, statSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
+import { readdirSync, statSync, mkdirSync, copyFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -46,3 +46,6 @@ for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js',
   assert.ok(existsSync(join(output, required)), 'Missing deployment file: ' + required);
 }
 console.log('Pages upload directory built and checked: .pages-output (no repository metadata, scripts, docs or archives).');
+writeFileSync(join(output, 'deployment.json'), JSON.stringify({
+  revision: /^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA || '') ? process.env.GITHUB_SHA : 'unreleased'
+}) + '\n');

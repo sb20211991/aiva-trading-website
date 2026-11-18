@@ -8,6 +8,8 @@ import {
   handleCreateCheckout, handleShopStatus, handleOrderStatus, handleStripeWebhook
 } from '../functions/_lib/commerce.js';
 import { stripeTestCataloguePath } from '../functions/_lib/stripe-test.js';
+import { CURRENCIES, currencyCode, normaliseCatalogue, minorFromMajor, formatMoney } from '../assets/aiva-money.js';
+import { readLimitedText, BodyTooLarge } from '../functions/_lib/body.js';
 
 const root = new URL('../', import.meta.url);
 const fixture = JSON.parse(readFileSync(new URL('data/aiva-products.stripe-test.json', root)));
@@ -75,6 +77,10 @@ globalThis.fetch = async (input, init = {}) => {
   if (failure === 'network') throw Error('simulated network outage');
   if (failure === 'http') return new Response('{}', { status: 503 });
   if (failure === 'json') return new Response('not-json', { status: 200 });
+  if (url.includes('/line_items?')) return new Response(JSON.stringify({
+    data: [{ description: 'Test fixture', quantity: 1, amount_total: 100, currency: current.currency,
+      price: { product: { metadata: { sku: fixture.products[0].sku } } } }], has_more: false
+  }));
   return new Response(JSON.stringify(current), { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
 function checkout(data = {}, overrides = {}, url = base, headers = {}) {
@@ -84,14 +90,15 @@ function checkout(data = {}, overrides = {}, url = base, headers = {}) {
     body: JSON.stringify({ items: [{ sku: fixture.products[0].sku, quantity: 1 }], ...data })
   }), { ...env, ...overrides });
 }
-async function signedEvent(event, { timestamp = Math.floor(Date.now() / 1000), raw, extra = '', bad = false } = {}) {
+async function signedEvent(event, { timestamp = Math.floor(Date.now() / 1000), raw, extra = '', bad = false,
+  secret = env.STRIPE_WEBHOOK_SECRET, origin = base } = {}) {
   const body = raw ?? JSON.stringify(event);
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', encoder.encode(env.STRIPE_WEBHOOK_SECRET),
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(timestamp + '.' + body)));
   const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-  return new Request(base + '/api/stripe-webhook', {
+  return new Request(origin + '/api/stripe-webhook', {
     method: 'POST', body,
     headers: { 'Stripe-Signature': `t=${timestamp},v1=${bad ? '0'.repeat(64) : hex}${extra}` }
   });
@@ -131,7 +138,7 @@ test('creates hosted test Checkout with authoritative pence and safe return URLs
   assert.equal(sent.get('line_items[0][price_data][unit_amount]'), '100');
   assert.equal(sent.get('shipping_options[0][shipping_rate_data][fixed_amount][amount]'), '0');
   assert.equal(sent.get('success_url'), base + '/order-success.html?session_id={CHECKOUT_SESSION_ID}');
-  assert.equal(sent.get('cancel_url'), base + '/shop.html?cancelled=1#aiva-basket');
+  assert.equal(sent.get('cancel_url'), base + '/order-cancelled.html');
   assert.equal(sent.get('shipping_address_collection[allowed_countries][0]'), 'GB');
   assert.equal(sent.get('payment_method_types[0]'), 'card');
   assert.ok(calls[0].init.headers['Idempotency-Key']);
@@ -228,6 +235,7 @@ test('signed paid event saves a test order atomically in real SQLite', async () 
   assert.equal(row.payment_status, 'paid');
   assert.equal(row.amount_total, 100);
   assert.equal(row.currency, 'gbp');
+  assert.equal(JSON.parse(row.line_items_json)[0].quantity, 1);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM payment_events').get().n, 1);
 });
 test('redelivery is idempotent and avoids additional Stripe reads', async () => {
@@ -277,13 +285,216 @@ test('test fixtures cannot be charged through legacy live providers', async () =
   assert.equal(status.ready, false);
 });
 
+test('currency helpers use exact integer minor units, including zero-decimal JPY', async () => {
+  assert.equal(Object.keys(CURRENCIES).length, 16);
+  assert.equal(currencyCode('eur'), 'EUR');
+  assert.equal(currencyCode('XXX'), '');
+  assert.equal(minorFromMajor('12.34', 'EUR'), 1234);
+  assert.equal(minorFromMajor('12', 'JPY'), 12);
+  assert.equal(minorFromMajor('0.10', 'GBP'), 10);
+  assert.ok(Number.isNaN(minorFromMajor('1.005', 'USD')));
+  assert.ok(Number.isNaN(minorFromMajor('1.5', 'JPY')));
+  assert.ok(Number.isNaN(minorFromMajor('1e3', 'GBP')));
+  assert.ok(Number.isNaN(minorFromMajor('-1', 'GBP')));
+  assert.match(formatMoney(100, 'JPY'), /100/);
+  assert.doesNotMatch(formatMoney(100, 'JPY'), /1\.00/);
+});
+test('non-GBP prices cannot silently reuse legacy pence or mix currencies', async () => {
+  const cat = normaliseCatalogue({
+    ...fixture, currency: 'EUR',
+    products: [{ ...fixture.products[0], currency: 'USD', priceMinor: 100 }],
+    shipping: { allowedCountries: ['GB'], flatRateMinor: 0 }
+  });
+  assert.equal(cat.products[0].available, false);
+  assert.equal(normaliseCatalogue({ ...fixture, currency: 'JPY' }).products[0].pricePence, null);
+  assert.throws(() => normaliseCatalogue({ ...fixture, currency: 'INVALID' }));
+});
+test('Stripe uses server-side EUR and JPY minor units without exchange conversion', async () => {
+  for (const currency of ['EUR', 'JPY']) {
+    const cat = {
+      ...fixture, currency,
+      products: [{ ...fixture.products[0], priceMinor: 1250 }],
+      shipping: { allowedCountries: ['GB'], flatRateMinor: 50, freeShippingThresholdMinor: null }
+    };
+    current = { ...session, currency: currency.toLowerCase(), amount_total: 1300 };
+    calls = [];
+    const response = await checkout({}, { ASSETS: { fetch() { return new Response(JSON.stringify(cat)); } } });
+    assert.equal(response.status, 200);
+    const sent = new URLSearchParams(calls[0].init.body);
+    assert.equal(sent.get('line_items[0][price_data][currency]'), currency.toLowerCase());
+    assert.equal(sent.get('line_items[0][price_data][unit_amount]'), '1250');
+    assert.equal(sent.get('shipping_options[0][shipping_rate_data][fixed_amount][amount]'), '50');
+  }
+  current = structuredClone(session);
+});
+test('oversized request body is rejected even without Content-Length', async () => {
+  calls = [];
+  assert.equal((await checkout({ padding: 'x'.repeat(9000) })).status, 413);
+  assert.equal(calls.length, 0);
+});
+test('streaming body limit cancels oversized input despite a false length header', async () => {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(9000)); },
+    cancel() { cancelled = true; }
+  });
+  await assert.rejects(() => readLimitedText(new Request(base, {
+    method: 'POST', body: stream, duplex: 'half', headers: { 'Content-Length': '0' }
+  }), 8192), BodyTooLarge);
+  assert.equal(cancelled, true);
+});
+test('bounded UTF-8 reads preserve raw signature text across byte boundaries', async () => {
+  const bytes = new TextEncoder().encode('é');
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(bytes.slice(0, 1)); controller.enqueue(bytes.slice(1)); controller.close();
+  } });
+  assert.equal(await readLimitedText(new Request(base, {
+    method: 'POST', body: stream, duplex: 'half'
+  }), 2), 'é');
+  await assert.rejects(() => readLimitedText(new Request(base, { method: 'POST', body: 'éé' }), 3), BodyTooLarge);
+});
+
+const liveSqlite = new DatabaseSync(':memory:');
+liveSqlite.exec(schema);
+const liveDb = {
+  prepare(sql) {
+    return { bind(...params) { return { sql, params, first() { return liveSqlite.prepare(sql).get(...params); } }; } };
+  },
+  batch(statements) {
+    liveSqlite.exec('BEGIN');
+    try {
+      for (const { sql, params } of statements) liveSqlite.prepare(sql).run(...params);
+      liveSqlite.exec('COMMIT');
+    } catch (error) { liveSqlite.exec('ROLLBACK'); throw error; }
+  }
+};
+const liveOrigin = 'https://aivatrading.uk';
+const liveCat = { ...fixture, testOnly: false };
+const liveEnv = {
+  STRIPE_MODE: 'live', STRIPE_LIVE_PAYMENTS_APPROVED: 'true',
+  STRIPE_LIVE_SECRET_KEY: 'sk_live_syntheticunitfixture',
+  STRIPE_LIVE_WEBHOOK_SECRET: 'whsec_syntheticlivefixture',
+  STRIPE_LIVE_ORDERS_DB: liveDb, STRIPE_LIVE_ORIGIN: liveOrigin,
+  ASSETS: { fetch() { return new Response(JSON.stringify(liveCat)); } }
+};
+const liveSession = {
+  ...session, id: 'cs_live_synthetic123456', livemode: true,
+  metadata: { source: 'aivatrading.uk', integration: 'stripe-live-v1' },
+  url: 'https://checkout.stripe.com/c/pay/cs_live_synthetic123456',
+  shipping_details: { name: 'Synthetic fixture', address: { country: 'GB' } }
+};
+const accountReady = {
+  object: 'account', charges_enabled: true, payouts_enabled: true,
+  details_submitted: true, capabilities: { card_payments: 'active' }
+};
+let account = accountReady;
+let liveReads = [];
+const stripeMock = globalThis.fetch;
+const liveMock = async (input, init = {}) => {
+  const url = String(input);
+  assert.ok(url.startsWith('https://api.stripe.com/v1/'), 'Unexpected live-test HTTP destination');
+  liveReads.push({ url, init });
+  if (url.endsWith('/account')) return new Response(JSON.stringify(account));
+  if (url.includes('/line_items?')) return new Response(JSON.stringify({
+    data: [{ description: 'Synthetic live-path fixture', quantity: 1, amount_total: 100, currency: 'gbp',
+      price: { product: { metadata: { sku: 'SYNTHETIC-ONLY' } } } }], has_more: false
+  }));
+  return new Response(JSON.stringify(liveSession));
+};
+test('live approval, mode, separate secrets and separate database all fail closed by default', async () => {
+  globalThis.fetch = liveMock;
+  liveReads = [];
+  for (const overrides of [
+    { STRIPE_LIVE_PAYMENTS_APPROVED: 'false' }, { STRIPE_LIVE_PAYMENTS_APPROVED: '' },
+    { STRIPE_LIVE_SECRET_KEY: '' }, { STRIPE_LIVE_WEBHOOK_SECRET: '' },
+    { STRIPE_LIVE_ORDERS_DB: null }, { STRIPE_LIVE_ORDERS_DB: db },
+    { STRIPE_LIVE_SECRET_KEY: 'sk_test_syntheticfixture' }, { STRIPE_MODE: 'production' }
+  ]) assert.equal((await checkout({}, { ...liveEnv, ...overrides }, liveOrigin)).status, 503);
+  assert.equal(liveReads.length, 0);
+});
+test('fully configured live path still refuses preview origins and arbitrary origins', async () => {
+  liveReads = [];
+  assert.equal((await checkout({}, liveEnv, base)).status, 503);
+  assert.equal((await checkout({}, { ...liveEnv, STRIPE_LIVE_ORIGIN: 'https://foreign.invalid' }, liveOrigin)).status, 503);
+  assert.equal(liveReads.length, 0);
+});
+test('live mode can never select the temporary test fixture', async () => {
+  assert.equal(stripeTestCataloguePath(new Request(base), { ...env, ...liveEnv }), '/data/aiva-products.json');
+  liveReads = [];
+  assert.equal((await checkout({}, {
+    ...liveEnv, ASSETS: { fetch() { return new Response(JSON.stringify(fixture)); } }
+  }, liveOrigin)).status, 503);
+  assert.equal(liveReads.length, 0);
+});
+test('unapproved Stripe account states cannot create a live Checkout Session', async () => {
+  for (const change of [
+    { charges_enabled: false }, { payouts_enabled: false },
+    { details_submitted: false }, { capabilities: { card_payments: 'pending' } }
+  ]) {
+    account = { ...accountReady, ...change };
+    liveReads = [];
+    assert.equal((await checkout({}, liveEnv, liveOrigin)).status, 503);
+    assert.ok(liveReads.every(call => call.url.endsWith('/account')));
+  }
+  account = accountReady;
+});
+test('synthetic approved live path creates card Checkout with independent live metadata', async () => {
+  liveReads = [];
+  const response = await checkout({}, liveEnv, liveOrigin);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).mode, 'live');
+  const request = liveReads.find(call => call.init.method === 'POST');
+  const body = new URLSearchParams(request.init.body);
+  assert.equal(body.get('payment_method_types[0]'), 'card');
+  assert.equal(body.get('metadata[integration]'), 'stripe-live-v1');
+  assert.equal(body.get('custom_text[submit][message]'), null);
+  assert.equal(body.get('cancel_url'), liveOrigin + '/order-cancelled.html');
+});
+test('live session verification does not confuse test references with real ones', async () => {
+  const ready = { ...env, ...liveEnv };
+  const response = await handleOrderStatus(new Request(liveOrigin + '/api/order-status?session_id=' + liveSession.id), ready);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).mode, 'live');
+  assert.equal((await handleOrderStatus(new Request(liveOrigin + '/api/order-status?session_id=' + session.id), ready)).status, 400);
+});
+test('live webhook persistence is separate and includes product and shipping details', async () => {
+  liveSession.payment_status = 'paid';
+  liveSession.status = 'complete';
+  const ready = { ...env, ...liveEnv };
+  const e = {
+    id: 'evt_syntheticlive01', type: 'checkout.session.completed', livemode: true,
+    data: { object: { ...liveSession, payment_status: 'paid' } }
+  };
+  const countBefore = sqlite.prepare('SELECT COUNT(*) AS n FROM orders').get().n;
+  const request = await signedEvent(e, { secret: liveEnv.STRIPE_LIVE_WEBHOOK_SECRET, origin: liveOrigin });
+  const response = await handleStripeWebhook(request, ready);
+  assert.equal(response.status, 200);
+  const row = liveSqlite.prepare('SELECT * FROM orders').get();
+  assert.equal(row.session_id, liveSession.id);
+  assert.equal(row.payment_status, 'paid');
+  assert.equal(JSON.parse(row.shipping_details_json).address.country, 'GB');
+  assert.equal(JSON.parse(row.line_items_json)[0].sku, 'SYNTHETIC-ONLY');
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM orders').get().n, countBefore);
+});
+test('test events cannot enter the live database and live webhooks refuse preview origins', async () => {
+  const ready = { ...env, ...liveEnv };
+  assert.equal((await handleStripeWebhook(await signedEvent(event(), {
+    secret: liveEnv.STRIPE_LIVE_WEBHOOK_SECRET, origin: liveOrigin
+  }), ready)).status, 400);
+  assert.equal((await handleStripeWebhook(await signedEvent(event(), {
+    secret: liveEnv.STRIPE_LIVE_WEBHOOK_SECRET, origin: base
+  }), ready)).status, 503);
+  globalThis.fetch = stripeMock;
+});
+
 try {
   for (const [name, run] of tests) {
     await run();
     console.log('PASS:', name);
   }
-  console.log(`${tests.length} STRIPE TEST GROUPS PASSED — mocked HTTP, real SQLite; no hosted payment was run.`);
+  console.log(`${tests.length} PAYMENT TEST GROUPS PASSED — all test/live HTTP mocked, real isolated SQLite; no payment was run.`);
 } finally {
   globalThis.fetch = originalFetch;
   sqlite.close();
+  liveSqlite.close();
 }

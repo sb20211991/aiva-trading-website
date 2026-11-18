@@ -1,9 +1,11 @@
 /* Shared checkout for Cloudflare Pages Functions.
    Stripe is test-only. Existing Square and PayPal paths are preserved. */
 import {
-  stripeTestConfigured, stripeTestReady, stripeTestCataloguePath,
-  createStripeTestCheckout, stripeTestOrderStatus, stripeTestWebhook
+  stripeTestConfigured, stripeConfigured, stripeReady, stripeMode, stripeTestCataloguePath,
+  stripeLiveAccountReady, stripeOriginAllowed, createStripeCheckout, stripeOrderStatus, stripeWebhook
 } from './stripe-test.js';
+import { normaliseCatalogue, currencyCode } from '../../assets/aiva-money.js';
+import { readLimitedText, BodyTooLarge } from './body.js';
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
@@ -43,24 +45,24 @@ function paypalConfigured(env) {
 
 /** Explicit Stripe selection fails closed; legacy providers remain available without it. */
 export function getDefaultProvider(env) {
-  if (env.CHECKOUT_PROVIDER === 'stripe') return stripeTestConfigured(env) ? 'stripe' : 'none';
-  if (stripeTestConfigured(env)) return 'stripe';
+  if (env.CHECKOUT_PROVIDER === 'stripe') return stripeConfigured(env) ? 'stripe' : 'none';
+  if (stripeConfigured(env)) return 'stripe';
   if (squareConfigured(env)) return 'square';
   if (paypalConfigured(env)) return 'paypal';
   return 'none';
 }
 
 export function availableProviders(env) {
-  if (env.CHECKOUT_PROVIDER === 'stripe') return stripeTestConfigured(env) ? ['stripe'] : [];
+  if (env.CHECKOUT_PROVIDER === 'stripe') return stripeConfigured(env) ? ['stripe'] : [];
   const list = [];
-  if (stripeTestConfigured(env)) list.push('stripe');
+  if (stripeConfigured(env)) list.push('stripe');
   if (squareConfigured(env)) list.push('square');
   if (paypalConfigured(env)) list.push('paypal');
   return list;
 }
 
 export function getModeForProvider(env, provider) {
-  if (provider === 'stripe') return stripeTestConfigured(env) ? 'test' : 'disabled';
+  if (provider === 'stripe') return stripeMode(env);
   if (provider === 'square') return squareEnvName(env) === 'production' ? 'live' : squareConfigured(env) ? 'test' : 'disabled';
   if (provider === 'paypal') return paypalEnvName(env) === 'live' ? 'live' : paypalConfigured(env) ? 'test' : 'disabled';
   return 'disabled';
@@ -85,6 +87,7 @@ function squareHeaders(env) {
 }
 
 function isLiveInfraReady(env, provider) {
+  if (provider === 'stripe') return stripeReady(env);
   const db = !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function';
   if (provider === 'square') return db && str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16;
   if (provider === 'paypal') return db; // capture verified via order-status; webhook optional
@@ -92,6 +95,7 @@ function isLiveInfraReady(env, provider) {
 }
 
 async function liveAccountReadiness(env, provider) {
+  if (provider === 'stripe') return stripeLiveAccountReady(env);
   if (getModeForProvider(env, provider) !== 'live') return false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
@@ -127,7 +131,7 @@ function validPolicy(c) {
   return (
     c &&
     c.shopEnabled === true &&
-    c.currency === 'GBP' &&
+    !!currencyCode(c.currency) &&
     Array.isArray(c.products) &&
     str(c.businessAddress).length >= 8 &&
     str(c.deliveryPolicy).length >= 15 &&
@@ -167,7 +171,7 @@ async function getCatalogue(request, env) {
   url.search = '';
   const r = await env.ASSETS.fetch(new Request(url.toString(), { method: 'GET' }));
   if (!r.ok) throw Error('CATALOGUE_UNAVAILABLE');
-  return await r.json();
+  return normaliseCatalogue(await r.json());
 }
 
 function isTrustedCheckoutUrl(value, provider) {
@@ -237,7 +241,7 @@ function parseBasket(data, cat) {
     itemTotal >= shipping.freeShippingThresholdPence
       ? 0
       : shipping.flatRatePence;
-  return { lines, itemTotal, shipping, shippingPrice };
+  return { lines, itemTotal, shipping, shippingPrice, currency: cat.currency };
 }
 
 async function paypalAccessToken(env) {
@@ -445,19 +449,22 @@ export async function handleShopStatus(request, env) {
         validPolicy(cat) &&
         cat.products.some(buyable) &&
         !(mode === 'live' && cat.testOnly === true) &&
-        (provider !== 'stripe' || stripeTestReady(env)) &&
+        (provider !== 'stripe' || (stripeReady(env) && stripeOriginAllowed(env, new URL(request.url).origin))) &&
+        (provider === 'stripe' || cat.currency === 'GBP') &&
         (mode === 'test' || isLiveInfraReady(env, provider)),
       mode,
+      currency: cat.currency,
+      livePaymentsApproved: env.STRIPE_LIVE_PAYMENTS_APPROVED === 'true',
       cataloguePath: stripeTestCataloguePath(request, env),
       provider: provider === 'none' ? null : provider,
       providers,
       merchantReady,
       webhookConfigured:
-        provider === 'stripe' ? stripeTestReady(env) : provider === 'square'
+        provider === 'stripe' ? stripeReady(env) : provider === 'square'
           ? str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16
           : false,
       orderDatabaseConfigured: provider === 'stripe'
-        ? typeof env.STRIPE_TEST_ORDERS_DB?.prepare === 'function'
+        ? typeof (env.STRIPE_MODE === 'live' ? env.STRIPE_LIVE_ORDERS_DB : env.STRIPE_TEST_ORDERS_DB)?.prepare === 'function'
         : !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function',
       publishedProducts: Array.isArray(cat.products) ? cat.products.filter(buyable).length : 0,
       shopEnabled: cat.shopEnabled === true,
@@ -488,17 +495,18 @@ export async function handleCreateCheckout(request, env) {
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   let data;
   try {
-    data = await request.json();
-  } catch {
+    data = JSON.parse(await readLimitedText(request, 8192));
+  } catch (error) {
+    if (error instanceof BodyTooLarge) return respond({ error: 'Order too large.' }, 413);
     return respond({ error: 'Invalid order format.' }, 400);
   }
   const requested = str(data?.provider).toLowerCase();
   if (env.CHECKOUT_PROVIDER === 'stripe' && requested && requested !== 'stripe') {
-    return respond({ error: 'Only Stripe test checkout is enabled.' }, 400);
+    return respond({ error: 'Only Stripe checkout is enabled.' }, 400);
   }
   let provider = requested || getDefaultProvider(env);
-  if (provider === 'stripe' && !stripeTestConfigured(env)) {
-    return respond({ error: 'Stripe test checkout is not configured. Live keys are not accepted.' }, 503);
+  if (provider === 'stripe' && !stripeConfigured(env)) {
+    return respond({ error: 'Stripe checkout is not configured or approved for this environment.' }, 503);
   }
   if (provider === 'paypal' && !paypalConfigured(env)) {
     return respond({ error: 'PayPal checkout is not configured.' }, 503);
@@ -520,6 +528,7 @@ export async function handleCreateCheckout(request, env) {
     mode === 'disabled' ||
     provider === 'none' ||
     !validPolicy(cat) ||
+    (provider !== 'stripe' && cat.currency !== 'GBP') ||
     (mode === 'live' && cat.testOnly === true) ||
     (mode === 'live' && !isLiveInfraReady(env, provider))
   ) {
@@ -531,12 +540,9 @@ export async function handleCreateCheckout(request, env) {
   if (!/application\/json/i.test(request.headers.get('Content-Type') || '')) {
     return respond({ error: 'Send JSON checkout items.' }, 415);
   }
-  if (Number(request.headers.get('Content-Length')) > 8192) {
-    return respond({ error: 'Order too large.' }, 413);
-  }
   const basket = parseBasket(data, cat);
   if (basket.error) return respond({ error: basket.error }, 400);
-  if (provider === 'stripe') return createStripeTestCheckout(env, site, basket);
+  if (provider === 'stripe') return createStripeCheckout(env, site, basket);
   if (provider === 'square') return createSquareCheckout(env, site, basket, mode);
   if (provider === 'paypal') return createPayPalCheckout(env, site, basket, mode);
   return respond({ error: 'Online checkout is not enabled. Contact Aiva for a quotation.' }, 503);
@@ -632,7 +638,7 @@ export async function handleOrderStatus(request, env) {
     return respond({ error: 'Invalid checkout reference.' }, 400);
   }
   if (/^cs_(test_|live_)[A-Za-z0-9]+$/.test(id)) {
-    return stripeTestOrderStatus(env, id);
+    return stripeOrderStatus(env, id);
   }
   if (/^[A-Z0-9]{10,}$/.test(id) && paypalConfigured(env) && !squareConfigured(env)) {
     return getPayPalOrderStatus(env, id);
@@ -951,5 +957,5 @@ export async function handleCreateRefund(request, env) {
 
 /** Stripe webhook accepts test events only and uses a separate test database. */
 export async function handleStripeWebhook(request, env) {
-  return stripeTestWebhook(request, env);
+  return stripeWebhook(request, env);
 }

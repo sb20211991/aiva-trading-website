@@ -1,6 +1,7 @@
 /* Aiva Buying Guide payment handoff. The server validates every SKU and price. */
-(() => {
+(async () => {
   'use strict';
+  const { formatMoney, normaliseCatalogue } = await import('./aiva-money.js');
   const root = document.getElementById('direct-checkout');
   if (!root) return;
   const $ = (id) => document.getElementById(id);
@@ -12,8 +13,7 @@
     total: $('aiva-guide-order-total'),
     error: $('aiva-guide-pay-error')
   };
-  const formatPence = (n) =>
-    new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n / 100);
+  const formatPence = (n) => formatMoney(n, catalog?.currency || 'GBP');
   const cartKey = 'aiva_cart_v2';
   const validSku = (x) => typeof x === 'string' && /^[A-Za-z0-9_-]{2,60}$/.test(x);
   const validQuantity = (x) => Number.isSafeInteger(x) && x > 0 && x <= 10;
@@ -144,7 +144,7 @@
         ? online.cataloguePath : '/data/aiva-products.json';
       const r1 = await fetch(cataloguePath, { cache: 'no-store' });
       if (!r1.ok || !r2.ok) throw Error('Cannot verify store readiness.');
-      catalog = await r1.json();
+      catalog = normaliseCatalogue(await r1.json());
       if (!Array.isArray(catalog?.products)) throw Error('Invalid catalogue.');
     } catch {
       online = { ready: false, mode: 'disabled' };

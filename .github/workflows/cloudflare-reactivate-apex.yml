@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   reactivate:
+    # Archived: merging website code must not automatically change domain routing.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

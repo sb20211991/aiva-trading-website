@@ -14,6 +14,8 @@ permissions:
   contents: read
 jobs:
   redeploy:
+    # Archived: catalogue commits must not silently promote production or rewrite secrets.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

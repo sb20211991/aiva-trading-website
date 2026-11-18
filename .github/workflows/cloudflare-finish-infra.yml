@@ -12,6 +12,8 @@ permissions:
   contents: read
 jobs:
   finish:
+    # Archived: this recovery workflow can replace existing encrypted configuration.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
