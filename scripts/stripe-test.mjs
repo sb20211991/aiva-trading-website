@@ -201,8 +201,10 @@ test('order status verifies payment_status, not the success redirect', async () 
 test('webhook rejects unsigned, bad, stale, future and oversized payloads', async () => {
   assert.equal((await handleStripeWebhook(new Request(base, { method: 'POST', body: '{}' }), env)).status, 400);
   for (const options of [
-    { bad: true }, { timestamp: Math.floor(Date.now() / 1000) - 301 },
-    { timestamp: Math.floor(Date.now() / 1000) + 301 }
+    // Keep well outside the tolerance: a busy runner can pause between signing
+    // and verification and make a +301s timestamp valid by the time it is checked.
+    { bad: true }, { timestamp: Math.floor(Date.now() / 1000) - 3600 },
+    { timestamp: Math.floor(Date.now() / 1000) + 3600 }
   ]) assert.equal((await handleStripeWebhook(await signedEvent(event(), options), env)).status, 400);
   assert.equal((await handleStripeWebhook(await signedEvent(event(), { raw: 'x'.repeat(128001) }), env)).status, 413);
   assert.equal((await handleStripeWebhook(await signedEvent(event(), { raw: 'invalid-json' }), env)).status, 400);
