@@ -202,7 +202,7 @@ export async function handleShopStatus(request, env) {
         squareEnvironment: squareEnvName(env) || null,
         hasWebhookSignatureKey: str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16,
         hasOrdersDb: hasDb(env),
-        hasMerchantKey: str(env.MERCHANT_ADMIN_KEY).length >= 24
+        hasMerchantKey: str(env.MERCHANT_ADMIN_KEY || env.MERCHANT_REFUND_SECRET).length >= 24
       }
     });
   } catch {
@@ -415,7 +415,7 @@ export async function handleSquareWebhook(request, env) {
 }
 
 function merchantAuthorised(request, env) {
-  const secret = str(env.MERCHANT_ADMIN_KEY);
+  const secret = str(env.MERCHANT_ADMIN_KEY || env.MERCHANT_REFUND_SECRET);
   const auth = str(request.headers.get('Authorization')).replace(/^Bearer\s+/i, '');
   return secret.length >= 24 && timingSafeEqual(secret, auth);
 }

@@ -1,13 +1,11 @@
 name: Square sandbox deploy (aivatrading.uk)
-# Deploys the Square-only checkout to the aiva-trading Pages project, migrates D1, attaches
-# aivatrading.uk + www, and installs Square SANDBOX runtime secrets. Never enables live payments.
-# Secret handoff: the job publishes an ephemeral RSA public key as an artifact and waits for
-# deploy/square-secrets.enc (encrypted to that key) on this branch. The private key never leaves the runner.
+# Deploys the Square-only checkout to the aiva-trading Pages project and attaches aivatrading.uk + www.
+# Square SANDBOX values come from the existing GitHub secrets (never printed); a production token is refused.
+# Then runs a real sandbox payment, webhook, duplicate, decline, cancel and refund test. Never enables live payments.
 on:
   workflow_dispatch:
   push:
     branches: [devin/1763498400-square-checkout]
-    paths-ignore: ['deploy/**']
 permissions:
   contents: read
 concurrency:
@@ -16,7 +14,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -28,54 +26,31 @@ jobs:
           node-version: '22'
       - name: Local checks
         run: npm test
-      - name: Ephemeral key for secret handoff
+      - name: Cloudflare diagnostics and attach aivatrading.uk + www
+        env:
+          DETACH_WORKER_DOMAINS: "1"
+        run: python3 scripts/cloudflare-domains.py
+      - name: Configure Square sandbox from existing GitHub secrets
+        id: square
+        env:
+          GH_SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
+          GH_SQUARE_LOCATION_ID: ${{ secrets.SQUARE_LOCATION_ID }}
+          GH_MERCHANT_REFUND_SECRET: ${{ secrets.MERCHANT_REFUND_SECRET }}
+          WEBHOOK_URL: https://app.aivatrading.uk/api/square-webhook
+          SECRETS_FILE: ${{ runner.temp }}/sq.json
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/k" handoff
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$RUNNER_TEMP/k/priv.pem" 2>/dev/null
-          openssl pkey -in "$RUNNER_TEMP/k/priv.pem" -pubout -out handoff/pub.pem
-          echo "$GITHUB_RUN_ID" > handoff/run_id
-      - uses: actions/upload-artifact@v4
-        with:
-          name: handoff-pubkey
-          path: handoff/
-      - name: Attach aivatrading.uk and www to Pages project
-        run: python3 scripts/cloudflare-domains.py
+          node scripts/square-sandbox-setup.mjs
+          if [ -s "$SECRETS_FILE" ]; then
+            npx --yes wrangler@4 pages secret bulk "$SECRETS_FILE" --project-name="$PROJECT" > /dev/null
+            echo "Pages production secrets installed (values not printed)."
+          fi
       - name: Deploy Pages production
         run: |
           set -euo pipefail
           node scripts/build-pages-assets.mjs
           npx --yes wrangler@4 pages deploy .pages-output --project-name="$PROJECT" --branch=main \
             --commit-hash="$GITHUB_SHA" --commit-message="Square sandbox checkout" --commit-dirty=true
-      - name: Wait for encrypted Square sandbox secrets (up to 25 min)
-        run: |
-          set -uo pipefail
-          for i in $(seq 1 50); do
-            git fetch -q origin "$GITHUB_REF_NAME" && git show "origin/$GITHUB_REF_NAME:deploy/square-secrets.enc" > "$RUNNER_TEMP/s.enc" 2>/dev/null \
-              && git show "origin/$GITHUB_REF_NAME:deploy/run_id" 2>/dev/null | grep -qx "$GITHUB_RUN_ID" && { echo "received"; exit 0; }
-            sleep 30
-          done
-          echo "No secrets received; deployment kept without Square credentials."; exit 0
-      - name: Install Square sandbox secrets
-        run: |
-          set -euo pipefail
-          [ -s "$RUNNER_TEMP/s.enc" ] || { echo "skipped"; exit 0; }
-          base64 -d "$RUNNER_TEMP/s.enc" | openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/k/priv.pem" \
-            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 > "$RUNNER_TEMP/s.json"
-          python3 - "$RUNNER_TEMP/s.json" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1]))
-          allowed = {"SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_WEBHOOK_SIGNATURE_KEY", "MERCHANT_ADMIN_KEY"}
-          assert set(d) <= allowed, "unexpected keys"
-          assert d["SQUARE_ACCESS_TOKEN"].startswith("EAAA"), "token format"
-          json.dump(d, open(sys.argv[1], "w"))
-          print("keys:", sorted(d))
-          PY
-          npx --yes wrangler@4 pages secret bulk "$RUNNER_TEMP/s.json" --project-name="$PROJECT"
-          shred -u "$RUNNER_TEMP/s.json" "$RUNNER_TEMP/k/priv.pem"
-          # Secrets apply to new deployments only.
-          npx --yes wrangler@4 pages deploy .pages-output --project-name="$PROJECT" --branch=main \
-            --commit-hash="$GITHUB_SHA" --commit-message="Square sandbox checkout (secrets)" --commit-dirty=true
       - name: Verify endpoints
         run: |
           sleep 20
@@ -85,3 +60,14 @@ jobs:
               printf '%s %s\n' "$p" "$(curl -s -m 15 -o /dev/null -w '%{http_code} %{content_type}' "https://$h$p")"
             done
           done
+      - name: Square sandbox end-to-end (real sandbox payment, webhook, refunds)
+        if: steps.square.outputs.configured == 'true'
+        env:
+          GH_SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
+          BASE_URL: https://app.aivatrading.uk
+          WEBHOOK_URL: https://app.aivatrading.uk/api/square-webhook
+          SECRETS_FILE: ${{ runner.temp }}/sq.json
+        run: node scripts/square-sandbox-e2e.mjs
+      - name: Remove local secret files
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/sq.json*

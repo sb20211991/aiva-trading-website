@@ -24,6 +24,20 @@ def call(method, path, body=None):
         return e.code, p
 
 
+print("account is dashboard account b2c18cf1...:", ACC == "b2c18cf1451c6d64889a0b1f6e885f33")
+_, v = call("GET", "/user/tokens/verify")
+print("token status:", (v.get("result") or {}).get("status"))
+_, za = call("GET", "/zones?per_page=50")
+print("zones visible to token:", [(x.get("name"), x.get("account", {}).get("id") == ACC) for x in za.get("result") or []])
+_, ws = call("GET", f"/accounts/{ACC}/workers/scripts")
+print("workers scripts:", [x.get("id") for x in ws.get("result") or []])
+_, wd = call("GET", f"/accounts/{ACC}/workers/domains")
+for d in wd.get("result") or []:
+    print("worker custom domain:", d.get("hostname"), "->", d.get("service"), d.get("environment"))
+    if d.get("hostname") in ("aivatrading.uk", "www.aivatrading.uk") and os.environ.get("DETACH_WORKER_DOMAINS") == "1":
+        st, _ = call("DELETE", f"/accounts/{ACC}/workers/domains/{d.get('id')}")
+        print("  detached from worker:", st == 200)
+
 dom_base = f"/accounts/{ACC}/pages/projects/{PROJECT}/domains"
 _, p = call("GET", dom_base)
 existing = {d["name"]: d for d in p.get("result") or []}
