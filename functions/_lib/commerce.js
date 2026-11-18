@@ -51,7 +51,8 @@ async function ensureSchema(env) {
     db.prepare('CREATE TABLE IF NOT EXISTS orders (' + ORDER_COLUMNS + ')'),
     db.prepare('CREATE TABLE IF NOT EXISTS payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL)'),
     db.prepare('CREATE TABLE IF NOT EXISTS refunds (refund_id TEXT PRIMARY KEY, payment_id TEXT NOT NULL, amount INTEGER NOT NULL, status TEXT NOT NULL, updated_at INTEGER NOT NULL)'),
-    db.prepare('CREATE TABLE IF NOT EXISTS inventory (sku TEXT PRIMARY KEY, stock INTEGER NOT NULL, updated_at INTEGER NOT NULL)')
+    db.prepare('CREATE TABLE IF NOT EXISTS inventory (sku TEXT PRIMARY KEY, stock INTEGER NOT NULL, updated_at INTEGER NOT NULL)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)')
   ]);
   const { results } = await db.prepare('PRAGMA table_info(orders)').all();
   const have = (results || []).map((c) => c.name);
@@ -59,7 +60,9 @@ async function ensureSchema(env) {
   const current = ORDER_COLUMN_NAMES.every((c) => have.includes(c)) && /'refunded'\s*\)\s*\)\s*,\s*fulfillment_status/i.test(ddl.replace(/\s+/g, ' '));
   if (!current) {
     const common = ORDER_COLUMN_NAMES.filter((c) => have.includes(c)).join(', ');
+    /* The marker insert fails for a concurrent second migrator, rolling back its whole batch. */
     await db.batch([
+      db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES ('orders_v2', ?)").bind(now()),
       db.prepare('DROP TABLE IF EXISTS orders_v2'),
       db.prepare('CREATE TABLE orders_v2 (' + ORDER_COLUMNS + ')'),
       db.prepare(`INSERT INTO orders_v2 (${common}) SELECT ${common} FROM orders`),
@@ -67,7 +70,9 @@ async function ensureSchema(env) {
       db.prepare('ALTER TABLE orders_v2 RENAME TO orders'),
       db.prepare('CREATE INDEX IF NOT EXISTS orders_payment_created ON orders(payment_status,created_at)'),
       db.prepare('CREATE INDEX IF NOT EXISTS orders_payment_id ON orders(payment_id)')
-    ]);
+    ]).catch(async (error) => {
+      if (!(await db.prepare("SELECT 1 FROM schema_migrations WHERE id='orders_v2'").first())) throw error;
+    });
   }
   schemaReady.add(db);
 }
