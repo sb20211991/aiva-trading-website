@@ -12,9 +12,13 @@ const m = await import(pathToFileURL(path.join(root, 'functions/_lib/commerce.js
 
 function d1() {
   const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync(path.join(root, 'ORDER-DATABASE-SETUP.sql'), 'utf8'));
-  for (const col of ['expected_total INTEGER', 'stock_applied INTEGER NOT NULL DEFAULT 0', 'payment_link_id TEXT',
-    'mode TEXT', 'paid_at INTEGER', 'refund_status TEXT', 'refunded_total INTEGER']) db.exec('ALTER TABLE orders ADD COLUMN ' + col);
+  // Legacy production schema (with CHECK constraints) to prove the in-place self-migration.
+  db.exec(`CREATE TABLE orders (session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL,
+    payment_status TEXT NOT NULL CHECK(payment_status IN ('pending','paid','failed','refunded')),
+    fulfillment_status TEXT NOT NULL DEFAULT 'new' CHECK(fulfillment_status IN ('new','processing','shipped','cancelled','refunded')),
+    customer_email TEXT, customer_name TEXT, amount_total INTEGER, currency TEXT, shipping_details_json TEXT, line_items_json TEXT,
+    payment_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL);`);
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     run: async () => ({ meta: { changes: Number(db.prepare(sql).run(...args).changes) } }),
@@ -133,7 +137,7 @@ console.log('ok failed and cancelled payments recorded, no stock change');
 // Amount mismatch goes to review
 j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }])).json();
 await webhook(evt('E4', 'payment.updated', { payment: payment(j.orderId, 1, 'COMPLETED') }));
-assert.equal(order(j.orderId).payment_status, 'review'); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+assert.equal(order(j.orderId).payment_status, 'pending'); assert.equal(order(j.orderId).review_reason, 'amount_mismatch'); assert.equal(stock('AIVA-TEST-1GBP'), 4);
 console.log('ok amount mismatch flagged for review');
 
 // Order status

@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS orders (
   line_items_json TEXT,
   payment_id TEXT,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  expected_total INTEGER, stock_applied INTEGER NOT NULL DEFAULT 0, payment_link_id TEXT, mode TEXT,
+  paid_at INTEGER, refund_status TEXT, refunded_total INTEGER, review_reason TEXT
 );
 CREATE TABLE IF NOT EXISTS payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS inventory (sku TEXT PRIMARY KEY, stock INTEGER NOT NULL, updated_at INTEGER NOT NULL);

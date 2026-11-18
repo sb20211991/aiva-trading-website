@@ -39,8 +39,6 @@ jobs:
         with:
           name: handoff-pubkey
           path: handoff/
-      - name: D1 migration
-        run: bash scripts/d1-migrate.sh
       - name: Attach aivatrading.uk and www to Pages project
         run: python3 scripts/cloudflare-domains.py
       - name: Deploy Pages production

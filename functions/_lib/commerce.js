@@ -33,6 +33,28 @@ function squareConfigured(env) {
 function hasDb(env) {
   return !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function';
 }
+/* Self-migrating schema: the Function's D1 binding upgrades older order tables in place.
+   payment_status keeps the original pending/paid/failed/refunded values; mismatches use review_reason. */
+const SCHEMA_COLUMNS = ['expected_total INTEGER', 'stock_applied INTEGER NOT NULL DEFAULT 0', 'payment_link_id TEXT',
+  'mode TEXT', 'paid_at INTEGER', 'refund_status TEXT', 'refunded_total INTEGER', 'review_reason TEXT'];
+const schemaReady = new WeakSet();
+async function ensureSchema(env) {
+  const db = env.ORDERS_DB;
+  if (schemaReady.has(db)) return;
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS orders (session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL, payment_status TEXT NOT NULL,
+      fulfillment_status TEXT NOT NULL DEFAULT 'new', customer_email TEXT, customer_name TEXT, amount_total INTEGER, currency TEXT,
+      shipping_details_json TEXT, line_items_json TEXT, payment_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    db.prepare('CREATE TABLE IF NOT EXISTS payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS inventory (sku TEXT PRIMARY KEY, stock INTEGER NOT NULL, updated_at INTEGER NOT NULL)')
+  ]);
+  const { results } = await db.prepare('PRAGMA table_info(orders)').all();
+  const have = new Set((results || []).map((c) => c.name));
+  for (const col of SCHEMA_COLUMNS) {
+    if (!have.has(col.split(' ')[0])) await db.prepare('ALTER TABLE orders ADD COLUMN ' + col).run();
+  }
+  schemaReady.add(db);
+}
 function webhookConfigured(env) {
   return str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16 && !!str(env.SQUARE_WEBHOOK_NOTIFICATION_URL);
 }
@@ -100,6 +122,7 @@ function buyable(p) {
 async function stockOverrides(env) {
   if (!hasDb(env)) return new Map();
   try {
+    await ensureSchema(env);
     const { results } = await env.ORDERS_DB.prepare('SELECT sku, stock FROM inventory').all();
     return new Map((results || []).map((r) => [r.sku, Number(r.stock)]));
   } catch {
@@ -301,7 +324,7 @@ async function applyPaid(env, origin, orderId, payment, eventId) {
   if (!row) return { ignored: 'unknown_order' };
   const amount = Number(payment?.amount_money?.amount);
   if (!Number.isSafeInteger(amount) || payment?.amount_money?.currency !== 'GBP' || amount !== Number(row.expected_total)) {
-    await db.prepare(`UPDATE orders SET payment_status='review', last_event_id=?, updated_at=? WHERE session_id=? AND payment_status IN ('pending','failed')`)
+    await db.prepare(`UPDATE orders SET review_reason='amount_mismatch', last_event_id=?, updated_at=? WHERE session_id=? AND payment_status IN ('pending','failed')`)
       .bind(eventId, now(), orderId).run();
     console.error('Square amount mismatch for order', orderId);
     return { ignored: 'amount_mismatch' };
@@ -355,6 +378,7 @@ export async function handleSquareWebhook(request, env) {
   if (!eventId || eventId.length > 191) return respond({ error: 'Invalid event.' }, 400);
   const origin = new URL(request.url).origin;
   const db = env.ORDERS_DB;
+  try { await ensureSchema(env); } catch (e) { console.error('schema', String(e)); return respond({ error: 'Temporary processing error.' }, 500); }
   const seen = await db.prepare('INSERT OR IGNORE INTO payment_events (event_id, processed_at) VALUES (?,?)').bind(eventId, now()).run();
   if (!seen.meta?.changes) return respond({ received: true, duplicate: true });
   try {
@@ -402,11 +426,12 @@ function merchantAuthorised(request, env) {
 export async function handleAdminOrders(request, env) {
   if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
   if (!hasDb(env)) return respond({ error: 'Order database not configured.' }, 503);
+  await ensureSchema(env);
   if (request.method === 'GET') {
     const params = new URL(request.url).searchParams;
     const status = str(params.get('status'));
     const limit = Math.min(Math.max(parseInt(params.get('limit') || '50', 10) || 50, 1), 200);
-    const sql = 'SELECT session_id AS orderId, payment_status, fulfillment_status, customer_email, customer_name, amount_total, refunded_total, currency, line_items_json, shipping_details_json, payment_id, mode, created_at, paid_at, updated_at FROM orders' +
+    const sql = 'SELECT session_id AS orderId, payment_status, review_reason, fulfillment_status, customer_email, customer_name, amount_total, refunded_total, currency, line_items_json, shipping_details_json, payment_id, mode, created_at, paid_at, updated_at FROM orders' +
       (status ? ' WHERE payment_status=?' : '') + ' ORDER BY created_at DESC LIMIT ?';
     const stmt = status ? env.ORDERS_DB.prepare(sql).bind(status, limit) : env.ORDERS_DB.prepare(sql).bind(limit);
     const { results } = await stmt.all();
@@ -433,6 +458,7 @@ export async function handleCreateRefund(request, env) {
   try { data = JSON.parse(await readLimitedText(request, 4096)); } catch { return respond({ error: 'Invalid JSON.' }, 400); }
   const orderId = str(data?.orderId);
   if (!validId(orderId)) return respond({ error: 'A valid orderId is required.' }, 400);
+  await ensureSchema(env);
   const row = await env.ORDERS_DB.prepare('SELECT payment_id, amount_total, refunded_total, payment_status FROM orders WHERE session_id=?').bind(orderId).first();
   if (!row || row.payment_status !== 'paid' || !row.payment_id) return respond({ error: 'Only paid orders can be refunded.' }, 409);
   const already = Number(row.refunded_total) || 0;
