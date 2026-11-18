@@ -9,6 +9,7 @@ on:
       - cursor/cloudflare-github-deploy-1f19
     paths:
       - '.github/workflows/cloudflare-safe-redeploy.yml'
+      - 'data/aiva-products.json'
 permissions:
   contents: read
 jobs:
@@ -195,4 +196,4 @@ jobs:
           print('SQUARE_RUNTIME_STILL_EMPTY')
           sys.exit(0)
           PY
-# probe-secrets-trigger: 2026-11-17T21:36:00Z
+# probe-secrets-trigger: 2026-11-18T00:20:00Z catalogue-1gbp
