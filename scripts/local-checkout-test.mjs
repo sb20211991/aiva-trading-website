@@ -159,6 +159,8 @@ assert.equal(j.amountPence, 500); assert.equal(order(o1).payment_status, 'refund
 assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).status, 409);
 await webhook(evt('E5', 'refund.updated', { refund: { id: 'RF_500', status: 'COMPLETED', order_id: o1, payment_id: 'PAY_' + o1, amount_money: { amount: 500, currency: 'GBP' } } }));
 assert.equal(order(o1).refund_status, 'COMPLETED'); assert.equal(order(o1).fulfillment_status, 'refunded');
-console.log('ok merchant listing, fulfilment update, partial + full refunds');
+await webhook(evt('E6', 'refund.updated', { refund: { id: 'RF_X', status: 'FAILED', order_id: o1, payment_id: 'PAY_' + o1, amount_money: { amount: 500, currency: 'GBP' } } }));
+assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95); assert.equal(order(o1).refund_status, 'FAILED');
+console.log('ok merchant listing, fulfilment update, partial + full refunds, failed refund restored');
 
 console.log('LOCAL SQUARE CHECKOUT TESTS PASSED');

@@ -333,24 +333,25 @@ async function applyPaid(env, origin, orderId, payment, eventId) {
   const addr = payment?.shipping_address || null;
   const name = str([addr?.first_name, addr?.last_name].filter(Boolean).join(' ')).slice(0, 160);
   const t = now();
-  const upd = await db.prepare(
+  let items = [];
+  try { items = JSON.parse(row.line_items_json || '[]'); } catch { items = []; }
+  const cat = await getCatalogueForStock(env, origin);
+  /* One D1 batch = one transaction: stock is reduced exactly when the order flips to paid. */
+  const pendingGuard = `EXISTS (SELECT 1 FROM orders WHERE session_id=? AND stock_applied=0 AND payment_status IN ('pending','failed'))`;
+  const stmts = [];
+  for (const it of items) {
+    if (!validSku(it.sku) || !Number.isSafeInteger(it.quantity)) continue;
+    stmts.push(db.prepare('INSERT OR IGNORE INTO inventory (sku, stock, updated_at) VALUES (?,?,?)').bind(it.sku, cat.get(it.sku) ?? 0, t));
+    stmts.push(db.prepare(`UPDATE inventory SET stock=MAX(stock-?,0), updated_at=? WHERE sku=? AND ${pendingGuard}`).bind(it.quantity, t, it.sku, orderId));
+  }
+  stmts.push(db.prepare(
     `UPDATE orders SET payment_status='paid', payment_id=?, amount_total=?, customer_email=COALESCE(NULLIF(?,''),customer_email),
        customer_name=COALESCE(NULLIF(?,''),customer_name), shipping_details_json=COALESCE(?,shipping_details_json),
        last_event_id=?, paid_at=?, updated_at=?, stock_applied=1
      WHERE session_id=? AND stock_applied=0 AND payment_status IN ('pending','failed')`
-  ).bind(str(payment?.id), amount, email, name, addr ? JSON.stringify(addr).slice(0, 4000) : null, eventId, t, t, orderId).run();
-  if (!upd.meta?.changes) return { duplicate: true };
-  let items = [];
-  try { items = JSON.parse(row.line_items_json || '[]'); } catch { items = []; }
-  const cat = await getCatalogueForStock(env, origin);
-  const stmts = [];
-  for (const it of items) {
-    if (!validSku(it.sku) || !Number.isSafeInteger(it.quantity)) continue;
-    const base = cat.get(it.sku) ?? 0;
-    stmts.push(db.prepare('INSERT OR IGNORE INTO inventory (sku, stock, updated_at) VALUES (?,?,?)').bind(it.sku, base, t));
-    stmts.push(db.prepare('UPDATE inventory SET stock=MAX(stock-?,0), updated_at=? WHERE sku=?').bind(it.quantity, t, it.sku));
-  }
-  if (stmts.length) await db.batch(stmts);
+  ).bind(str(payment?.id), amount, email, name, addr ? JSON.stringify(addr).slice(0, 4000) : null, eventId, t, t, orderId));
+  const results = await db.batch(stmts);
+  if (!results.at(-1)?.meta?.changes) return { duplicate: true };
   return { paid: true };
 }
 async function getCatalogueForStock(env, origin) {
@@ -397,13 +398,22 @@ export async function handleSquareWebhook(request, env) {
     }
     if (type === 'refund.created' || type === 'refund.updated') {
       const r = obj.refund;
-      if (r?.status === 'COMPLETED' && (validId(str(r.order_id)) || validId(str(r.payment_id)))) {
+      const ids = [str(r?.order_id), str(r?.payment_id)];
+      if (r?.status === 'COMPLETED' && (validId(ids[0]) || validId(ids[1]))) {
         /* refunded_total is maintained by the refund API; the webhook only confirms completion. */
         await db.prepare(`UPDATE orders SET refund_status='COMPLETED',
             payment_status=CASE WHEN COALESCE(refunded_total,0) >= amount_total THEN 'refunded' ELSE payment_status END,
             fulfillment_status=CASE WHEN COALESCE(refunded_total,0) >= amount_total THEN 'refunded' ELSE fulfillment_status END,
             last_event_id=?, updated_at=? WHERE session_id=? OR (payment_id IS NOT NULL AND payment_id=?)`)
-          .bind(eventId, now(), str(r.order_id), str(r.payment_id)).run();
+          .bind(eventId, now(), ...ids).run();
+      }
+      if ((r?.status === 'FAILED' || r?.status === 'REJECTED') && (validId(ids[0]) || validId(ids[1]))) {
+        /* Give back the amount reserved by handleCreateRefund so the merchant can retry. */
+        const amt = Number(r.amount_money?.amount) || 0;
+        await db.prepare(`UPDATE orders SET refund_status=?, refunded_total=MAX(COALESCE(refunded_total,0)-?,0),
+            payment_status='paid', fulfillment_status=CASE WHEN fulfillment_status='refunded' THEN 'new' ELSE fulfillment_status END,
+            last_event_id=?, updated_at=? WHERE (session_id=? OR (payment_id IS NOT NULL AND payment_id=?)) AND payment_status IN ('paid','refunded')`)
+          .bind(str(r.status), amt, eventId, now(), ...ids).run();
       }
       return respond({ received: true });
     }
