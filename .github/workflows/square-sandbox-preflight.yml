@@ -31,6 +31,11 @@ jobs:
           node-version: '22'
       - name: Run local checkout and website checks
         run: npm test
+      - name: Inspect existing payment resources and domain routing without changing them
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python scripts/cloudflare-payment-inventory.py
       - name: Identify Cloudflare Pages project without changing it
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
