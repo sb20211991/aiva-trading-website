@@ -37,3 +37,21 @@ header nav{gap:22px}header nav a{font-size:13px;white-space:nowrap}header>.butto
 .range-next{max-width:1200px;margin:24px auto 60px;width:88%}
 
 .search-enquiry{padding:26px;border:1px solid #a5b49b;background:#edf0e5;margin:22px 0}.search-enquiry p{max-width:600px}.search-enquiry strong{font:26px Georgia,serif}.search-enquiry .button{background:#173c31;color:white}
+/* Keep the existing desktop design; collapse navigation before tablet overflow. */
+.navigation-ready header nav[hidden]{display:none!important}
+@media(max-width:1024px){
+  header{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+  header .brand{min-width:0;margin-right:auto}
+  .navigation-ready .menu-toggle{display:inline-flex;align-items:center;gap:7px;min-height:44px}
+  .navigation-ready .menu-toggle[hidden]{display:none}
+  .navigation-ready header nav.is-open{display:grid;grid-template-columns:1fr 1fr;grid-column:1/-1;width:100%;gap:0 12px;border-top:1px solid #c7d0bf;padding-top:12px}
+  .navigation-ready header nav a{display:flex;align-items:center;min-height:44px;white-space:normal;overflow-wrap:anywhere}
+  header .aiva-language{grid-column:1/-1;max-width:100%;justify-self:end}
+  header .aiva-language select{max-width:min(100%,200px);min-height:44px;font-size:16px}
+}
+@media(max-width:420px){
+  .navigation-ready header nav.is-open{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select,textarea{font-size:16px}
+}

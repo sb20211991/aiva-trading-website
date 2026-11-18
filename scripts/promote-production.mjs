@@ -56,6 +56,7 @@ async function main() {
     stdio: 'inherit', env: { ...env, GITHUB_SHA: sha }
   });
   execFileSync('npx', ['--yes', 'wrangler@4.164.0', 'pages', 'deploy', '.pages-output',
+    '--config=wrangler.toml',
     '--project-name=aiva-trading', '--branch=' + project.production_branch,
     '--commit-hash=' + sha, '--commit-message=Approved closed-shop release',
     '--commit-dirty=false'], { stdio: 'inherit' });

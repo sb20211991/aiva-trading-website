@@ -7,4 +7,5 @@
 node_modules/
 .wrangler/
 .pages-output/
+.worker-assets/
 *.pem

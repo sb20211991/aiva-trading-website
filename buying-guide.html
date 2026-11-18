@@ -15,10 +15,12 @@
     <div><strong>02 · Review</strong><span>Check quantities, prices and delivery before paying.</span></div>
     <div><strong>03 · Checkout</strong><span>Continue to Stripe when checkout is available. Test payments are labelled and never charge real money.</span></div>
   </div>
-  <div class="aiva-guide-payment-options aiva-guide-payment-options--single" aria-label="Payment method">
-    <article><span class="aiva-guide-method-glyph" aria-hidden="true">▣</span><h3>Online checkout</h3><p>Continue to Stripe’s hosted checkout. In test mode no real money is charged and no goods are dispatched. Card details are never collected on Aiva’s website.</p><button type="button" class="aiva-guide-pay-button" data-aiva-checkout disabled>Continue to secure checkout</button></article>
+  <div class="aiva-guide-payment-options" aria-label="Possible payment methods">
+    <article><span class="aiva-guide-method-glyph" aria-hidden="true">▣</span><h3>Credit &amp; debit cards</h3><p>Pay securely with supported Visa, Mastercard or other eligible cards.</p><button type="button" class="aiva-guide-pay-button" data-aiva-checkout disabled>Continue to card checkout</button></article>
+    <article><span class="aiva-guide-method-glyph" aria-hidden="true">●</span><h3>Apple Pay</h3><p>Where offered by Stripe on a compatible Apple device and browser.</p><button type="button" class="aiva-guide-pay-button" data-aiva-checkout disabled>Continue to checkout</button></article>
+    <article><span class="aiva-guide-method-glyph" aria-hidden="true">G</span><h3>Google Pay</h3><p>Where offered by Stripe on a compatible device and browser.</p><button type="button" class="aiva-guide-pay-button" data-aiva-checkout disabled>Continue to checkout</button></article>
   </div>
-  <p class="aiva-guide-payment-disclaimer">Real payments require Aiva’s separate approval and an enabled merchant account. Wallet options depend on the device, currency and Stripe account settings.</p>
+  <p class="aiva-guide-payment-disclaimer">All three buttons open the same secure Stripe checkout. The methods actually available depend on Stripe, your device and currency; these buttons do not guarantee or preselect a wallet. Card details are never collected by Aiva’s website. Test mode never charges real money. Real payments remain subject to Aiva’s separate approval.</p>
   <div class="aiva-guide-order-panel" aria-labelledby="aiva-guide-basket-heading">
     <div><h3 id="aiva-guide-basket-heading">Your basket</h3><p id="aiva-guide-basket-status" aria-live="polite">Checking your basket and online payment availability…</p></div>
     <div id="aiva-guide-basket-items" class="aiva-guide-basket-items"></div>

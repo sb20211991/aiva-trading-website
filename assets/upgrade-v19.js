@@ -2,13 +2,30 @@
   const menu = document.querySelector('.menu-toggle');
   const nav = document.querySelector('#site-navigation');
   if (menu && nav) {
-    menu.hidden = false;
     document.documentElement.classList.add('navigation-ready');
-    const close = () => { menu.setAttribute('aria-expanded','false'); nav.classList.remove('is-open'); };
-    menu.addEventListener('click', () => { const open=menu.getAttribute('aria-expanded')!=='true'; menu.setAttribute('aria-expanded',String(open)); nav.classList.toggle('is-open',open); });
-    nav.addEventListener('click', e => { if(e.target.closest('a')) close(); });
-    document.addEventListener('keydown', e => { if(e.key==='Escape' && menu.getAttribute('aria-expanded')==='true'){close();menu.focus();} });
-    document.addEventListener('click', e => { if(!e.target.closest('header')) close(); });
+    const narrow = window.matchMedia('(max-width: 1024px)');
+    const update = (open = false) => {
+      open = narrow.matches && open;
+      menu.hidden = !narrow.matches;
+      menu.setAttribute('aria-expanded', String(open));
+      nav.classList.toggle('is-open', open);
+      nav.hidden = narrow.matches && !open;
+      nav.inert = nav.hidden;
+      if (nav.hidden) nav.setAttribute('aria-hidden', 'true');
+      else nav.removeAttribute('aria-hidden');
+    };
+    menu.addEventListener('click', () => update(menu.getAttribute('aria-expanded') !== 'true'));
+    nav.addEventListener('click', event => { if (event.target.closest('a')) update(); });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && menu.getAttribute('aria-expanded') === 'true') {
+        update();
+        menu.focus();
+      }
+    });
+    document.addEventListener('click', event => { if (!event.target.closest('header')) update(); });
+    if (narrow.addEventListener) narrow.addEventListener('change', () => update());
+    else narrow.addListener(() => update());
+    update();
   }
   for (const prefix of ['buyer','offer']) {
     const message = document.getElementById(prefix+'-message');
