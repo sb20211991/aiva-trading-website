@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 const BASE = process.env.BASE_URL;
 const HOOK = process.env.WEBHOOK_URL;
-const token = process.env.GH_SQUARE_ACCESS_TOKEN.trim();
+const token = JSON.parse(readFileSync(process.env.SECRETS_FILE, 'utf8')).SQUARE_ACCESS_TOKEN;
 const { sigKey, merchant } = JSON.parse(readFileSync(process.env.SECRETS_FILE + '.e2e', 'utf8'));
 const SB = 'https://connect.squareupsandbox.com';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

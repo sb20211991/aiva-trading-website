@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /* CI only. Uses the existing GitHub secrets; never prints secret values. Sandbox only. */
-import { writeFileSync, appendFileSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
 const SANDBOX = 'https://connect.squareupsandbox.com', PROD = 'https://connect.squareup.com';
 const V = '2025-10-16';
-const token = (process.env.GH_SQUARE_ACCESS_TOKEN || '').trim();
+const handoff = process.env.HANDOFF_FILE && existsSync(process.env.HANDOFF_FILE) ? JSON.parse(readFileSync(process.env.HANDOFF_FILE, 'utf8')) : {};
+for (const v of Object.values(handoff)) if (typeof v === 'string' && v) console.log('::add-mask::' + v);
+const token = (process.env.GH_SQUARE_ACCESS_TOKEN || handoff.SQUARE_ACCESS_TOKEN || '').trim();
 const wantLoc = (process.env.GH_SQUARE_LOCATION_ID || '').trim();
 const hookUrl = process.env.WEBHOOK_URL;
 const out = process.env.SECRETS_FILE;
@@ -17,7 +19,7 @@ async function sq(host, path, init = {}) {
   return { status: r.status, data: await r.json().catch(() => ({})) };
 }
 
-if (!token) { console.log('GitHub secret SQUARE_ACCESS_TOKEN is empty.'); ghOut('configured', 'false'); process.exit(0); }
+if (!token) { console.log('No Square token: GitHub secret SQUARE_ACCESS_TOKEN is empty and no handoff received.'); ghOut('configured', 'false'); process.exit(0); }
 const sb = await sq(SANDBOX, '/v2/locations');
 const pr = await sq(PROD, '/v2/locations');
 console.log(`SQUARE token probe: sandbox HTTP ${sb.status}, production HTTP ${pr.status} (GET /v2/locations, read-only)`);
@@ -47,7 +49,7 @@ const k = await sq(SANDBOX, `/v2/webhooks/subscriptions/${sub.id}/signature-key`
 const sigKey = k.data.signature_key;
 if (k.status !== 200 || !sigKey) { console.log('Signature key rotation failed HTTP', k.status); ghOut('configured', 'false'); process.exit(1); }
 mask(sigKey);
-const merchant = (process.env.GH_MERCHANT_REFUND_SECRET || '').trim();
+const merchant = (handoff.MERCHANT_ADMIN_KEY || process.env.GH_MERCHANT_REFUND_SECRET || '').trim();
 if (merchant.length < 24) { console.log('GitHub secret MERCHANT_REFUND_SECRET is missing or shorter than 24 characters; not replacing the merchant key.'); ghOut('configured', 'false'); process.exit(1); }
 mask(merchant);
 writeFileSync(out, JSON.stringify({ SQUARE_ACCESS_TOKEN: token, SQUARE_LOCATION_ID: loc.id, SQUARE_WEBHOOK_SIGNATURE_KEY: sigKey, MERCHANT_ADMIN_KEY: merchant }));

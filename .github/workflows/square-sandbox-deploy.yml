@@ -1,11 +1,13 @@
 name: Square sandbox deploy (aivatrading.uk)
 # Deploys the Square-only checkout to the aiva-trading Pages project and attaches aivatrading.uk + www.
-# Square SANDBOX values come from the existing GitHub secrets (never printed); a production token is refused.
+# Square SANDBOX values come from the GitHub secrets or, if empty, from deploy/handoff.enc encrypted to a per-run
+# RSA key whose private half never leaves the runner. Values are never printed; a production token is refused.
 # Then runs a real sandbox payment, webhook, duplicate, decline, cancel and refund test. Never enables live payments.
 on:
   workflow_dispatch:
   push:
     branches: [devin/1763498400-square-checkout]
+    paths-ignore: ['deploy/**']
 permissions:
   contents: read
 concurrency:
@@ -30,7 +32,32 @@ jobs:
         env:
           DETACH_WORKER_DOMAINS: "1"
         run: python3 scripts/cloudflare-domains.py
-      - name: Configure Square sandbox from existing GitHub secrets
+      - name: Ephemeral key for encrypted handoff
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/k" handoff
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$RUNNER_TEMP/k/priv.pem" 2>/dev/null
+          openssl pkey -in "$RUNNER_TEMP/k/priv.pem" -pubout -out handoff/pub.pem
+          echo "$GITHUB_RUN_ID" > handoff/run_id
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handoff-pubkey
+          path: handoff/
+      - name: Wait for encrypted handoff when GitHub Square secret is empty (up to 12 min)
+        env:
+          GH_SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
+        run: |
+          set -uo pipefail
+          [ -n "$GH_SQUARE_ACCESS_TOKEN" ] && { echo "GitHub secret present; no handoff needed"; exit 0; }
+          for i in $(seq 1 48); do
+            if git fetch -q origin "$GITHUB_REF_NAME" && git show "origin/$GITHUB_REF_NAME:deploy/run_id" 2>/dev/null | grep -qx "$GITHUB_RUN_ID"; then
+              git show "origin/$GITHUB_REF_NAME:deploy/handoff.enc" | base64 -d | openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/k/priv.pem" \
+                -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 > "$RUNNER_TEMP/handoff.json" && { echo "handoff received"; exit 0; }
+            fi
+            sleep 15
+          done
+          echo "No handoff received."
+      - name: Configure Square sandbox
         id: square
         env:
           GH_SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
@@ -38,6 +65,7 @@ jobs:
           GH_MERCHANT_REFUND_SECRET: ${{ secrets.MERCHANT_REFUND_SECRET }}
           WEBHOOK_URL: https://app.aivatrading.uk/api/square-webhook
           SECRETS_FILE: ${{ runner.temp }}/sq.json
+          HANDOFF_FILE: ${{ runner.temp }}/handoff.json
         run: |
           set -euo pipefail
           node scripts/square-sandbox-setup.mjs
@@ -63,11 +91,10 @@ jobs:
       - name: Square sandbox end-to-end (real sandbox payment, webhook, refunds)
         if: steps.square.outputs.configured == 'true'
         env:
-          GH_SQUARE_ACCESS_TOKEN: ${{ secrets.SQUARE_ACCESS_TOKEN }}
           BASE_URL: https://app.aivatrading.uk
           WEBHOOK_URL: https://app.aivatrading.uk/api/square-webhook
           SECRETS_FILE: ${{ runner.temp }}/sq.json
         run: node scripts/square-sandbox-e2e.mjs
       - name: Remove local secret files
         if: always()
-        run: rm -f "$RUNNER_TEMP"/sq.json*
+        run: rm -f "$RUNNER_TEMP"/sq.json* "$RUNNER_TEMP"/handoff.json "$RUNNER_TEMP"/k/priv.pem
