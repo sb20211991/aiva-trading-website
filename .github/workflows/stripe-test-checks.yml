@@ -21,3 +21,30 @@ jobs:
         run: npm run test:browser
       - name: Compile Cloudflare Pages Functions without deploying
         run: npx --yes wrangler@4 pages functions build --config=wrangler.toml --outdir="$RUNNER_TEMP/aiva-functions"
+  sandbox:
+    name: Configure isolated sandbox when owner credentials are available
+    needs: test
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'replit/stripe-test-setup') ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'replit/stripe-test-setup')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: aiva-pages-preview-configuration
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned dependencies
+        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
+      - name: Configure test database, encrypted preview credentials and Stripe webhook
+        env:
+          APPROVE_STRIPE_TEST_SETUP: 'true'
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+        run: node scripts/stripe-test-bootstrap.mjs

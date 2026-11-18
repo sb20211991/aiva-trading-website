@@ -21,6 +21,9 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: aiva-pages-preview-configuration
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 

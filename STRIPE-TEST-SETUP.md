@@ -23,6 +23,37 @@ The two existing Square pull requests are not merged or superseded by this chang
 - No test order triggers fulfilment. Test refunds are managed in the Stripe test dashboard;
   the existing Square refund tool is NOT a Stripe refund tool.
 
+## Owner authorization without manual technical setup
+
+Use the existing repository's **Settings → Secrets and variables → Actions**.
+The owner supplies only these encrypted credentials, never their values in chat:
+
+- `CLOUDFLARE_API_TOKEN`: restricted to the existing account, with Pages Edit and
+  D1 Edit for the sandbox, plus Workers Scripts Edit and Workers CI Read for
+  diagnosing and verifying the existing production deployment. Do not grant billing
+  changes or change DNS as part of this setup.
+- `STRIPE_TEST_SECRET_KEY`: a standard Stripe secret key from test mode, not a live
+  key or a publishable key.
+
+The existing account ID is already configured. On this repair pull request only,
+the integration workflow waits for the automated tests, then runs
+`scripts/stripe-test-bootstrap.mjs`. Missing credentials produce an explicit
+**SETUP NOT RUN** message without creating resources. After credentials are saved,
+the maintainer can rerun the workflow; the owner does not need to edit code.
+
+With valid permissions, the script creates or reuses a dedicated test-bound D1
+database, applies the existing schema, registers a Stripe **test-only** webhook,
+saves both Stripe secrets as encrypted **preview-only** settings, and deploys the
+isolated `stripe-test` alias. It never deploys the production branch or root domain.
+Preview configuration changes are serialized against the ordinary preview workflow.
+
+The script then creates an actual unpaid Stripe test session, expires it, and checks
+that Stripe's real webhook persisted its event in D1. This is a configuration and
+webhook smoke test—not a successful or declined card transaction. Hosted card
+success, decline, cancellation and wallet eligibility still require separate
+verification. The script reports those as untested rather than claiming completion.
+All automated bootstrap unit tests use mocked provider APIs.
+
 ## What has been verified locally
 
 Use Node 22.13+ or Node 24. Install the pinned dependencies with
