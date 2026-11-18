@@ -441,6 +441,7 @@ export async function handleShopStatus(request, env) {
     const providers = availableProviders(env);
     const provider = getDefaultProvider(env);
     const mode = getModeForProvider(env, provider);
+    const stripeSelected = provider === 'stripe' || env.CHECKOUT_PROVIDER === 'stripe';
     const merchantReady =
       mode === 'live' ? await liveAccountReadiness(env, provider) : mode === 'test';
     return respond({
@@ -460,10 +461,10 @@ export async function handleShopStatus(request, env) {
       providers,
       merchantReady,
       webhookConfigured:
-        provider === 'stripe' ? stripeReady(env) : provider === 'square'
+        stripeSelected ? stripeReady(env) : provider === 'square'
           ? str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16
           : false,
-      orderDatabaseConfigured: provider === 'stripe'
+      orderDatabaseConfigured: stripeSelected
         ? typeof (env.STRIPE_MODE === 'live' ? env.STRIPE_LIVE_ORDERS_DB : env.STRIPE_TEST_ORDERS_DB)?.prepare === 'function'
         : !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function',
       publishedProducts: Array.isArray(cat.products) ? cat.products.filter(buyable).length : 0,

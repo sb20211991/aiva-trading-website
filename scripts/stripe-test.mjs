@@ -110,6 +110,12 @@ const tests = [];
 const test = (name, run) => tests.push([name, run]);
 
 test('readiness and catalogue routing are preview-only', async () => {
+  const missingStripe = await (await handleShopStatus(new Request(base + '/api/shop-status'), {
+    ...env, STRIPE_SECRET_KEY: '', STRIPE_TEST_ORDERS_DB: null, ORDERS_DB: db
+  })).json();
+  assert.equal(missingStripe.envFlags.hasOrdersDb, true);
+  assert.equal(missingStripe.orderDatabaseConfigured, false,
+    'A legacy Square binding must never appear to satisfy the missing Stripe database.');
   const status = await (await handleShopStatus(new Request(base + '/api/shop-status'), env)).json();
   assert.equal(status.ready, true);
   assert.equal(status.provider, 'stripe');
