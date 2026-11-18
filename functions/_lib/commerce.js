@@ -46,6 +46,7 @@ async function ensureSchema(env) {
       fulfillment_status TEXT NOT NULL DEFAULT 'new', customer_email TEXT, customer_name TEXT, amount_total INTEGER, currency TEXT,
       shipping_details_json TEXT, line_items_json TEXT, payment_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
     db.prepare('CREATE TABLE IF NOT EXISTS payment_events (event_id TEXT PRIMARY KEY, processed_at INTEGER NOT NULL)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS refunds (refund_id TEXT PRIMARY KEY, payment_id TEXT NOT NULL, amount INTEGER NOT NULL, status TEXT NOT NULL, updated_at INTEGER NOT NULL)'),
     db.prepare('CREATE TABLE IF NOT EXISTS inventory (sku TEXT PRIMARY KEY, stock INTEGER NOT NULL, updated_at INTEGER NOT NULL)')
   ]);
   const { results } = await db.prepare('PRAGMA table_info(orders)').all();
@@ -398,22 +399,9 @@ export async function handleSquareWebhook(request, env) {
     }
     if (type === 'refund.created' || type === 'refund.updated') {
       const r = obj.refund;
-      const ids = [str(r?.order_id), str(r?.payment_id)];
-      if (r?.status === 'COMPLETED' && (validId(ids[0]) || validId(ids[1]))) {
-        /* refunded_total is maintained by the refund API; the webhook only confirms completion. */
-        await db.prepare(`UPDATE orders SET refund_status='COMPLETED',
-            payment_status=CASE WHEN COALESCE(refunded_total,0) >= amount_total THEN 'refunded' ELSE payment_status END,
-            fulfillment_status=CASE WHEN COALESCE(refunded_total,0) >= amount_total THEN 'refunded' ELSE fulfillment_status END,
-            last_event_id=?, updated_at=? WHERE session_id=? OR (payment_id IS NOT NULL AND payment_id=?)`)
-          .bind(eventId, now(), ...ids).run();
-      }
-      if ((r?.status === 'FAILED' || r?.status === 'REJECTED') && (validId(ids[0]) || validId(ids[1]))) {
-        /* Give back the amount reserved by handleCreateRefund so the merchant can retry. */
-        const amt = Number(r.amount_money?.amount) || 0;
-        await db.prepare(`UPDATE orders SET refund_status=?, refunded_total=MAX(COALESCE(refunded_total,0)-?,0),
-            payment_status='paid', fulfillment_status=CASE WHEN fulfillment_status='refunded' THEN 'new' ELSE fulfillment_status END,
-            last_event_id=?, updated_at=? WHERE (session_id=? OR (payment_id IS NOT NULL AND payment_id=?)) AND payment_status IN ('paid','refunded')`)
-          .bind(str(r.status), amt, eventId, now(), ...ids).run();
+      const amt = Number(r?.amount_money?.amount);
+      if (validId(str(r?.id)) && validId(str(r?.payment_id)) && Number.isSafeInteger(amt) && amt > 0) {
+        await recordRefund(db, str(r.id), str(r.payment_id), amt, str(r.status) || 'PENDING', true);
       }
       return respond({ received: true });
     }
@@ -460,6 +448,28 @@ export async function handleAdminOrders(request, env) {
 }
 
 /* Merchant refund of a completed Square payment (full or partial, in pence). */
+/* Each refund is tracked by its Square id, so failures only release their own amount and
+   Dashboard refunds are counted too. refunded_total = refunds not FAILED/REJECTED. */
+async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook) {
+  const t = now();
+  await db.prepare(
+    fromWebhook
+      ? `INSERT INTO refunds (refund_id, payment_id, amount, status, updated_at) VALUES (?,?,?,?,?)
+         ON CONFLICT(refund_id) DO UPDATE SET status=excluded.status, amount=excluded.amount, updated_at=excluded.updated_at`
+      : `INSERT INTO refunds (refund_id, payment_id, amount, status, updated_at) VALUES (?,?,?,?,?)
+         ON CONFLICT(refund_id) DO NOTHING`
+  ).bind(refundId, paymentId, amount, status, t).run();
+  await db.prepare(
+    `UPDATE orders SET
+       refunded_total=(SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status NOT IN ('FAILED','REJECTED')),
+       refund_status=(SELECT status FROM refunds WHERE refund_id=?),
+       payment_status=CASE WHEN (SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status NOT IN ('FAILED','REJECTED')) >= amount_total THEN 'refunded' ELSE 'paid' END,
+       fulfillment_status=CASE WHEN (SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status='COMPLETED') >= amount_total THEN 'refunded' ELSE fulfillment_status END,
+       updated_at=?
+     WHERE payment_id=? AND payment_status IN ('paid','refunded')`
+  ).bind(paymentId, refundId, paymentId, paymentId, t, paymentId).run();
+}
+
 export async function handleCreateRefund(request, env) {
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
@@ -478,7 +488,7 @@ export async function handleCreateRefund(request, env) {
   const result = await squareFetch(env, '/v2/refunds', {
     method: 'POST',
     body: JSON.stringify({
-      idempotency_key: ('r' + already + '_' + amount + '_' + orderId).slice(0, 45),
+      idempotency_key: 'rf_' + crypto.randomUUID(),
       payment_id: row.payment_id,
       amount_money: { amount, currency: 'GBP' },
       reason: str(data?.reason || 'Customer refund').slice(0, 192)
@@ -489,9 +499,6 @@ export async function handleCreateRefund(request, env) {
     console.error('Square refund failed', result.status, result.data?.errors?.[0]?.code);
     return respond({ error: 'Refund could not be created in Square.' }, 502);
   }
-  const total = already + amount;
-  const full = total >= Number(row.amount_total);
-  await env.ORDERS_DB.prepare(`UPDATE orders SET refund_status=?, refunded_total=?, payment_status=?, fulfillment_status=CASE WHEN ? THEN 'refunded' ELSE fulfillment_status END, updated_at=? WHERE session_id=? AND COALESCE(refunded_total,0)=?`)
-    .bind(str(refund.status), total, full ? 'refunded' : 'paid', full ? 1 : 0, now(), orderId, already).run();
+  await recordRefund(env.ORDERS_DB, str(refund.id), row.payment_id, amount, str(refund.status) || 'PENDING', false);
   return respond({ ok: true, refundId: refund.id, status: refund.status, amountPence: amount, mode: getMode(env) });
 }

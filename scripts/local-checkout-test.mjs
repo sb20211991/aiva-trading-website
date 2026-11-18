@@ -47,7 +47,7 @@ const env = {
 };
 
 const calls = [];
-let orderSeq = 0;
+let orderSeq = 0, refundSeq = 0;
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input), body = init.body ? JSON.parse(init.body) : null;
   calls.push({ url, body });
@@ -56,7 +56,7 @@ globalThis.fetch = async (input, init = {}) => {
     const id = 'ORDER_TEST_' + String(++orderSeq).padStart(4, '0');
     return Response.json({ payment_link: { id: 'PL_' + orderSeq, order_id: id, url: 'https://sandbox.square.link/u/test' + orderSeq } });
   }
-  if (url.endsWith('/v2/refunds')) return Response.json({ refund: { id: 'RF_' + body.amount_money.amount, status: 'PENDING' } });
+  if (url.endsWith('/v2/refunds')) return Response.json({ refund: { id: 'RF_TEST_000' + (++refundSeq), status: 'PENDING' } });
   if (url.includes('/v2/orders/')) return Response.json({ order: { id: url.split('/').pop(), state: 'COMPLETED', metadata: { source: 'aivatrading.uk' }, tenders: [{ amount_money: { amount: 595 } }] } });
   return Response.json({ errors: [{ code: 'NOT_FOUND' }] }, { status: 404 });
 };
@@ -155,12 +155,19 @@ assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o
 j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 95 }, admin), env)).json();
 assert.equal(j.ok, true); assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95);
 j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).json();
-assert.equal(j.amountPence, 500); assert.equal(order(o1).payment_status, 'refunded');
+assert.equal(j.amountPence, 500); assert.equal(order(o1).payment_status, 'refunded'); assert.equal(order(o1).fulfillment_status, 'shipped');
 assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).status, 409);
-await webhook(evt('E5', 'refund.updated', { refund: { id: 'RF_500', status: 'COMPLETED', order_id: o1, payment_id: 'PAY_' + o1, amount_money: { amount: 500, currency: 'GBP' } } }));
-assert.equal(order(o1).refund_status, 'COMPLETED'); assert.equal(order(o1).fulfillment_status, 'refunded');
-await webhook(evt('E6', 'refund.updated', { refund: { id: 'RF_X', status: 'FAILED', order_id: o1, payment_id: 'PAY_' + o1, amount_money: { amount: 500, currency: 'GBP' } } }));
-assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95); assert.equal(order(o1).refund_status, 'FAILED');
+const rf = (id, status, amount) => ({ refund: { id, status, payment_id: 'PAY_' + o1, amount_money: { amount, currency: 'GBP' } } });
+await webhook(evt('E5', 'refund.updated', rf('RF_DASH_0001', 'FAILED', 300)));
+assert.equal(order(o1).refunded_total, 595, 'unrelated failed refund must not release website refunds');
+await webhook(evt('E6', 'refund.updated', rf('RF_TEST_0002', 'FAILED', 500)));
+assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95); assert.equal(order(o1).fulfillment_status, 'shipped');
+const k1 = calls.filter((c) => c.url.endsWith('/v2/refunds')).at(-1).body.idempotency_key;
+j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }, admin), env)).json();
+assert.equal(j.refundId, 'RF_TEST_0003'); assert.notEqual(calls.at(-1).body.idempotency_key, k1);
+await webhook(evt('E7', 'refund.updated', rf('RF_TEST_0003', 'COMPLETED', 500)));
+await webhook(evt('E8', 'refund.updated', rf('RF_TEST_0001', 'COMPLETED', 95)));
+assert.equal(order(o1).payment_status, 'refunded'); assert.equal(order(o1).refund_status, 'COMPLETED'); assert.equal(order(o1).fulfillment_status, 'refunded');
 console.log('ok merchant listing, fulfilment update, partial + full refunds, failed refund restored');
 
 console.log('LOCAL SQUARE CHECKOUT TESTS PASSED');
