@@ -70,7 +70,9 @@ async function hook(topic, payload, opts = {}) {
   }), env);
   return { status: r.status, data: await r.json() };
 }
+const lineItemsFor = (orderId) => JSON.parse(row(orderId)?.line_items_json || '[]').map((it) => ({ variant_id: Number(it.variantId.split('/').pop()), quantity: it.quantity }));
 const shopifyOrder = (orderId, subtotal, total, extra = {}) => ({
+  line_items: lineItemsFor(orderId),
   id: 5550000 + hookSeq, name: '#10' + hookSeq, test: true, currency: 'GBP', financial_status: 'paid',
   current_subtotal_price: subtotal, current_total_price: total, contact_email: 'buyer@example.com',
   shipping_address: { name: 'Test Buyer', address1: '1 Test St', city: 'London', zip: 'E1 1AA', country_code: 'GB' },
@@ -159,6 +161,12 @@ c = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }]);
 w = await hook('orders/paid', shopifyOrder(c.data.orderId, '0.50', '5.45'));
 assert.equal(w.data.ignored, 'amount_mismatch'); assert.notEqual(row(c.data.orderId).payment_status, 'paid');
 console.log('ok amount mismatch held for review');
+
+// Cart edited on Shopify (same subtotal, different quantities) is held, not confirmed.
+c = await checkout([{ sku: 'AIVA-TEST-BIG', quantity: 1 }]);
+w = await hook('orders/paid', shopifyOrder(c.data.orderId, '120.00', '120.00', { line_items: [{ variant_id: 1001, quantity: 120 }] }));
+assert.equal(w.data.ignored, 'line_items_mismatch'); assert.notEqual(row(c.data.orderId).payment_status, 'paid');
+console.log('ok edited Shopify cart (same subtotal) held for review');
 
 // A real (non-test) Shopify payment while the site is in test mode is held, never confirmed.
 c = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }]);

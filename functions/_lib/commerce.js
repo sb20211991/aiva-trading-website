@@ -358,7 +358,7 @@ async function createShopifyCheckout(env, basket, mode) {
       : 'Secure checkout could not be started. Try again or contact Aiva.' }, cart.error === 'catalogue_mismatch' ? 409 : 502);
   }
   await ensureSchema(env);
-  const items = basket.lines.map(({ product, qty }) => ({ sku: product.sku, name: product.name, quantity: qty, unitPence: product.pricePence }));
+  const items = basket.lines.map(({ product, qty }) => ({ sku: product.sku, name: product.name, quantity: qty, unitPence: product.pricePence, variantId: product.shopifyVariantId }));
   const t = now();
   await env.ORDERS_DB.prepare(
     `INSERT OR IGNORE INTO orders (session_id,last_event_id,payment_status,amount_total,expected_total,currency,line_items_json,payment_link_id,mode,provider,created_at,updated_at)
@@ -550,13 +550,15 @@ export async function handleShopifyWebhook(request, env) {
         .bind(ref, String(body.id || '') || null, now(), orderId).run();
       if (topic === 'orders/create' && body.financial_status !== 'paid') return respond({ received: true });
       const addr = body.shipping_address || null;
+      const stored = await db.prepare('SELECT line_items_json FROM orders WHERE session_id=?').bind(orderId).first();
+      const linesMatch = stored ? shopifyLinesMatch(stored.line_items_json, body.line_items) : true;
       return respond({ received: true, ...(await applyPaid(env, new URL(request.url).origin, orderId, {
         paymentId: String(body.id || ''), amount: toMinor(body.current_subtotal_price ?? body.subtotal_price),
         amountTotal: toMinor(body.current_total_price ?? body.total_price), currency: body.currency,
         email: str(body.contact_email || body.email || body.customer?.email),
         name: str(addr?.name || [addr?.first_name, addr?.last_name].filter(Boolean).join(' ')), address: addr,
         providerRef: ref, test: body.test === true,
-        reviewReason: getMode(env) === 'test' && body.test !== true ? 'live_payment_in_test_mode' : ''
+        reviewReason: getMode(env) === 'test' && body.test !== true ? 'live_payment_in_test_mode' : linesMatch ? '' : 'line_items_mismatch'
       }, eventId)) });
     }
     if (topic === 'orders/cancelled') {
@@ -583,6 +585,18 @@ export async function handleShopifyWebhook(request, env) {
     console.error('Shopify webhook processing failed', String(e));
     return respond({ error: 'Temporary processing error.' }, 500);
   }
+}
+
+/* The buyer can edit a Shopify cart before paying, so paid quantities must equal the stored basket. */
+function shopifyLinesMatch(storedJson, lineItems) {
+  let want = [];
+  try { want = JSON.parse(storedJson || '[]'); } catch { return false; }
+  const got = new Map();
+  for (const li of Array.isArray(lineItems) ? lineItems : []) {
+    const id = 'gid://shopify/ProductVariant/' + li?.variant_id;
+    got.set(id, (got.get(id) || 0) + Number(li?.quantity));
+  }
+  return got.size === want.length && want.every((it) => got.get(it.variantId) === it.quantity);
 }
 
 function merchantAuthorised(request, env) {
