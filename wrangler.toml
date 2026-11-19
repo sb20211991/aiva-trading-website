@@ -17,6 +17,8 @@ SQUARE_LIVE_PAYMENTS_APPROVED = "false"
 SHOPIFY_STORE_DOMAIN = ""
 SHOPIFY_API_VERSION = "2026-10"
 SHOPIFY_LIVE_PAYMENTS_APPROVED = "false"
+# Shopify test mode only after the owner confirms the store uses a test gateway (Bogus Gateway / Shopify Payments test mode).
+SHOPIFY_TEST_GATEWAY_CONFIRMED = "false"
 SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
 MERCHANT_SUPPORT_EMAIL = "Aivatradingltd2026@gmail.com"
 

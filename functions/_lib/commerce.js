@@ -101,7 +101,9 @@ function webhookConfigured(env) {
 function getMode(env) {
   if (provider(env) === 'shopify') {
     if (!shopifyConfigured(env)) return 'disabled';
-    return env.SHOPIFY_LIVE_PAYMENTS_APPROVED === 'true' ? 'live' : 'test';
+    if (env.SHOPIFY_LIVE_PAYMENTS_APPROVED === 'true') return 'live';
+    /* The Storefront API cannot see the store's gateway, so test mode needs the owner to confirm a test gateway. */
+    return env.SHOPIFY_TEST_GATEWAY_CONFIRMED === 'true' ? 'test' : 'disabled';
   }
   if (!squareConfigured(env)) return 'disabled';
   if (squareEnvName(env) === 'production') return env.SQUARE_LIVE_PAYMENTS_APPROVED === 'true' ? 'live' : 'disabled';

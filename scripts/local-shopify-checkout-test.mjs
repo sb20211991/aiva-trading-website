@@ -39,7 +39,7 @@ const env = {
   ASSETS: { fetch: async () => Response.json(catalogue) },
   ORDERS_DB: d1(),
   CHECKOUT_PROVIDER: 'shopify', SHOPIFY_STORE_DOMAIN: SHOP, SHOPIFY_STOREFRONT_TOKEN: 'storefront-test-token',
-  SHOPIFY_WEBHOOK_SECRET: 'shopify-webhook-secret-for-tests', MERCHANT_ADMIN_KEY: 'merchant-admin-key-for-tests-0001'
+  SHOPIFY_WEBHOOK_SECRET: 'shopify-webhook-secret-for-tests', SHOPIFY_TEST_GATEWAY_CONFIRMED: 'true', MERCHANT_ADMIN_KEY: 'merchant-admin-key-for-tests-0001'
 };
 
 const prices = { [V1]: '1.00', [V2]: '120.00' };
@@ -90,6 +90,14 @@ assert.equal(st.publishedProducts, 2); assert.deepEqual(st.checkoutHosts, [SHOP]
 assert.equal(JSON.stringify(st).includes('storefront-test-token'), false, 'token must never reach the browser');
 console.log('ok shop-status: Shopify test mode, 2 products with variants, no token exposed');
 
+{
+  const unconfirmed = { ...env, SHOPIFY_TEST_GATEWAY_CONFIRMED: 'false' };
+  const s0 = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), unconfirmed)).json();
+  assert.equal(s0.mode, 'disabled'); assert.equal(s0.ready, false);
+  const r0 = await m.handleCreateCheckout(new Request(base + '/api/create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ items: [{ sku: 'AIVA-TEST-1GBP', quantity: 1 }] }) }), unconfirmed);
+  assert.equal(r0.status, 503);
+  console.log('ok Shopify test mode refused until the owner confirms a test gateway');
+}
 st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SHOPIFY_STOREFRONT_TOKEN: '' })).json();
 assert.equal(st.mode, 'disabled'); assert.equal(st.ready, false);
 st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SHOPIFY_LIVE_PAYMENTS_APPROVED: 'true' })).json();
