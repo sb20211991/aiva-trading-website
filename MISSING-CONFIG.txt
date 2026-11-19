@@ -73,10 +73,9 @@ AFTER SECRETS ARE ADDED
 ==================================================
 
 Reply in chat: Secrets added — deploy preview
-Then this agent can run: npm run website:go-live-prep
-That script creates D1, binds ORDERS_DB, deploys a Pages PREVIEW branch,
-and verifies /api/shop-status. It refuses production Square and does not
-promote live production without your later explicit approval.
+Then production is deployed by .github/workflows/deploy-production.yml
+(push to main, or manual dispatch with handoff=true to install Pages secrets).
+It never enables live payments.
 
 No Square card reader / hardware is required for website Visa/Mastercard/
 Apple Pay / Google Pay checkout. If Square’s signup keeps showing hardware,

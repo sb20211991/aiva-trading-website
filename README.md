@@ -4,15 +4,13 @@ Cloudflare Pages website for **Aiva Trading Limited** (company no. 17485509), se
 
 ## Checkout
 
-The requested payment provider is **Stripe**, defaulting to test mode via Cloudflare Pages Functions under `functions/`. Existing Square Payment Links and optional PayPal code are preserved. `CHECKOUT_PROVIDER=stripe` prevents fallback to those providers.
+Checkout runs in Cloudflare Pages Functions under `functions/`. `CHECKOUT_PROVIDER` in `wrangler.toml` selects **Square** (default, active) or **Shopify**. Prices, stock and totals always come from the server catalogue and the D1 `ORDERS_DB`.
 
-See **[STRIPE-TEST-SETUP.md](STRIPE-TEST-SETUP.md)** for setup, remaining access blockers and approvals. Live payments have a separate locked code path requiring explicit owner activation, live-only credentials/database, the real site origin and an approved Stripe account. They are NOT enabled. No real products have been added.
+- Square: sandbox until `SQUARE_ENVIRONMENT="production"` and `SQUARE_LIVE_PAYMENTS_APPROVED="true"`.
+- Shopify: test mode needs `SHOPIFY_TEST_GATEWAY_CONFIRMED="true"`; live needs `SHOPIFY_LIVE_PAYMENTS_APPROVED="true"`. Both default to `"false"`.
+- Existing orders keep using the provider that took them for status checks and refunds.
 
-The shop catalogue stays closed until real products are published:
-
-- `data/aiva-products.json` has `shopEnabled: false` and `products: []`
-- No live charges are taken from this repository alone
-- The catalogue editor and shared money rules support 16 currencies, including zero-decimal JPY; legacy GBP catalogues remain compatible. No currency conversion or mixed-currency basket is performed.
+`YOUR-NEXT-STEP.txt` is the release and live-activation runbook. Production deploys run only on push to `main` (`.github/workflows/deploy-production.yml`).
 
 ## Required Cloudflare secrets
 

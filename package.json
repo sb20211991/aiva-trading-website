@@ -9,7 +9,6 @@
     "test:checkout": "node scripts/local-checkout-test.mjs",
     "test:shopify": "node scripts/local-shopify-checkout-test.mjs",
     "test:integrity": "node scripts/website-integrity.mjs",
-    "website:go-live-prep": "node scripts/go-live-prep.mjs",
     "website:square-check": "node scripts/square-account-check.mjs"
   }
 }

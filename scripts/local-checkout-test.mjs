@@ -27,7 +27,10 @@ function d1() {
     first: async () => db.prepare(sql).get(...args) ?? null,
     all: async () => ({ results: db.prepare(sql).all(...args) })
   });
-  return { raw: db, prepare: (sql) => stmt(sql), batch: async (list) => Promise.all(list.map((s) => s.run())) };
+  return { raw: db, prepare: (sql) => stmt(sql), batch: async (list) => {
+    db.exec('BEGIN');
+    try { const out = []; for (const s of list) out.push(await s.run()); db.exec('COMMIT'); return out; } catch (e) { db.exec('ROLLBACK'); throw e; }
+  } };
 }
 
 const catalogue = {
@@ -146,6 +149,13 @@ console.log('ok amount mismatch flagged for review');
 j = await (await m.handleOrderStatus(new Request(base + '/api/order-status?orderId=' + o1), env)).json();
 assert.equal(j.paid, true);
 
+// Orders taken by Shopify stay on Shopify after switching back to Square.
+env.ORDERS_DB.raw.prepare(`INSERT INTO orders (session_id,last_event_id,payment_status,amount_total,expected_total,currency,line_items_json,mode,provider,provider_order_ref,payment_id,created_at,updated_at)
+  VALUES ('SHOPIFY_ORDER_0001','x','refunded',100,100,'gbp','[]','test','shopify','#1001','555',1,1)`).run();
+j = await (await m.handleOrderStatus(new Request(base + '/api/order-status?orderId=SHOPIFY_ORDER_0001'), env)).json();
+assert.equal(j.provider, 'shopify'); assert.equal(j.paid, true); assert.equal(j.reference, '#1001');
+console.log('ok Shopify order status served from D1 while Square is active');
+
 // Merchant admin + refunds
 assert.equal((await m.handleAdminOrders(new Request(base + '/api/admin-orders'), env)).status, 401);
 j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders?status=paid', { headers: admin }), env)).json();
@@ -156,6 +166,7 @@ j = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { m
 assert.equal(j.ok, true); assert.equal(stock('AIVA-TEST-1GBP'), 4);
 assert.equal((await m.handleAdminOrders(new Request(base + '/api/admin-orders', { method: 'POST', headers: admin, body: JSON.stringify({ sku: 'AIVA-TEST-1GBP', stock: -1 }) }), env)).status, 400);
 assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1 }), env)).status, 401);
+assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: 'SHOPIFY_ORDER_0001' }, admin), env)).status, 409);
 assert.equal((await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 600 }, admin), env)).status, 400);
 j = await (await m.handleCreateRefund(post('/api/create-refund', { orderId: o1, amountPence: 95 }, admin), env)).json();
 assert.equal(j.ok, true); assert.equal(order(o1).payment_status, 'paid'); assert.equal(order(o1).refunded_total, 95);

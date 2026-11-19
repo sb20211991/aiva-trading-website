@@ -374,10 +374,14 @@ export async function handleOrderStatus(request, env) {
   const params = new URL(request.url).searchParams;
   const id = str(params.get('orderId') || params.get('order_id') || params.get('session_id'));
   if (!validId(id)) return respond({ error: 'Invalid checkout reference.' }, 400);
-  if (provider(env) === 'shopify') {
-    if (!hasDb(env)) return respond({ error: 'Payment verification is not configured.' }, 503);
+  let row = null;
+  if (hasDb(env)) {
     await ensureSchema(env);
-    const row = await env.ORDERS_DB.prepare('SELECT payment_status, mode, provider_order_ref FROM orders WHERE session_id=?').bind(id).first();
+    row = await env.ORDERS_DB.prepare('SELECT payment_status, mode, provider, provider_order_ref FROM orders WHERE session_id=?').bind(id).first();
+  }
+  /* Each order is checked with the provider that took it, so switching CHECKOUT_PROVIDER keeps older orders verifiable. */
+  if (row ? row.provider === 'shopify' : provider(env) === 'shopify') {
+    if (!hasDb(env)) return respond({ error: 'Payment verification is not configured.' }, 503);
     if (!row) return respond({ error: 'Unknown checkout reference.' }, 404);
     const paid = row.payment_status === 'paid' || row.payment_status === 'refunded';
     return respond({ paid, status: paid ? 'complete' : row.payment_status, reference: row.provider_order_ref || id.slice(-10), mode: row.mode, provider: 'shopify' });
@@ -673,16 +677,17 @@ async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook
 export async function handleCreateRefund(request, env) {
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
-  if (provider(env) === 'shopify') {
-    return respond({ error: 'Refund Shopify orders in Shopify admin (Orders → Refund). The website records refunds automatically.' }, 409);
-  }
-  if (!squareConfigured(env) || !hasDb(env)) return respond({ error: 'Square is not configured.' }, 503);
+  if (!hasDb(env)) return respond({ error: 'Order database is not configured.' }, 503);
   let data;
   try { data = JSON.parse(await readLimitedText(request, 4096)); } catch { return respond({ error: 'Invalid JSON.' }, 400); }
   const orderId = str(data?.orderId);
   if (!validId(orderId)) return respond({ error: 'A valid orderId is required.' }, 400);
   await ensureSchema(env);
-  const row = await env.ORDERS_DB.prepare('SELECT payment_id, amount_total, refunded_total, payment_status FROM orders WHERE session_id=?').bind(orderId).first();
+  const row = await env.ORDERS_DB.prepare('SELECT provider, payment_id, amount_total, refunded_total, payment_status FROM orders WHERE session_id=?').bind(orderId).first();
+  if (row ? row.provider === 'shopify' : provider(env) === 'shopify') {
+    return respond({ error: 'Refund Shopify orders in Shopify admin (Orders → Refund). The website records refunds automatically.' }, 409);
+  }
+  if (!squareConfigured(env)) return respond({ error: 'Square is not configured.' }, 503);
   if (!row || row.payment_status !== 'paid' || !row.payment_id) return respond({ error: 'Only paid orders can be refunded.' }, 409);
   const already = Number(row.refunded_total) || 0;
   const remaining = Number(row.amount_total) - already;

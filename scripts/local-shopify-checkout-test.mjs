@@ -18,7 +18,10 @@ function d1() {
     first: async () => db.prepare(sql).get(...args) ?? null,
     all: async () => ({ results: db.prepare(sql).all(...args) })
   });
-  return { raw: db, prepare: (sql) => stmt(sql), batch: async (list) => Promise.all(list.map((s) => s.run())) };
+  return { raw: db, prepare: (sql) => stmt(sql), batch: async (list) => {
+    db.exec('BEGIN');
+    try { const out = []; for (const s of list) out.push(await s.run()); db.exec('COMMIT'); return out; } catch (e) { db.exec('ROLLBACK'); throw e; }
+  } };
 }
 
 const V1 = 'gid://shopify/ProductVariant/1001', V2 = 'gid://shopify/ProductVariant/1002';
@@ -206,6 +209,10 @@ w = await hook('refunds/create', { id: 902, order_id: Number(shopifyId), transac
 o = row(okOrder); assert.equal(o.refunded_total, 695); assert.equal(o.payment_status, 'refunded');
 const rf = await m.handleCreateRefund(post('/api/create-refund', { orderId: okOrder, amountPence: 1 }, admin), env);
 assert.equal(rf.status, 409);
+env.ORDERS_DB.raw.prepare(`INSERT INTO orders (session_id,last_event_id,payment_status,amount_total,expected_total,currency,line_items_json,mode,payment_id,created_at,updated_at)
+  VALUES ('SQUARE_ORDER_00001','x','paid',100,100,'gbp','[]','test','sqpay1',1,1)`).run();
+const sq = await m.handleCreateRefund(post('/api/create-refund', { orderId: 'SQUARE_ORDER_00001', amountPence: 1 }, admin), env);
+assert.equal(sq.status, 503, 'older Square orders are refunded through Square, not sent to Shopify admin');
 console.log('ok partial + full Shopify refunds recorded; site refund button points to Shopify admin');
 
 // Refund webhook delivered before the paid webhook is applied once the order is paid.
