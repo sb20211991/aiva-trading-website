@@ -67,7 +67,9 @@ jobs:
           d = json.load(open(sys.argv[1]))
           for v in d.values(): print("::add-mask::" + v)
           assert set(d) <= {"SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_WEBHOOK_SIGNATURE_KEY", "MERCHANT_ADMIN_KEY",
-                            "SHOPIFY_STOREFRONT_TOKEN", "SHOPIFY_ADMIN_TOKEN", "SHOPIFY_WEBHOOK_SECRET"}, "unexpected keys"
+                            "SHOPIFY_STOREFRONT_TOKEN", "SHOPIFY_ADMIN_TOKEN", "SHOPIFY_WEBHOOK_SECRET",
+                            "SQUARE_PRODUCTION_ACCESS_TOKEN", "SQUARE_PRODUCTION_LOCATION_ID",
+                            "SQUARE_PRODUCTION_WEBHOOK_SIGNATURE_KEY"}, "unexpected keys"
           print("handoff keys:", sorted(d))
           PY
           npx --yes wrangler@4 pages secret bulk "$RUNNER_TEMP/handoff.json" --project-name="$PROJECT" > /dev/null && echo "Pages production secrets installed (values not printed)."
