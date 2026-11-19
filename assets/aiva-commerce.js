@@ -83,7 +83,7 @@ async function load(){try{
     input.step=CURRENCIES[catalog.currency]===0?'1':'0.01';
   }
   if(!catalog||!Array.isArray(catalog.products))throw new Error('Product catalogue is invalid.');
-  products=catalog.products.filter(listed);
+  products=catalog.products.filter(p=>listed(p)&&p.hidden!==true);
   const liveStock=shopStatus&&shopStatus.stock&&typeof shopStatus.stock==='object'?shopStatus.stock:{};
   for(const p of products)if(validStock(liveStock[p.sku]))p.stock=Math.min(p.stock??liveStock[p.sku],liveStock[p.sku]);
   const seen=new Set();products=products.filter(p=>{if(seen.has(p.sku))return false;seen.add(p.sku);return true});
