@@ -5,8 +5,9 @@
   if (!out) return;
   const params = new URL(location.href).searchParams;
   let stored = '';
+  /* localStorage covers a return in a new tab (e.g. Square's sandbox testing panel). */
   try {
-    stored = sessionStorage.getItem(PENDING_KEY) || '';
+    stored = sessionStorage.getItem(PENDING_KEY) || localStorage.getItem(PENDING_KEY) || '';
   } catch {
     stored = '';
   }
@@ -27,6 +28,7 @@
       if (!r.ok) throw Error(a.error || 'Status unavailable');
       try {
         sessionStorage.removeItem(PENDING_KEY);
+        localStorage.removeItem(PENDING_KEY);
       } catch {
         /* private browsing */
       }

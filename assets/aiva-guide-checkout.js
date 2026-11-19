@@ -211,6 +211,11 @@
         } catch {
           /* private browsing */
         }
+        try {
+          localStorage.setItem('aiva_pending_checkout_ref', data.orderId);
+        } catch {
+          /* private browsing */
+        }
       }
       window.location.assign(url.href);
     } catch (err) {
