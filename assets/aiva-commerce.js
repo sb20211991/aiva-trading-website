@@ -120,6 +120,7 @@ els.checkout.addEventListener('click',async()=>{
     if(!((target.protocol==='https:'&&trusted)||(localPreview&&target.protocol==='http:'&&trusted)))throw new Error('Unexpected checkout destination.');
     if(typeof info.orderId==='string'&&/^[A-Za-z0-9_-]{8,191}$/.test(info.orderId)){
       try{sessionStorage.setItem('aiva_pending_checkout_ref',info.orderId)}catch{/* private browsing */}
+      try{localStorage.setItem('aiva_pending_checkout_ref',info.orderId)}catch{/* private browsing */}
     }
     location.assign(target.href);
   }catch(e){els.error.textContent=e.message||'Checkout is not available. Please contact Aiva.';els.error.hidden=false;updateCart()}
