@@ -1,8 +1,8 @@
-name: Square sandbox deploy (aivatrading.uk)
-# Deploys the Square-only checkout to the aiva-trading Pages project and attaches aivatrading.uk + www.
-# Square sandbox Pages secrets arrive (manual dispatch with handoff=true) as deploy/handoff.enc, encrypted to a
+name: Deploy production (aivatrading.uk)
+# Every push to main is tested and deployed to the aiva-trading Pages project (aivatrading.uk + www).
+# CHECKOUT_PROVIDER in wrangler.toml selects Shopify or Square. Payment Pages secrets arrive (manual dispatch with handoff=true) as deploy/handoff.enc, encrypted to a
 # per-run RSA key whose private half never leaves the runner. Values are never printed. Never enables live payments.
-# The sandbox end-to-end test is scripts/square-sandbox-e2e.mjs.
+# Provider end-to-end tests: scripts/square-sandbox-e2e.mjs and scripts/shopify-test-e2e.mjs.
 on:
   workflow_dispatch:
     inputs:
@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: square-sandbox-deploy
+  group: deploy-production
   cancel-in-progress: true
 jobs:
   deploy:
@@ -66,7 +66,8 @@ jobs:
           import json, sys
           d = json.load(open(sys.argv[1]))
           for v in d.values(): print("::add-mask::" + v)
-          assert set(d) <= {"SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_WEBHOOK_SIGNATURE_KEY", "MERCHANT_ADMIN_KEY"}, "unexpected keys"
+          assert set(d) <= {"SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "SQUARE_WEBHOOK_SIGNATURE_KEY", "MERCHANT_ADMIN_KEY",
+                            "SHOPIFY_STOREFRONT_TOKEN", "SHOPIFY_ADMIN_TOKEN", "SHOPIFY_WEBHOOK_SECRET"}, "unexpected keys"
           print("handoff keys:", sorted(d))
           PY
           npx --yes wrangler@4 pages secret bulk "$RUNNER_TEMP/handoff.json" --project-name="$PROJECT" > /dev/null && echo "Pages production secrets installed (values not printed)."
@@ -75,7 +76,7 @@ jobs:
           set -euo pipefail
           node scripts/build-pages-assets.mjs
           npx --yes wrangler@4 pages deploy .pages-output --project-name="$PROJECT" --branch=main \
-            --commit-hash="$GITHUB_SHA" --commit-message="Square sandbox checkout" --commit-dirty=true
+            --commit-hash="$GITHUB_SHA" --commit-message="Production deploy ${GITHUB_SHA::7}" --commit-dirty=true
       - name: Verify endpoints
         run: |
           sleep 20

@@ -12,6 +12,11 @@ CHECKOUT_PROVIDER = "square"
 SQUARE_ENVIRONMENT = "sandbox"
 # Real charges need SQUARE_ENVIRONMENT="production" AND this flag set to "true" after owner approval.
 SQUARE_LIVE_PAYMENTS_APPROVED = "false"
+# Shopify: set CHECKOUT_PROVIDER = "shopify" once the Shopify test checkout passes.
+# Secrets (Pages, never committed): SHOPIFY_STOREFRONT_TOKEN, SHOPIFY_WEBHOOK_SECRET, SHOPIFY_ADMIN_TOKEN.
+SHOPIFY_STORE_DOMAIN = ""
+SHOPIFY_API_VERSION = "2026-10"
+SHOPIFY_LIVE_PAYMENTS_APPROVED = "false"
 SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
 MERCHANT_SUPPORT_EMAIL = "Aivatradingltd2026@gmail.com"
 

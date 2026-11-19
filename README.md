@@ -51,25 +51,29 @@ Pages ignores `.assetsignore`, so never deploy the repository root directly.
 The packaging script includes only website assets and the special Functions directory,
 not workflow files, scripts, documentation or the original ZIP archive.
 
-### GitHub Actions (preview only)
+### GitHub Actions
 
-Workflows under `.github/workflows/` run tests and can deploy a **Cloudflare Pages preview**:
+- `ci.yml` — `npm test` on every pull request and branch push.
+- `cloudflare-pages-preview.yml` — preview deploy for pull requests (never promotes production).
+- `deploy-production.yml` — every push to `main` is tested, deployed to the `aiva-trading` Pages project
+  (aivatrading.uk + www) and smoke-checked. Payment secrets can be installed via its encrypted handoff.
+- `cloudflare-pages-production.yml` — manual, approval-gated deploy of an exact reviewed commit.
 
-- `square-sandbox-preflight.yml` — read-only project/config check
-- `cloudflare-pages-preview.yml` — preview deploy (never production promote)
+Required encrypted repository secrets: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`. Values must never be committed.
 
-Required encrypted repository secrets (Settings → Secrets and variables → Actions):
+## Payments
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
+`CHECKOUT_PROVIDER` in `wrangler.toml` selects `square` (current) or `shopify`. Live payments stay off
+until `SQUARE_LIVE_PAYMENTS_APPROVED` / `SHOPIFY_LIVE_PAYMENTS_APPROVED` is set to `true` with the owner's
+approval, and never while the catalogue is `testOnly`.
 
-Workflows fail clearly if either secret name is missing or empty. Values must never be committed.
+Shopify (Storefront Cart API + hosted checkout; webhooks to `/api/shopify-webhook`):
 
-### Production remains gated
+1. Pages secrets: `SHOPIFY_STOREFRONT_TOKEN`, `SHOPIFY_WEBHOOK_SECRET` (app API secret key), `SHOPIFY_ADMIN_TOKEN`.
+2. Set `SHOPIFY_STORE_DOMAIN` in `wrangler.toml`.
+3. `node scripts/shopify-setup.mjs` creates the £1 test product and registers webhooks; add the printed
+   `shopifyVariantId` to the product in `data/aiva-products.json`.
+4. Set `CHECKOUT_PROVIDER = "shopify"`, deploy, then run `node scripts/shopify-test-e2e.mjs`
+   (Shopify test mode / Bogus Gateway: success, declined, cancelled, refund).
 
-The verified Pages project currently lists `app.aivatrading.uk`, not the requested
-root `aivatrading.uk`. Do not assume a successful Pages upload updates the root.
-The initial closed-shop production workflow requires explicit approval, an exact
-reviewed commit and active root-domain association, then verifies the deployed
-revision. Historical mutating infrastructure workflows are retained but disabled.
-No DNS change, production promotion or real Stripe payment has been performed.
+Refunds for Shopify orders are made in Shopify admin and recorded on the website automatically.

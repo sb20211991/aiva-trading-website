@@ -44,6 +44,8 @@ const requiredFunctions = [
   'functions/api/create-checkout-session.js',
   'functions/api/order-status.js',
   'functions/api/square-webhook.js',
+  'functions/api/shopify-webhook.js',
+  'functions/_lib/shopify.js',
   'functions/api/admin-orders.js',
   'functions/api/create-refund.js',
   'functions/_lib/commerce.js',
@@ -69,7 +71,7 @@ assert.match(index, /language-switcher/);
 assert.match(index, /#enquiry/);
 
 const shop = readFileSync(path.join(root, 'shop.html'), 'utf8');
-assert.match(shop, /Square/);
+assert.match(shop, /secure hosted checkout/);
 for (const rel of ['shop.html', 'buying-guide.html', 'order-success.html', 'assets/aiva-commerce.js', 'assets/aiva-guide-checkout.js']) {
   assert.doesNotMatch(readFileSync(path.join(root, rel), 'utf8'), /stripe/i, 'Obsolete Stripe reference in ' + rel);
 }
@@ -94,6 +96,8 @@ assert.match(commerce, /online-checkout\/payment-links/);
 assert.match(commerce, /handleCreateRefund/);
 assert.match(commerce, /SQUARE_LIVE_PAYMENTS_APPROVED === 'true'/);
 assert.match(commerce, /x-square-hmacsha256-signature/);
+assert.match(commerce, /SHOPIFY_LIVE_PAYMENTS_APPROVED === 'true'/);
+assert.match(commerce, /x-shopify-hmac-sha256/);
 assert.doesNotMatch(commerce, /stripe|paypal/i);
 
 const assetCount = readdirSync(path.join(root, 'assets')).filter((name) =>
@@ -103,5 +107,5 @@ assert.ok(assetCount >= 40, 'Expected rich asset set, found ' + assetCount);
 
 console.log('WEBSITE INTEGRITY CHECKS PASSED');
 console.log('- pages, assets, company details and payment Functions present');
-console.log('- Square-only checkout; only labelled TEST products published');
+console.log('- Shopify and Square checkout providers; only labelled TEST products published');
 console.log('- root _worker.js absent (Functions deploy path)');

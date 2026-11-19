@@ -1,7 +1,11 @@
-/* Aiva Trading checkout for Cloudflare Pages Functions. Square is the only payment provider.
+/* Aiva Trading checkout for Cloudflare Pages Functions. CHECKOUT_PROVIDER selects Shopify or Square.
    Prices, stock and totals are always taken from the server catalogue, never from the browser. */
-import { normaliseCatalogue } from '../../assets/aiva-money.js';
+import { normaliseCatalogue, minorFromMajor } from '../../assets/aiva-money.js';
 import { readLimitedText, BodyTooLarge } from './body.js';
+import {
+  shopifyConfigured, shopifyWebhookConfigured, shopifyStoreReachable, createShopifyCart, shopifyHmac,
+  noteAttribute, validVariantId, checkoutHosts, shopDomain
+} from './shopify.js';
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -21,6 +25,10 @@ const validId = (s) => typeof s === 'string' && /^[A-Za-z0-9_-]{8,191}$/.test(s)
 const safeCountries = (c) =>
   Array.isArray(c) && c.length > 0 && c.length <= 12 && c.every((x) => typeof x === 'string' && /^[A-Z]{2}$/.test(x));
 
+export function provider(env) {
+  return str(env.CHECKOUT_PROVIDER).toLowerCase() === 'shopify' ? 'shopify' : 'square';
+}
+const toMinor = (v) => minorFromMajor(typeof v === 'number' ? v.toFixed(2) : String(v ?? ''), 'GBP');
 function squareEnvName(env) {
   const v = str(env.SQUARE_ENVIRONMENT).toLowerCase();
   if (v === 'production') return 'production';
@@ -43,6 +51,7 @@ const ORDER_COLUMNS = `session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL,
   stock_applied INTEGER NOT NULL DEFAULT 0, payment_link_id TEXT, mode TEXT, paid_at INTEGER, refund_status TEXT,
   refunded_total INTEGER, review_reason TEXT`;
 const ORDER_COLUMN_NAMES = ORDER_COLUMNS.split(/,\s*(?![^()]*\))/).map((c) => c.trim().split(/\s+/)[0]);
+const EXTRA_ORDER_COLUMNS = [['provider', 'TEXT'], ['provider_order_ref', 'TEXT'], ['test_order', 'INTEGER']];
 const schemaReady = new WeakSet();
 async function ensureSchema(env) {
   const db = env.ORDERS_DB;
@@ -74,13 +83,26 @@ async function ensureSchema(env) {
       if (!(await db.prepare("SELECT 1 FROM schema_migrations WHERE id='orders_v2'").first())) throw error;
     });
   }
+  const cols = new Set(((await db.prepare('PRAGMA table_info(orders)').all()).results || []).map((c) => c.name));
+  for (const [name, type] of EXTRA_ORDER_COLUMNS) {
+    if (!cols.has(name)) {
+      await db.prepare(`ALTER TABLE orders ADD COLUMN ${name} ${type}`).run().catch((e) => {
+        if (!/duplicate column/i.test(String(e))) throw e;
+      });
+    }
+  }
   schemaReady.add(db);
 }
 function webhookConfigured(env) {
+  if (provider(env) === 'shopify') return shopifyWebhookConfigured(env);
   return str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16 && !!str(env.SQUARE_WEBHOOK_NOTIFICATION_URL);
 }
 /* Production charges need an explicit approval flag in addition to production credentials. */
 function getMode(env) {
+  if (provider(env) === 'shopify') {
+    if (!shopifyConfigured(env)) return 'disabled';
+    return env.SHOPIFY_LIVE_PAYMENTS_APPROVED === 'true' ? 'live' : 'test';
+  }
   if (!squareConfigured(env)) return 'disabled';
   if (squareEnvName(env) === 'production') return env.SQUARE_LIVE_PAYMENTS_APPROVED === 'true' ? 'live' : 'disabled';
   return 'test';
@@ -130,8 +152,9 @@ function validPolicy(c) {
       validPrice(c.shipping.freeShippingThresholdPence))
   );
 }
-function buyable(p) {
+function buyable(p, env) {
   return (
+    (provider(env) !== 'shopify' || validVariantId(p?.shopifyVariantId)) &&
     p && validSku(p.sku) && typeof p.name === 'string' && p.name.trim().length > 1 && p.name.length <= 140 &&
     typeof p.description === 'string' && p.description.length <= 700 &&
     typeof p.category === 'string' && p.category.length <= 80 &&
@@ -175,11 +198,11 @@ function isTrustedCheckoutUrl(value) {
   }
 }
 
-function parseBasket(data, cat) {
+function parseBasket(data, cat, env) {
   if (!data || !Array.isArray(data.items) || data.items.length < 1 || data.items.length > 20) {
     return { error: 'Choose 1–20 products.' };
   }
-  const products = new Map(cat.products.filter(buyable).map((p) => [p.sku, p]));
+  const products = new Map(cat.products.filter((p) => buyable(p, env)).map((p) => [p.sku, p]));
   const used = new Set();
   let itemTotal = 0, totalUnits = 0;
   const lines = [];
@@ -204,19 +227,26 @@ export async function handleShopStatus(request, env) {
     const cat = await getCatalogue(request, env);
     const mode = getMode(env);
     const infra = hasDb(env) && webhookConfigured(env);
-    const merchantReady = mode === 'live' ? await liveLocationReady(env) : mode === 'test';
+    const shopify = provider(env) === 'shopify';
+    const isBuyable = (p) => buyable(p, env);
+    const merchantReady = mode === 'live' ? await (shopify ? shopifyStoreReachable(env) : liveLocationReady(env)) : mode === 'test';
     return respond({
-      ready: merchantReady && infra && validPolicy(cat) && cat.products.some(buyable) && !(mode === 'live' && cat.testOnly === true),
+      ready: merchantReady && infra && validPolicy(cat) && cat.products.some(isBuyable) && !(mode === 'live' && cat.testOnly === true),
       mode,
-      provider: mode === 'disabled' ? null : 'square',
+      provider: mode === 'disabled' ? null : provider(env),
+      ...(shopify && mode !== 'disabled' ? { checkoutHosts: checkoutHosts(env) } : {}),
       currency: cat.currency,
       merchantReady,
       webhookConfigured: webhookConfigured(env),
       orderDatabaseConfigured: hasDb(env),
-      publishedProducts: cat.products.filter(buyable).length,
+      publishedProducts: cat.products.filter(isBuyable).length,
       shopEnabled: cat.shopEnabled === true,
       stock: Object.fromEntries(cat.products.filter((p) => validSku(p.sku)).map((p) => [p.sku, validStock(p.stock) ? p.stock : 0])),
       envFlags: {
+        checkoutProvider: provider(env),
+        hasShopifyStoreDomain: !!shopDomain(env),
+        hasShopifyStorefrontToken: str(env.SHOPIFY_STOREFRONT_TOKEN).length > 0,
+        hasShopifyWebhookSecret: shopifyWebhookConfigured(env),
         hasSquareAccessToken: str(env.SQUARE_ACCESS_TOKEN).length > 0,
         hasSquareLocationId: str(env.SQUARE_LOCATION_ID).length > 0,
         squareEnvironment: squareEnvName(env) || null,
@@ -249,11 +279,13 @@ export async function handleCreateCheckout(request, env) {
   if (mode === 'disabled' || !hasDb(env) || !webhookConfigured(env) || !validPolicy(cat) || (mode === 'live' && cat.testOnly === true)) {
     return respond({ error: 'Online checkout is not enabled. Contact Aiva for a quotation.' }, 503);
   }
-  if (mode === 'live' && !(await liveLocationReady(env))) {
+  const shopify = provider(env) === 'shopify';
+  if (mode === 'live' && !(await (shopify ? shopifyStoreReachable(env) : liveLocationReady(env)))) {
     return respond({ error: 'Live card payments are not yet enabled. Please contact Aiva.' }, 503);
   }
-  const basket = parseBasket(data, cat);
+  const basket = parseBasket(data, cat, env);
   if (basket.error) return respond({ error: basket.error }, 400);
+  if (shopify) return createShopifyCheckout(env, basket, mode);
 
   const lineItems = basket.lines.map(({ product, qty }) => ({
     name: product.name.trim().slice(0, 512),
@@ -304,11 +336,45 @@ export async function handleCreateCheckout(request, env) {
   return respond({ url: link.url, orderId, provider: 'square', mode });
 }
 
+/* Shopify calculates delivery at checkout, so the recorded expectation is the item subtotal. */
+async function createShopifyCheckout(env, basket, mode) {
+  const orderId = 'aiva_' + crypto.randomUUID().replace(/-/g, '');
+  let cart;
+  try {
+    cart = await createShopifyCart(env, basket.lines, orderId, basket.itemTotal, toMinor);
+  } catch (e) {
+    console.error('Shopify checkout network error', String(e));
+    return respond({ error: 'Payment service is temporarily unavailable.' }, 502);
+  }
+  if (cart.error) {
+    console.error('Shopify cart failed', cart.error, cart.detail);
+    return respond({ error: cart.error === 'catalogue_mismatch'
+      ? 'A product price or stock level changed. Refresh the shop and try again.'
+      : 'Secure checkout could not be started. Try again or contact Aiva.' }, cart.error === 'catalogue_mismatch' ? 409 : 502);
+  }
+  await ensureSchema(env);
+  const items = basket.lines.map(({ product, qty }) => ({ sku: product.sku, name: product.name, quantity: qty, unitPence: product.pricePence }));
+  const t = now();
+  await env.ORDERS_DB.prepare(
+    `INSERT OR IGNORE INTO orders (session_id,last_event_id,payment_status,amount_total,expected_total,currency,line_items_json,payment_link_id,mode,provider,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(orderId, 'checkout_created', 'pending', basket.itemTotal, basket.itemTotal, 'gbp', JSON.stringify(items), cart.cartId, mode, 'shopify', t, t).run();
+  return respond({ url: cart.url, orderId, provider: 'shopify', mode });
+}
+
 export async function handleOrderStatus(request, env) {
   if (request.method !== 'GET') return respond({ error: 'Method not allowed.' }, 405);
   const params = new URL(request.url).searchParams;
   const id = str(params.get('orderId') || params.get('order_id') || params.get('session_id'));
   if (!validId(id)) return respond({ error: 'Invalid checkout reference.' }, 400);
+  if (provider(env) === 'shopify') {
+    if (!hasDb(env)) return respond({ error: 'Payment verification is not configured.' }, 503);
+    await ensureSchema(env);
+    const row = await env.ORDERS_DB.prepare('SELECT payment_status, mode, provider_order_ref FROM orders WHERE session_id=?').bind(id).first();
+    if (!row) return respond({ error: 'Unknown checkout reference.' }, 404);
+    const paid = row.payment_status === 'paid' || row.payment_status === 'refunded';
+    return respond({ paid, status: paid ? 'complete' : row.payment_status, reference: row.provider_order_ref || id.slice(-10), mode: row.mode, provider: 'shopify' });
+  }
   if (!squareConfigured(env)) return respond({ error: 'Payment verification is not configured.' }, 503);
   try {
     const { ok, status, data } = await squareFetch(env, '/v2/orders/' + encodeURIComponent(id));
@@ -339,20 +405,29 @@ export async function squareSignature(raw, signatureKey, notificationUrl) {
 }
 
 /* Applies a confirmed payment exactly once: marks the order paid and reduces stock. */
-async function applyPaid(env, origin, orderId, payment, eventId) {
+function squarePaid(payment) {
+  const addr = payment?.shipping_address || null;
+  return {
+    paymentId: str(payment?.id), amount: Number(payment?.amount_money?.amount), currency: payment?.amount_money?.currency,
+    email: str(payment?.buyer_email_address), name: str([addr?.first_name, addr?.last_name].filter(Boolean).join(' ')), address: addr
+  };
+}
+/* `amount` must equal expected_total; `amountTotal` (defaults to amount) is what the customer paid in total. */
+async function applyPaid(env, origin, orderId, paid, eventId) {
   const db = env.ORDERS_DB;
   const row = await db.prepare('SELECT payment_status, expected_total, line_items_json, stock_applied FROM orders WHERE session_id=?').bind(orderId).first();
   if (!row) return { ignored: 'unknown_order' };
-  const amount = Number(payment?.amount_money?.amount);
-  if (!Number.isSafeInteger(amount) || payment?.amount_money?.currency !== 'GBP' || amount !== Number(row.expected_total)) {
+  const amount = paid.amount;
+  if (!Number.isSafeInteger(amount) || paid.currency !== 'GBP' || amount !== Number(row.expected_total)) {
     await db.prepare(`UPDATE orders SET review_reason='amount_mismatch', last_event_id=?, updated_at=? WHERE session_id=? AND payment_status IN ('pending','failed')`)
       .bind(eventId, now(), orderId).run();
-    console.error('Square amount mismatch for order', orderId);
+    console.error('Payment amount mismatch for order', orderId);
     return { ignored: 'amount_mismatch' };
   }
-  const email = str(payment?.buyer_email_address).slice(0, 320);
-  const addr = payment?.shipping_address || null;
-  const name = str([addr?.first_name, addr?.last_name].filter(Boolean).join(' ')).slice(0, 160);
+  const email = str(paid.email).slice(0, 320);
+  const addr = paid.address || null;
+  const name = str(paid.name).slice(0, 160);
+  const total = Number.isSafeInteger(paid.amountTotal) ? paid.amountTotal : amount;
   const t = now();
   let items = [];
   try { items = JSON.parse(row.line_items_json || '[]'); } catch { items = []; }
@@ -368,9 +443,11 @@ async function applyPaid(env, origin, orderId, payment, eventId) {
   stmts.push(db.prepare(
     `UPDATE orders SET payment_status='paid', payment_id=?, amount_total=?, customer_email=COALESCE(NULLIF(?,''),customer_email),
        customer_name=COALESCE(NULLIF(?,''),customer_name), shipping_details_json=COALESCE(?,shipping_details_json),
+       provider_order_ref=COALESCE(?,provider_order_ref), test_order=COALESCE(?,test_order),
        last_event_id=?, paid_at=?, updated_at=?, stock_applied=1
      WHERE session_id=? AND stock_applied=0 AND payment_status IN ('pending','failed')`
-  ).bind(str(payment?.id), amount, email, name, addr ? JSON.stringify(addr).slice(0, 4000) : null, eventId, t, t, orderId));
+  ).bind(str(paid.paymentId), total, email, name, addr ? JSON.stringify(addr).slice(0, 4000) : null,
+    paid.providerRef || null, typeof paid.test === 'boolean' ? Number(paid.test) : null, eventId, t, t, orderId));
   const results = await db.batch(stmts);
   if (!results.at(-1)?.meta?.changes) return { duplicate: true };
   return { paid: true };
@@ -410,7 +487,7 @@ export async function handleSquareWebhook(request, env) {
       const p = obj.payment;
       const orderId = str(p?.order_id);
       if (!validId(orderId)) return respond({ received: true });
-      if (p.status === 'COMPLETED') return respond({ received: true, ...(await applyPaid(env, origin, orderId, p, eventId)) });
+      if (p.status === 'COMPLETED') return respond({ received: true, ...(await applyPaid(env, origin, orderId, squarePaid(p), eventId)) });
       if (p.status === 'FAILED' || p.status === 'CANCELED') {
         await db.prepare(`UPDATE orders SET payment_status='failed', last_event_id=?, updated_at=? WHERE session_id=? AND payment_status='pending'`)
           .bind(eventId, now(), orderId).run();
@@ -434,6 +511,68 @@ export async function handleSquareWebhook(request, env) {
   }
 }
 
+/* Shopify order webhooks (orders/paid, orders/cancelled, refunds/create), matched by the cart attribute aiva_order_id. */
+export async function handleShopifyWebhook(request, env) {
+  if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
+  if (!shopifyWebhookConfigured(env) || !hasDb(env)) return respond({ error: 'Webhook not configured.' }, 503);
+  let raw;
+  try { raw = await readLimitedText(request, 512000); } catch { return respond({ error: 'Webhook payload too large.' }, 413); }
+  const expected = await shopifyHmac(raw, str(env.SHOPIFY_WEBHOOK_SECRET));
+  if (!timingSafeEqual(expected, request.headers.get('x-shopify-hmac-sha256') || '')) return respond({ error: 'Invalid signature.' }, 401);
+  const shop = str(request.headers.get('x-shopify-shop-domain')).toLowerCase();
+  if (shopDomain(env) && shop && shop !== shopDomain(env)) return respond({ error: 'Unknown shop.' }, 401);
+  let body;
+  try { body = JSON.parse(raw); } catch { return respond({ error: 'Invalid JSON.' }, 400); }
+  const topic = str(request.headers.get('x-shopify-topic'));
+  const eventId = 'shopify_' + (str(request.headers.get('x-shopify-webhook-id')) || str(request.headers.get('x-shopify-event-id')));
+  if (eventId === 'shopify_' || eventId.length > 191) return respond({ error: 'Invalid event.' }, 400);
+  const db = env.ORDERS_DB;
+  try { await ensureSchema(env); } catch (e) { console.error('schema', String(e)); return respond({ error: 'Temporary processing error.' }, 500); }
+  const seen = await db.prepare('INSERT OR IGNORE INTO payment_events (event_id, processed_at) VALUES (?,?)').bind(eventId, now()).run();
+  if (!seen.meta?.changes) return respond({ received: true, duplicate: true });
+  try {
+    if (topic === 'orders/paid' || topic === 'orders/create') {
+      const orderId = noteAttribute(body, 'aiva_order_id');
+      if (!validId(orderId)) return respond({ received: true, ignored: 'not_website_order' });
+      const ref = str(body.name).slice(0, 40) || null;
+      await db.prepare('UPDATE orders SET provider_order_ref=COALESCE(provider_order_ref,?), payment_id=COALESCE(payment_id,?), updated_at=? WHERE session_id=?')
+        .bind(ref, String(body.id || '') || null, now(), orderId).run();
+      if (topic === 'orders/create' && body.financial_status !== 'paid') return respond({ received: true });
+      const addr = body.shipping_address || null;
+      return respond({ received: true, ...(await applyPaid(env, new URL(request.url).origin, orderId, {
+        paymentId: String(body.id || ''), amount: toMinor(body.current_subtotal_price ?? body.subtotal_price),
+        amountTotal: toMinor(body.current_total_price ?? body.total_price), currency: body.currency,
+        email: str(body.contact_email || body.email || body.customer?.email),
+        name: str(addr?.name || [addr?.first_name, addr?.last_name].filter(Boolean).join(' ')), address: addr,
+        providerRef: ref, test: body.test === true
+      }, eventId)) });
+    }
+    if (topic === 'orders/cancelled') {
+      const orderId = noteAttribute(body, 'aiva_order_id');
+      if (validId(orderId)) {
+        await db.prepare(`UPDATE orders SET payment_status=CASE WHEN payment_status='pending' THEN 'failed' ELSE payment_status END,
+            fulfillment_status=CASE WHEN fulfillment_status IN ('new','processing') THEN 'cancelled' ELSE fulfillment_status END,
+            last_event_id=?, updated_at=? WHERE session_id=?`).bind(eventId, now(), orderId).run();
+      }
+      return respond({ received: true });
+    }
+    if (topic === 'refunds/create') {
+      const tx = (Array.isArray(body.transactions) ? body.transactions : []).filter((x) => x?.kind === 'refund');
+      const amount = tx.filter((x) => x.status !== 'failure' && x.status !== 'error').reduce((n, x) => n + (toMinor(x.amount) || 0), 0);
+      const status = tx.some((x) => x.status === 'pending') ? 'PENDING' : tx.length && tx.every((x) => x.status === 'success') ? 'COMPLETED' : 'FAILED';
+      if (body.id && body.order_id && Number.isSafeInteger(amount) && amount > 0) {
+        await recordRefund(db, 'shopify_' + body.id, String(body.order_id), amount, status, true);
+      }
+      return respond({ received: true });
+    }
+    return respond({ received: true });
+  } catch (e) {
+    await db.prepare('DELETE FROM payment_events WHERE event_id=?').bind(eventId).run();
+    console.error('Shopify webhook processing failed', String(e));
+    return respond({ error: 'Temporary processing error.' }, 500);
+  }
+}
+
 function merchantAuthorised(request, env) {
   const secret = str(env.MERCHANT_ADMIN_KEY || env.MERCHANT_REFUND_SECRET);
   const auth = str(request.headers.get('Authorization')).replace(/^Bearer\s+/i, '');
@@ -449,7 +588,7 @@ export async function handleAdminOrders(request, env) {
     const params = new URL(request.url).searchParams;
     const status = str(params.get('status'));
     const limit = Math.min(Math.max(parseInt(params.get('limit') || '50', 10) || 50, 1), 200);
-    const sql = 'SELECT session_id AS orderId, payment_status, review_reason, fulfillment_status, customer_email, customer_name, amount_total, refunded_total, currency, line_items_json, shipping_details_json, payment_id, mode, created_at, paid_at, updated_at FROM orders' +
+    const sql = 'SELECT session_id AS orderId, provider, provider_order_ref, test_order, payment_status, review_reason, fulfillment_status, customer_email, customer_name, amount_total, refunded_total, currency, line_items_json, shipping_details_json, payment_id, mode, created_at, paid_at, updated_at FROM orders' +
       (status ? ' WHERE payment_status=?' : '') + ' ORDER BY created_at DESC LIMIT ?';
     const stmt = status ? env.ORDERS_DB.prepare(sql).bind(status, limit) : env.ORDERS_DB.prepare(sql).bind(limit);
     const { results } = await stmt.all();
@@ -499,6 +638,9 @@ async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook
 export async function handleCreateRefund(request, env) {
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
+  if (provider(env) === 'shopify') {
+    return respond({ error: 'Refund Shopify orders in Shopify admin (Orders → Refund). The website records refunds automatically.' }, 409);
+  }
   if (!squareConfigured(env) || !hasDb(env)) return respond({ error: 'Square is not configured.' }, 503);
   let data;
   try { data = JSON.parse(await readLimitedText(request, 4096)); } catch { return respond({ error: 'Invalid JSON.' }, 400); }

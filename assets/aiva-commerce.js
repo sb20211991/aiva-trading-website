@@ -113,6 +113,7 @@ els.checkout.addEventListener('click',async()=>{
       host==='square.link'||host.endsWith('.square.link')||
       host==='checkout.square.site'||host.endsWith('.checkout.square.site')||
       host.endsWith('.squareup.com')||host.endsWith('.squareupsandbox.com')||
+      (shopStatus.provider==='shopify'&&(host.endsWith('.myshopify.com')||(Array.isArray(shopStatus.checkoutHosts)&&shopStatus.checkoutHosts.includes(host))))||
       (localPreview&&(host==='127.0.0.1'||host==='localhost')&&target.pathname.endsWith('/order-success.html'));
     if(!((target.protocol==='https:'&&trusted)||(localPreview&&target.protocol==='http:'&&trusted)))throw new Error('Unexpected checkout destination.');
     if(typeof info.orderId==='string'&&/^[A-Za-z0-9_-]{8,191}$/.test(info.orderId)){

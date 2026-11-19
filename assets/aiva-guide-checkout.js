@@ -163,6 +163,9 @@
       host.endsWith('.checkout.square.site') ||
       host.endsWith('.squareup.com') ||
       host.endsWith('.squareupsandbox.com') ||
+      (online.provider === 'shopify' &&
+        (host.endsWith('.myshopify.com') ||
+          (Array.isArray(online.checkoutHosts) && online.checkoutHosts.includes(host)))) ||
       (localPreview &&
         (host === '127.0.0.1' || host === 'localhost') &&
         url.pathname.endsWith('/order-success.html'))

@@ -3,14 +3,9 @@ name: Cloudflare Pages preview deploy
 on:
   workflow_dispatch:
   pull_request:
-  push:
-    branches:
-      - cursor/cloudflare-github-deploy-1f19
     paths-ignore:
       - '**.txt'
       - '**.md'
-      - '.github/workflows/cloudflare-bind-and-deploy.yml'
-      - '.github/workflows/cloudflare-pages-production.yml'
 permissions:
   contents: read
   deployments: write
