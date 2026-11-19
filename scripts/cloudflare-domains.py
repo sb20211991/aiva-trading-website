@@ -59,13 +59,21 @@ if zone:
             print("dns before:", host, r["type"], r["content"], "proxied" if r.get("proxied") else "dns-only")
         if any(r["type"] == "CNAME" and r["content"] == TARGET for r in recs):
             continue
+        removed = []
         for r in recs:
             if r["type"] in ("A", "AAAA", "CNAME"):
-                call("DELETE", f"/zones/{zone}/dns_records/{r['id']}")
+                st, _ = call("DELETE", f"/zones/{zone}/dns_records/{r['id']}")
+                if st == 200:
+                    removed.append(r)
         code, res = call("POST", f"/zones/{zone}/dns_records",
                          {"type": "CNAME", "name": host, "content": TARGET, "proxied": True, "ttl": 1,
-                          "comment": "Aiva Pages (square checkout)"})
+                          "comment": "Aiva Pages"})
         print("dns set:", host, "->", TARGET, code, res.get("success"))
+        if not res.get("success"):
+            for r in removed:
+                rc, rr = call("POST", f"/zones/{zone}/dns_records", {k: r[k] for k in ("type", "name", "content", "proxied", "ttl") if k in r})
+                print("dns restored:", host, r["type"], r["content"], rc, rr.get("success"))
+            raise SystemExit(f"DNS replacement failed for {host}; previous records restored.")
 
 for host in ("aivatrading.uk", "www.aivatrading.uk"):
     d = existing.get(host)
