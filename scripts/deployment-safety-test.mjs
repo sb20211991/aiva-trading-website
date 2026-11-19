@@ -27,7 +27,8 @@ assert.match(deploy, /branches: \[main\]/, 'Production deploys must run only fro
 assert.match(deploy, /npm test/);
 assert.doesNotMatch(deploy, /LIVE_PAYMENTS_APPROVED/, 'The deploy workflow must never approve live payments');
 const toml = readFileSync('wrangler.toml', 'utf8');
-for (const flag of ['SQUARE_LIVE_PAYMENTS_APPROVED', 'SHOPIFY_LIVE_PAYMENTS_APPROVED']) {
-  assert.match(toml, new RegExp(flag + ' = "false"'), flag + ' must stay false until the owner approves live payments');
-}
+assert.match(toml, /SHOPIFY_LIVE_PAYMENTS_APPROVED = "false"/, 'Shopify live payments must stay false until the owner approves them');
+// Square live payments were approved by the owner on 2026-11-19; they require production mode.
+if (/SQUARE_LIVE_PAYMENTS_APPROVED = "true"/.test(toml)) assert.match(toml, /SQUARE_ENVIRONMENT = "production"/);
+else assert.match(toml, /SQUARE_LIVE_PAYMENTS_APPROVED = "false"/);
 console.log('PRODUCTION SAFETY CHECKS PASSED — no deployment or configuration mutation attempted.');

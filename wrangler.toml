@@ -1,7 +1,7 @@
 # Pages project aiva-trading serves aivatrading.uk, www.aivatrading.uk and app.aivatrading.uk.
 # Production deploys run only from main (.github/workflows/deploy-production.yml).
 # Static design and legacy providers are preserved; encrypted keys never enter assets.
-# Square sandbox only; production charges stay disabled until approved.
+# Square production; live charges approved by the owner.
 name = "aiva-trading"
 compatibility_date = "2025-11-01"
 pages_build_output_dir = ".pages-output"
@@ -9,9 +9,9 @@ pages_build_output_dir = ".pages-output"
 # Keep plain vars in wrangler.toml so `wrangler pages deploy` does not wipe them.
 [vars]
 CHECKOUT_PROVIDER = "square"
-SQUARE_ENVIRONMENT = "sandbox"
-# Real charges need SQUARE_ENVIRONMENT="production" AND this flag set to "true" after owner approval.
-SQUARE_LIVE_PAYMENTS_APPROVED = "false"
+SQUARE_ENVIRONMENT = "production"
+# Live charges approved by the owner on 2026-11-19. Production credentials are the SQUARE_PRODUCTION_* Pages secrets.
+SQUARE_LIVE_PAYMENTS_APPROVED = "true"
 # Shopify: set CHECKOUT_PROVIDER = "shopify" once the Shopify test checkout passes.
 # Secrets (Pages, never committed): SHOPIFY_STOREFRONT_TOKEN, SHOPIFY_WEBHOOK_SECRET, SHOPIFY_ADMIN_TOKEN.
 SHOPIFY_STORE_DOMAIN = ""
