@@ -200,6 +200,14 @@ const rf = await m.handleCreateRefund(post('/api/create-refund', { orderId: okOr
 assert.equal(rf.status, 409);
 console.log('ok partial + full Shopify refunds recorded; site refund button points to Shopify admin');
 
+// Refund webhook delivered before the paid webhook is applied once the order is paid.
+const early = (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }])).data.orderId;
+await hook('refunds/create', { id: 903, order_id: 7770001, transactions: [{ kind: 'refund', status: 'success', amount: '1.00' }] });
+assert.equal(row(early).payment_status, 'pending');
+await hook('orders/paid', shopifyOrder(early, '1.00', '1.00', { id: 7770001 }));
+assert.equal(row(early).refunded_total, 100); assert.equal(row(early).payment_status, 'refunded');
+console.log('ok refund received before payment is reconciled when the order is paid');
+
 // Merchant listing
 const list = await (await m.handleAdminOrders(new Request(base + '/api/admin-orders', { headers: admin }), env)).json();
 assert.ok(list.orders.some((x) => x.orderId === okOrder && x.provider === 'shopify' && x.provider_order_ref));

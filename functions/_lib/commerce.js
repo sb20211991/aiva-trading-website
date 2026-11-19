@@ -463,6 +463,7 @@ async function applyPaid(env, origin, orderId, paid, eventId) {
     paid.providerRef || null, typeof paid.test === 'boolean' ? Number(paid.test) : null, eventId, t, t, orderId));
   const results = await db.batch(stmts);
   if (!results.at(-1)?.meta?.changes) return { duplicate: true };
+  if (paid.paymentId) await reconcileRefunds(db, str(paid.paymentId));
   return { paid: true };
 }
 async function getCatalogueForStock(env, origin) {
@@ -643,6 +644,18 @@ export async function handleAdminOrders(request, env) {
 /* Merchant refund of a completed Square payment (full or partial, in pence). */
 /* Each refund is tracked by its Square id, so failures only release their own amount and
    Dashboard refunds are counted too. refunded_total = refunds not FAILED/REJECTED. */
+async function reconcileRefunds(db, paymentId) {
+  const t = now();
+  await db.prepare(
+    `UPDATE orders SET
+       refunded_total=(SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status NOT IN ('FAILED','REJECTED')),
+       refund_status=(SELECT status FROM refunds WHERE payment_id=? ORDER BY updated_at DESC, rowid DESC LIMIT 1),
+       payment_status=CASE WHEN (SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status NOT IN ('FAILED','REJECTED')) >= amount_total THEN 'refunded' ELSE 'paid' END,
+       fulfillment_status=CASE WHEN (SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status='COMPLETED') >= amount_total THEN 'refunded' ELSE fulfillment_status END,
+       updated_at=?
+     WHERE payment_id=? AND payment_status IN ('paid','refunded')`
+  ).bind(paymentId, paymentId, paymentId, paymentId, t, paymentId).run();
+}
 async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook) {
   const t = now();
   await db.prepare(
@@ -652,15 +665,7 @@ async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook
       : `INSERT INTO refunds (refund_id, payment_id, amount, status, updated_at) VALUES (?,?,?,?,?)
          ON CONFLICT(refund_id) DO NOTHING`
   ).bind(refundId, paymentId, amount, status, t).run();
-  await db.prepare(
-    `UPDATE orders SET
-       refunded_total=(SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status NOT IN ('FAILED','REJECTED')),
-       refund_status=(SELECT status FROM refunds WHERE refund_id=?),
-       payment_status=CASE WHEN (SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status NOT IN ('FAILED','REJECTED')) >= amount_total THEN 'refunded' ELSE 'paid' END,
-       fulfillment_status=CASE WHEN (SELECT COALESCE(SUM(amount),0) FROM refunds WHERE payment_id=? AND status='COMPLETED') >= amount_total THEN 'refunded' ELSE fulfillment_status END,
-       updated_at=?
-     WHERE payment_id=? AND payment_status IN ('paid','refunded')`
-  ).bind(paymentId, refundId, paymentId, paymentId, t, paymentId).run();
+  await reconcileRefunds(db, paymentId);
 }
 
 export async function handleCreateRefund(request, env) {
