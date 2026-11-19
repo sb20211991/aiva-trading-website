@@ -98,6 +98,11 @@ function webhookConfigured(env) {
   return str(env.SQUARE_WEBHOOK_SIGNATURE_KEY).length >= 16 && !!str(env.SQUARE_WEBHOOK_NOTIFICATION_URL);
 }
 /* Production charges need an explicit approval flag in addition to production credentials. */
+/* Mode of a Square order from Square's own environment, independent of the active checkout provider. */
+function squareMode(env) {
+  return squareEnvName(env) === 'production' ? 'live' : 'test';
+}
+
 function getMode(env) {
   if (provider(env) === 'shopify') {
     if (!shopifyConfigured(env)) return 'disabled';
@@ -394,7 +399,7 @@ export async function handleOrderStatus(request, env) {
     if (!order || order.metadata?.source !== ORDER_SOURCE) return respond({ error: 'Unknown order origin.' }, 404);
     const paidTender = Array.isArray(order.tenders) && order.tenders.some((t) => Number(t?.amount_money?.amount || 0) > 0);
     const paid = order.state === 'COMPLETED' || (order.state === 'OPEN' && paidTender);
-    return respond({ paid, status: paid ? 'complete' : 'pending', reference: id.slice(-10), mode: getMode(env), provider: 'square' });
+    return respond({ paid, status: paid ? 'complete' : 'pending', reference: id.slice(-10), mode: row?.mode || squareMode(env), provider: 'square' });
   } catch {
     return respond({ error: 'Could not check payment status.' }, 502);
   }
@@ -683,7 +688,7 @@ export async function handleCreateRefund(request, env) {
   const orderId = str(data?.orderId);
   if (!validId(orderId)) return respond({ error: 'A valid orderId is required.' }, 400);
   await ensureSchema(env);
-  const row = await env.ORDERS_DB.prepare('SELECT provider, payment_id, amount_total, refunded_total, payment_status FROM orders WHERE session_id=?').bind(orderId).first();
+  const row = await env.ORDERS_DB.prepare('SELECT provider, mode, payment_id, amount_total, refunded_total, payment_status FROM orders WHERE session_id=?').bind(orderId).first();
   if (row ? row.provider === 'shopify' : provider(env) === 'shopify') {
     return respond({ error: 'Refund Shopify orders in Shopify admin (Orders → Refund). The website records refunds automatically.' }, 409);
   }
@@ -712,5 +717,5 @@ export async function handleCreateRefund(request, env) {
     return respond({ error: 'Refund could not be created in Square.' }, 502);
   }
   await recordRefund(env.ORDERS_DB, str(refund.id), row.payment_id, amount, str(refund.status) || 'PENDING', false);
-  return respond({ ok: true, refundId: refund.id, status: refund.status, amountPence: amount, mode: getMode(env) });
+  return respond({ ok: true, refundId: refund.id, status: refund.status, amountPence: amount, mode: row.mode || squareMode(env) });
 }

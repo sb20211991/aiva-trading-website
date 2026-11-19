@@ -147,7 +147,13 @@ console.log('ok amount mismatch flagged for review');
 
 // Order status
 j = await (await m.handleOrderStatus(new Request(base + '/api/order-status?orderId=' + o1), env)).json();
-assert.equal(j.paid, true);
+assert.equal(j.paid, true); assert.equal(j.mode, 'test');
+// A live Square order keeps its stored mode after checkout switches to another provider.
+env.ORDERS_DB.raw.prepare("UPDATE orders SET mode='live' WHERE session_id=?").run(o1);
+j = await (await m.handleOrderStatus(new Request(base + '/api/order-status?orderId=' + o1), { ...env, CHECKOUT_PROVIDER: 'shopify', SHOPIFY_STORE_DOMAIN: 'aiva-test.myshopify.com', SHOPIFY_STOREFRONT_TOKEN: 'x', SHOPIFY_TEST_GATEWAY_CONFIRMED: 'true' })).json();
+assert.equal(j.provider, 'square'); assert.equal(j.paid, true); assert.equal(j.mode, 'live');
+env.ORDERS_DB.raw.prepare("UPDATE orders SET mode='test' WHERE session_id=?").run(o1);
+console.log('ok Square order status reports the stored order mode, not the active provider');
 
 // Orders taken by Shopify stay on Shopify after switching back to Square.
 env.ORDERS_DB.raw.prepare(`INSERT INTO orders (session_id,last_event_id,payment_status,amount_total,expected_total,currency,line_items_json,mode,provider,provider_order_ref,payment_id,created_at,updated_at)
