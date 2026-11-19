@@ -462,9 +462,9 @@ async function applyPaid(env, origin, orderId, paid, eventId) {
   ).bind(str(paid.paymentId), total, email, name, addr ? JSON.stringify(addr).slice(0, 4000) : null,
     paid.providerRef || null, typeof paid.test === 'boolean' ? Number(paid.test) : null, eventId, t, t, orderId));
   const results = await db.batch(stmts);
-  if (!results.at(-1)?.meta?.changes) return { duplicate: true };
+  /* Also on retries, in case reconciliation failed after the paid batch committed. */
   if (paid.paymentId) await reconcileRefunds(db, str(paid.paymentId));
-  return { paid: true };
+  return results.at(-1)?.meta?.changes ? { paid: true } : { duplicate: true };
 }
 async function getCatalogueForStock(env, origin) {
   try {
