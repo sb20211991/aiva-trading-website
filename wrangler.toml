@@ -1,5 +1,5 @@
-# Existing Pages project. Verified domain: app.aivatrading.uk, NOT the requested apex.
-# Root promotion must verify the custom domain first: scripts/promote-production.mjs.
+# Pages project aiva-trading serves aivatrading.uk, www.aivatrading.uk and app.aivatrading.uk.
+# Production deploys run only from main (.github/workflows/deploy-production.yml).
 # Static design and legacy providers are preserved; encrypted keys never enter assets.
 # Square sandbox only; production charges stay disabled until approved.
 name = "aiva-trading"

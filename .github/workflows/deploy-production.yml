@@ -11,7 +11,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main, devin/1763498400-square-checkout]
+    branches: [main]
     paths-ignore: ['deploy/**']
 permissions:
   contents: read

@@ -23,7 +23,7 @@ for (const name of ['bind-and-deploy', 'finish-infra', 'reactivate-apex', 'safe-
   assert.equal(existsSync('.github/workflows/cloudflare-' + name + '.yml'), false, 'Legacy infrastructure workflow must stay removed: ' + name);
 }
 const deploy = readFileSync('.github/workflows/deploy-production.yml', 'utf8');
-assert.match(deploy, /branches: \[main/);
+assert.match(deploy, /branches: \[main\]/, 'Production deploys must run only from main');
 assert.match(deploy, /npm test/);
 assert.doesNotMatch(deploy, /LIVE_PAYMENTS_APPROVED/, 'The deploy workflow must never approve live payments');
 const toml = readFileSync('wrangler.toml', 'utf8');
