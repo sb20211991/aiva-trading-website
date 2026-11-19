@@ -35,6 +35,16 @@ function squareEnvName(env) {
   if (v === 'sandbox') return 'sandbox';
   return '';
 }
+/* Production credentials are staged under SQUARE_PRODUCTION_* so the sandbox keeps working until go-live. */
+function withSquareCredentials(env) {
+  if (squareEnvName(env) !== 'production') return env;
+  return {
+    ...env,
+    SQUARE_ACCESS_TOKEN: str(env.SQUARE_PRODUCTION_ACCESS_TOKEN),
+    SQUARE_LOCATION_ID: str(env.SQUARE_PRODUCTION_LOCATION_ID),
+    SQUARE_WEBHOOK_SIGNATURE_KEY: str(env.SQUARE_PRODUCTION_WEBHOOK_SIGNATURE_KEY)
+  };
+}
 function squareConfigured(env) {
   return !!(str(env.SQUARE_ACCESS_TOKEN) && str(env.SQUARE_LOCATION_ID) && squareEnvName(env));
 }
@@ -230,6 +240,7 @@ function parseBasket(data, cat, env) {
 }
 
 export async function handleShopStatus(request, env) {
+  env = withSquareCredentials(env);
   try {
     const cat = await getCatalogue(request, env);
     const mode = getMode(env);
@@ -269,6 +280,7 @@ export async function handleShopStatus(request, env) {
 }
 
 export async function handleCreateCheckout(request, env) {
+  env = withSquareCredentials(env);
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   const site = new URL(request.url);
   const origin = request.headers.get('Origin');
@@ -375,6 +387,7 @@ async function createShopifyCheckout(env, basket, mode) {
 }
 
 export async function handleOrderStatus(request, env) {
+  env = withSquareCredentials(env);
   if (request.method !== 'GET') return respond({ error: 'Method not allowed.' }, 405);
   const params = new URL(request.url).searchParams;
   const id = str(params.get('orderId') || params.get('order_id') || params.get('session_id'));
@@ -488,6 +501,7 @@ async function getCatalogueForStock(env, origin) {
 }
 
 export async function handleSquareWebhook(request, env) {
+  env = withSquareCredentials(env);
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   if (!webhookConfigured(env) || !hasDb(env)) return respond({ error: 'Webhook not configured.' }, 503);
   let raw;
@@ -621,6 +635,7 @@ function merchantAuthorised(request, env) {
 
 /* Merchant order management: GET lists orders, POST updates fulfilment status. */
 export async function handleAdminOrders(request, env) {
+  env = withSquareCredentials(env);
   if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
   if (!hasDb(env)) return respond({ error: 'Order database not configured.' }, 503);
   await ensureSchema(env);
@@ -680,6 +695,7 @@ async function recordRefund(db, refundId, paymentId, amount, status, fromWebhook
 }
 
 export async function handleCreateRefund(request, env) {
+  env = withSquareCredentials(env);
   if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
   if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
   if (!hasDb(env)) return respond({ error: 'Order database is not configured.' }, 503);

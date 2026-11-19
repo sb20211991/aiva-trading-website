@@ -89,6 +89,12 @@ assert.equal(st.mode, 'disabled'); assert.equal(st.ready, false);
 st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SQUARE_ENVIRONMENT: 'production', SQUARE_LIVE_PAYMENTS_APPROVED: 'true' })).json();
 assert.equal(st.ready, false, 'test-only catalogue must never go live');
 console.log('ok live payments blocked without approval / with test catalogue');
+st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SQUARE_ENVIRONMENT: 'production', SQUARE_LIVE_PAYMENTS_APPROVED: 'true' })).json();
+assert.equal(st.envFlags.hasSquareAccessToken, false, 'production must not reuse the sandbox token');
+st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SQUARE_ENVIRONMENT: 'production',
+  SQUARE_PRODUCTION_ACCESS_TOKEN: 'prod-token', SQUARE_PRODUCTION_LOCATION_ID: 'LOC_PROD', SQUARE_PRODUCTION_WEBHOOK_SIGNATURE_KEY: 'prod-signature-key-123456' })).json();
+assert.equal(st.envFlags.hasSquareAccessToken, true); assert.equal(st.envFlags.hasWebhookSignatureKey, true); assert.equal(st.mode, 'disabled');
+console.log('ok production uses SQUARE_PRODUCTION_* credentials only');
 
 // Server-side pricing: browser-supplied price is ignored
 let r = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1, pricePence: 1 }]);
