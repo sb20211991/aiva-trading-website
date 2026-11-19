@@ -1,0 +1,41 @@
+name: Cloudflare read-only discovery
+on:
+  push:
+    branches: [devin/1763517600-cf-discovery]
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    env:
+      ACC: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TOK: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: List Pages projects, domains and token permissions (read-only)
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          A=os.environ["ACC"].strip(); T=os.environ["TOK"].strip(); API="https://api.cloudflare.com/client/v4"
+          def get(p):
+              r=urllib.request.Request(API+p,headers={"Authorization":"Bearer "+T})
+              try:
+                  with urllib.request.urlopen(r,timeout=60) as x: return json.loads(x.read())
+              except urllib.error.HTTPError as e:
+                  b=json.loads(e.read() or b"{}"); print("HTTP",e.code,p,[(i.get("code"),i.get("message")) for i in b.get("errors",[])]); return b
+          v=get(f"/accounts/{A}/tokens/verify"); print("account token status:", (v.get("result") or {}).get("status"))
+          page=1
+          while True:
+              r=get(f"/accounts/{A}/pages/projects?per_page=10&page={page}")
+              res=r.get("result") or []
+              for p in res:
+                  d=p.get("latest_deployment") or {}
+                  print("PROJECT", p.get("name"), "subdomain=",p.get("subdomain"), "domains=",p.get("domains"), "prod_branch=",p.get("production_branch"),
+                        "source=",(p.get("source") or {}).get("type"), (p.get("source") or {}).get("config",{}).get("repo_name"),
+                        "latest=",d.get("created_on"), d.get("environment"), (d.get("deployment_trigger") or {}).get("metadata",{}).get("commit_message","")[:80])
+                  dm=get(f"/accounts/{A}/pages/projects/{p.get('name')}/domains")
+                  for x in dm.get("result") or []: print("   domain", x.get("name"), x.get("status"))
+              if len(res)<10: break
+              page+=1
+          for p in ("/workers/scripts","/d1/database","/storage/kv/namespaces"):
+              r=get(f"/accounts/{A}{p}"); print(p, [x.get("id") if p=="/workers/scripts" else x.get("name") or x.get("title") for x in r.get("result") or []])
+          PY
