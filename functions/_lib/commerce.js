@@ -231,7 +231,8 @@ export async function handleShopStatus(request, env) {
     const isBuyable = (p) => buyable(p, env);
     const merchantReady = mode === 'live' ? await (shopify ? shopifyStoreReachable(env) : liveLocationReady(env)) : mode === 'test';
     return respond({
-      ready: merchantReady && infra && validPolicy(cat) && cat.products.some(isBuyable) && !(mode === 'live' && cat.testOnly === true),
+      ready: merchantReady && infra && validPolicy(cat) && cat.products.some(isBuyable) && !(mode === 'live' && cat.testOnly === true) &&
+        !(shopify && mode === 'test' && cat.testOnly !== true),
       mode,
       provider: mode === 'disabled' ? null : provider(env),
       ...(shopify && mode !== 'disabled' ? { checkoutHosts: checkoutHosts(env) } : {}),
@@ -285,6 +286,10 @@ export async function handleCreateCheckout(request, env) {
   }
   const basket = parseBasket(data, cat, env);
   if (basket.error) return respond({ error: basket.error }, 400);
+  /* Shopify test vs live is store configuration, so test mode only ever sells the labelled test catalogue. */
+  if (shopify && mode === 'test' && cat.testOnly !== true) {
+    return respond({ error: 'Online checkout is not yet enabled. Please contact Aiva.' }, 503);
+  }
   if (shopify) return createShopifyCheckout(env, basket, mode);
 
   const lineItems = basket.lines.map(({ product, qty }) => ({
@@ -424,6 +429,12 @@ async function applyPaid(env, origin, orderId, paid, eventId) {
     console.error('Payment amount mismatch for order', orderId);
     return { ignored: 'amount_mismatch' };
   }
+  if (paid.reviewReason) {
+    await db.prepare(`UPDATE orders SET review_reason=?, last_event_id=?, updated_at=? WHERE session_id=? AND payment_status IN ('pending','failed')`)
+      .bind(paid.reviewReason, eventId, now(), orderId).run();
+    console.error('Payment held for review', paid.reviewReason, orderId);
+    return { ignored: paid.reviewReason };
+  }
   const email = str(paid.email).slice(0, 320);
   const addr = paid.address || null;
   const name = str(paid.name).slice(0, 160);
@@ -544,7 +555,8 @@ export async function handleShopifyWebhook(request, env) {
         amountTotal: toMinor(body.current_total_price ?? body.total_price), currency: body.currency,
         email: str(body.contact_email || body.email || body.customer?.email),
         name: str(addr?.name || [addr?.first_name, addr?.last_name].filter(Boolean).join(' ')), address: addr,
-        providerRef: ref, test: body.test === true
+        providerRef: ref, test: body.test === true,
+        reviewReason: getMode(env) === 'test' && body.test !== true ? 'live_payment_in_test_mode' : ''
       }, eventId)) });
     }
     if (topic === 'orders/cancelled') {

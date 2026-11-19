@@ -92,7 +92,12 @@ st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { .
 assert.equal(st.mode, 'disabled'); assert.equal(st.ready, false);
 st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), { ...env, SHOPIFY_LIVE_PAYMENTS_APPROVED: 'true' })).json();
 assert.equal(st.mode, 'live'); assert.equal(st.ready, false, 'test-only catalogue must never go live');
-console.log('ok disabled without credentials; live blocked with test-only catalogue');
+const realCat = { ...catalogue, testOnly: false };
+const realEnv = { ...env, ASSETS: { fetch: async () => Response.json(realCat) } };
+st = await (await m.handleShopStatus(new Request(base + '/api/shop-status'), realEnv)).json();
+assert.equal(st.ready, false, 'Shopify test mode must not sell a real catalogue');
+assert.equal((await m.handleCreateCheckout(post('/api/create-checkout-session', { items: [{ sku: 'AIVA-TEST-1GBP', quantity: 1 }] }), realEnv)).status, 503);
+console.log('ok disabled without credentials; live blocked with test-only catalogue; test mode refuses a real catalogue');
 
 // Checkout: server price, Shopify cart attribute, no shipping charged by the site.
 let c = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 2, pricePence: 1 }]);
@@ -154,6 +159,13 @@ c = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }]);
 w = await hook('orders/paid', shopifyOrder(c.data.orderId, '0.50', '5.45'));
 assert.equal(w.data.ignored, 'amount_mismatch'); assert.notEqual(row(c.data.orderId).payment_status, 'paid');
 console.log('ok amount mismatch held for review');
+
+// A real (non-test) Shopify payment while the site is in test mode is held, never confirmed.
+c = await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }]);
+w = await hook('orders/paid', shopifyOrder(c.data.orderId, '1.00', '5.95', { test: false }));
+assert.equal(w.data.ignored, 'live_payment_in_test_mode'); assert.equal(row(c.data.orderId).review_reason, 'live_payment_in_test_mode');
+assert.notEqual(row(c.data.orderId).payment_status, 'paid');
+console.log('ok live-gateway payment in test mode held for review');
 
 // Orders from Shopify's own storefront are ignored.
 w = await hook('orders/paid', { ...shopifyOrder('x', '1.00', '1.00'), note_attributes: [] });
