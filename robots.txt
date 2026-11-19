@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://aivatrading.uk/sitemap.xml

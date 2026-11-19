@@ -1,0 +1,68 @@
+AIVA TRADING LIMITED — SKIP SQUARE HARDWARE (ONLINE ONLY)
+Updated: 15 November 2026 (Europe/London)
+
+VERDICT
+You do NOT need Square Reader, Square Terminal, Tap to Pay hardware, or any
+physical card machine for customers to pay on aivatrading.uk.
+
+Website checkout uses Square-hosted Payment Links (API). Card / Apple Pay /
+Google Pay (when eligible) happen in the browser. Hardware selection is a
+signup upsell, not a technical requirement for online payments.
+
+==================================================
+HOW TO GET PAST THE HARDWARE SELECTION PAGE
+==================================================
+
+1) Prefer desktop Square Dashboard over the mobile POS app
+   https://squareup.com/dashboard
+   The POS app is built around in-person selling and pushes readers harder.
+
+2) On “Choose your hardware / Get a reader / Order Terminal”
+   Look for: Skip · Not now · No thanks · Continue without hardware · X / Close
+   Do not buy anything. Leaving without a reader is normal for online sellers.
+
+3) Go straight to online payments proof
+   Dashboard → Payments (or Payments & orders) → Payment links → Create link
+   Creating a Payment Link (even £1, inactive later) confirms online checkout
+   works without hardware.
+   Official UK guide:
+   https://squareup.com/help/gb/en/article/6692-get-started-with-square-checkout-links
+
+4) Get developer credentials (needed for aivatrading.uk)
+   https://developer.squareup.com/apps
+   Create/open an application → Credentials → Sandbox Access Token
+   Locations → Sandbox Location ID
+   Put those values in Cursor secrets (never in chat).
+
+5) If you are truly stuck with no Skip control
+   - Open Dashboard in a fresh browser tab/window
+   - Or use Square Support chat and say:
+     “Aiva Trading Limited only needs online Payment Links for aivatrading.uk.
+      We do not want a Reader or Terminal.”
+   - Do not purchase hardware to “unblock” the account — it is not required
+
+==================================================
+WHAT HARDWARE IS FOR (OPTIONAL, SEPARATE)
+==================================================
+
+- Square Reader / Terminal = in-person shop / market stall
+- Tap to Pay on iPhone = in-person POS, no reader, still not website checkout
+- Website basket on aivatrading.uk = Payment Links / hosted Checkout only
+
+See also: TAP-TO-PAY-AND-IN-PERSON.txt
+
+==================================================
+ELIGIBILITY FOR ONLINE PAYMENTS (UK)
+==================================================
+
+UK Square accounts can take online card payments via Payment Links without
+buying hardware. What Square still requires from you (Dashboard only):
+
+- Business / identity verification prompts completed
+- Active selling Location
+- UK bank account for payouts
+- (For our site) Developer app + sandbox token + webhook signature key
+
+This agent cannot log into your Square Dashboard. After you add sandbox
+secrets, run: npm run website:square-check
+That checks location status + CREDIT_CARD_PROCESSING capability (no charges).

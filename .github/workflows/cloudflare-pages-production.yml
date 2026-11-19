@@ -1,0 +1,66 @@
+# Approved closed-shop release only; refuses deployment until root hosting is verified.
+# Uses existing repository secrets CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN.
+name: Cloudflare Pages production deploy
+on:
+  workflow_dispatch:
+    inputs:
+      approve_production_deployment:
+        description: 'Approve publishing this reviewed revision to aivatrading.uk with sales closed'
+        type: boolean
+        default: false
+        required: true
+      reviewed_commit_sha:
+        description: 'Exact reviewed 40-character commit SHA'
+        type: string
+        required: true
+permissions:
+  contents: read
+  deployments: write
+concurrency:
+  group: cloudflare-pages-production
+  cancel-in-progress: false
+jobs:
+  production:
+    if: ${{ inputs.approve_production_deployment == true }}
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require Cloudflare deploy secrets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]] && missing+=(CLOUDFLARE_ACCOUNT_ID)
+          [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && missing+=(CLOUDFLARE_API_TOKEN)
+          if ((${#missing[@]})); then
+            echo "BLOCKED: missing GitHub secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "Cloudflare deploy secrets present (values not printed)."
+      - name: Run local checks
+        run: npm test
+      - name: Refuse root worker static upload
+        run: |
+          set -euo pipefail
+          if [[ -f _worker.js ]]; then
+            echo "Refusing deploy: _worker.js exists (would be served as static)."
+            exit 1
+          fi
+          test -f functions/api/shop-status.js
+      - name: Deploy Cloudflare Pages production
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPROVE_PRODUCTION_DEPLOYMENT: ${{ inputs.approve_production_deployment }}
+          REVIEWED_COMMIT_SHA: ${{ inputs.reviewed_commit_sha }}
+          EXPECTED_PRODUCTION_ORIGIN: https://aivatrading.uk
+        run: |
+          set -euo pipefail
+          node scripts/promote-production.mjs

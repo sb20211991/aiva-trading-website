@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "currency": "GBP",
+  "shopEnabled": true,
+  "businessAddress": "Aiva Trading Ltd, 153 Whitehill Road, Gravesend, Kent, DA12 5LS, United Kingdom",
+  "deliveryPolicy": "DRAFT FOR REVIEW: UK delivery only. Delivery cost and timescale are shown at checkout and confirmed by email.",
+  "returnsPolicy": "DRAFT FOR REVIEW: Consumers may cancel within 14 days of delivery under the Consumer Contracts Regulations 2013. To start a return, email Aivatradingltd2026@gmail.com with your order reference.",
+  "shipping": {
+    "allowedCountries": [
+      "GB"
+    ],
+    "flatRatePence": 0,
+    "freeShippingThresholdPence": null
+  },
+  "categories": [
+    "Smart home & security",
+    "Energy & power",
+    "Consumer electronics",
+    "Cars & vehicles",
+    "Scooters & mobility",
+    "Parts & accessories",
+    "Laptops & computing",
+    "Barber & beauty",
+    "Home essentials"
+  ],
+  "products": [
+    {
+      "sku": "AIVA-TEST-1GBP",
+      "name": "TEST ITEM – Square sandbox £1 (not a real product)",
+      "description": "Clearly labelled test listing used only to verify the Square sandbox checkout. Sandbox payments never charge real money. Will be removed before launch.",
+      "category": "Home essentials",
+      "pricePence": 100,
+      "stock": 5,
+      "available": true,
+      "testOnly": true
+    }
+  ],
+  "testOnly": true
+}

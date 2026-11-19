@@ -1,0 +1,14 @@
+{
+  "name": "aiva-trading-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:checkout && npm run test:shopify && npm run test:integrity && npm run test:deployment && npm run build:pages",
+    "test:deployment": "node scripts/deployment-safety-test.mjs",
+    "build:pages": "node scripts/build-pages-assets.mjs",
+    "test:checkout": "node scripts/local-checkout-test.mjs",
+    "test:shopify": "node scripts/local-shopify-checkout-test.mjs",
+    "test:integrity": "node scripts/website-integrity.mjs",
+    "website:square-check": "node scripts/square-account-check.mjs"
+  }
+}

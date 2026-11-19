@@ -1,0 +1,11 @@
+.shop-page .lead { max-width:60ch; }
+.shop-panel { margin:24px 0; padding:clamp(18px,4vw,38px); border:1px solid #d6dfe8; border-radius:18px; background:#fff; }
+.shop-panel h2 { margin:0 0 14px; }
+.shop-panel p a { text-decoration:underline; }
+.shop-controls { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+.shop-controls :is(input,select) { width:100%; min-height:44px; margin:0; padding:9px 12px; border:1px solid #879bb1; border-radius:8px; color:#14243a; background:white; }
+#shop-results article { display:flex; flex-direction:column; gap:8px; }
+#shop-results article > p { min-height:0; margin:0; }
+#shop-results article > a { margin-top:auto; padding:12px; border:0; border-radius:8px; background:#1b3555; color:white; }
+#shop-policies p { white-space:pre-line; }
+@media(max-width:600px) { .shop-controls { grid-template-columns:1fr; } }

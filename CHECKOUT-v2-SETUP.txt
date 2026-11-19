@@ -1,0 +1,43 @@
+AIVA TRADING LIMITED — SQUARE CHECKOUT SETUP — 15 NOVEMBER 2026
+
+This package keeps the existing Aiva Trading website design, logo, images, languages,
+enquiry sections and category pages. Online checkout uses Square Payment Links
+via Cloudflare Pages Functions (website/functions/), not a root _worker.js file.
+
+WHAT THE CODE DOES
+- Browser basket remembers SKU quantities on the same device (no personal information stored).
+- functions/api/create-checkout-session.js creates Square-hosted checkout links from
+  validated catalogue prices. Apple Pay and Google Pay are requested when Square allows them.
+- Webhook /api/square-webhook verifies Square HMAC signatures before recording orders.
+- /api/create-refund + merchant-tools/refund.html create Square refunds with MERCHANT_REFUND_SECRET.
+- Live-mode safety gate requires webhook signature key, D1 binding, and an ACTIVE Square location
+  with credit-card processing capability.
+- Order database schema ORDER-DATABASE-SETUP.sql is for Cloudflare D1.
+
+WHAT IS NOT AUTOMATICALLY COMPLETE
+- Not published online. Cloudflare deploy credentials are still required.
+- Catalogue deliberately has no real products and shopEnabled=false until you enter verified stock.
+- Real charging needs a live Square account, production access token, location id and webhook.
+- Apple Pay / Google Pay appear only when Square and the customer's device/browser support them.
+- No physical Square card reader is required for website checkout.
+
+CLOUDFLARE + SQUARE SETUP
+1. BACK UP the existing deployed site. Deploy to the Aiva Trading Pages project, not Pocket Hub.
+2. Cloudflare D1 > Create aiva_orders; run ORDER-DATABASE-SETUP.sql; bind as ORDERS_DB.
+3. Square Developer Dashboard: create/select an application for Aiva Trading Limited.
+   Use Sandbox access token first. Copy Location ID.
+4. Cloudflare Pages encrypted vars:
+   - SQUARE_ACCESS_TOKEN
+   - SQUARE_LOCATION_ID
+   - SQUARE_ENVIRONMENT = sandbox | production
+   - SQUARE_WEBHOOK_SIGNATURE_KEY
+   - SQUARE_WEBHOOK_NOTIFICATION_URL = https://aivatrading.uk/api/square-webhook
+   - MERCHANT_REFUND_SECRET (24+ chars)
+5. Square Webhooks: subscribe payment.updated, order.updated, refund.created, refund.updated
+   to https://aivatrading.uk/api/square-webhook
+6. Edit data/aiva-products.json with real products only after sandbox works; then shopEnabled=true.
+7. Deploy with website/scripts/deploy-pages.sh (refuses if _worker.js exists).
+8. Test /api/shop-status JSON, sandbox checkout, order-success, D1 rows, then a refund.
+
+Legacy /api/stripe-webhook returns HTTP 410 (Stripe retired).
+Optional PayPal secrets can enable a second checkout button later.

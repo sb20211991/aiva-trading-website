@@ -1,0 +1,6 @@
+#aiva-tools{position:fixed;bottom:18px;right:18px;z-index:1000;font:15px/1.5 system-ui,sans-serif;color:#fff4d6;max-width:calc(100vw - 36px)}
+#aiva-tools button,#aiva-tools select{font:inherit;min-height:44px;border-radius:10px;padding:10px 14px;border:1px solid #c8a65f;background:#173c32;color:#fff4d6;cursor:pointer}
+#aiva-tools button:disabled{opacity:.5;cursor:default}#aiva-tools :focus-visible{outline:3px solid #f6cf70;outline-offset:3px}#aiva-tools-toggle{box-shadow:0 3px 20px #0003}
+#aiva-tools-panel{position:absolute;bottom:56px;right:0;width:360px;max-width:calc(100vw - 36px);box-sizing:border-box;max-height:calc(100dvh - 100px);overflow:auto;padding:22px;background:#102b25;border:1px solid #c8a65f;border-radius:16px;box-shadow:0 10px 35px #0005}
+#aiva-tools-panel[hidden]{display:none}#aiva-tools h2{font-size:21px;line-height:1.25;color:#f1d187;margin:0 0 10px}#aiva-tools h3{font-size:17px;color:#f1d187;margin:16px 0 8px}#aiva-tools p{font-size:14px;margin:10px 0}#aiva-tools label{display:block;margin:12px 0 5px}#aiva-tools select{width:100%}#aiva-tools input[type=range]{width:100%;accent-color:#e4bd6c;min-height:32px}#aiva-tools hr{border:0;border-top:1px solid #c8a65f55;margin:18px 0}.aiva-tool-actions{display:flex;flex-wrap:wrap;gap:8px}
+@media print{#aiva-tools{display:none}}

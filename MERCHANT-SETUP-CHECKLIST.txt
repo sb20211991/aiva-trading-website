@@ -1,0 +1,39 @@
+AIVA TRADING LIMITED — ADDITIVE E-COMMERCE UPGRADE
+
+WHAT IS PRESERVED
+Existing layout, branding, language switcher, supplier/buyer enquiry forms, images,
+company pages and content remain unchanged. Checkout provider is Square (Stripe retired).
+
+WHAT IS BUILT
+- Product catalogue UI with search, category, price filters, basket
+- Square Payment Links via Cloudflare Pages functions/
+- Shipping country / flat-rate support; order status page; refund tool
+- Secrets stay in Cloudflare / GitHub Actions — never in public source files
+
+CURRENT SANDBOX CATALOGUE
+- One temporary SKU: AIVA-TEST-1GBP at £1.00 (pricePence 100)
+- shopEnabled=true so sandbox checkout can be verified once Square secrets are set
+- SQUARE_ENVIRONMENT must stay "sandbox" — no real card charges without your approval
+- Before customer launch: set products[].available=false or remove AIVA-TEST-1GBP,
+  then add real SKUs/prices/policies
+
+HOW TO ADD / EDIT / PRICE / REMOVE PRODUCTS LATER
+Edit data/aiva-products.json then redeploy Pages:
+1. Add a product object under "products" with sku, name, description, category,
+   pricePence (integer pence, e.g. 1250 = £12.50), stock, available true/false
+2. Edit price by changing pricePence; set available=false to hide without deleting
+3. Remove a product by deleting its object from the products array
+4. Keep shopEnabled=false until you are ready for customers (or leave true only
+   while sandbox-testing with Square sandbox credentials)
+5. Update deliveryPolicy / returnsPolicy / businessAddress before go-live
+6. Run: npm test && deploy (Cloudflare safe redeploy / Pages deploy)
+
+SELLER SETUP (REMAINING)
+1. Add GitHub Actions secrets (or Cloudflare Production secrets) for:
+   SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, SQUARE_WEBHOOK_SIGNATURE_KEY
+2. Confirm Square webhook → https://app.aivatrading.uk/api/square-webhook
+   (events: payment.updated, order.updated)
+3. Sandbox-test the £1 SKU, then ask before any production/live Square switch
+4. Replace temporary test SKU with real products; set shopEnabled as you choose
+
+See CHECKOUT-v2-SETUP.txt and ORDER-DATABASE-SETUP.sql.

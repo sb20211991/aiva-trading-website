@@ -1,0 +1,30 @@
+AIVA TRADING LIMITED — PAYMENT READINESS (15 Nov 2026, Europe/London)
+
+SCORE FOR REAL CUSTOMER WEBSITE PAYMENTS: 5 / 10
+(Repo Functions + Square-primary + refunds + local tests green.
+ Live Cloudflare deploy and Square secrets still missing.)
+
+TAP TO PAY: Active (in-person POS) — does not make the website live.
+HARDWARE: NOT REQUIRED for aivatrading.uk Payment Links.
+If stuck on hardware selection, follow HARDWARE-BYPASS-GUIDE.txt.
+
+COMPLETED IN REPO
+- Removed root _worker.js (was being served live as a static file)
+- Cloudflare Pages Functions under website/functions/api/*
+- Square primary; Stripe retired; PayPal optional only if configured
+- Refund API + merchant tool + webhook refund recording
+- Local mocked basket → £1 checkout → refund tests PASS
+- Website integrity checks PASS
+- shopEnabled=false; design/pages preserved
+- Hardware bypass + online status reports
+
+STILL BLOCKING LIVE SITE
+- No CLOUDFLARE_* secrets → cannot deploy Functions yet
+- No SQUARE_* secrets → cannot run real sandbox charges or location eligibility API
+- Live /api/shop-status still 404 until correct deploy
+- Live /_worker.js still returns 200 (old package still published)
+- Bank payouts / business verification: only in Square Dashboard
+- No real retail catalogue yet
+
+YOUR MANUAL ACTIONS
+See YOUR-NEXT-STEP.txt, HARDWARE-BYPASS-GUIDE.txt, ONLINE-PAYMENTS-STATUS.txt

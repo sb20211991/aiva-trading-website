@@ -1,0 +1,7 @@
+/* Targeted improvements; preserve the established design. */
+.hero-note a{color:inherit;text-decoration:underline;text-underline-offset:4px}
+.spec-checklist{width:88%;max-width:1200px;margin:20px auto 48px;padding:32px;background:#eeeee4;border:1px solid #c9d1c0;border-radius:5px}
+.spec-checklist h2{font:32px/1.2 Georgia,serif;color:#173c31}.spec-checklist>p{max-width:760px;line-height:1.7}.spec-checklist dl{margin:24px 0}.spec-checklist dl>div{display:grid;grid-template-columns:190px 1fr;gap:24px;padding:17px 0;border-top:1px solid #c9d1c0}.spec-checklist dt{font-weight:700}.spec-checklist dd{margin:0;line-height:1.65}.spec-checklist>a{display:inline-block;padding:12px 0;font-weight:600;text-decoration:underline;text-underline-offset:4px}.buying-guide .spec-checklist{width:100%;margin:36px 0}
+@media(max-width:600px){.spec-checklist{padding:24px}.spec-checklist dl>div{grid-template-columns:1fr;gap:6px}.spec-checklist h2{font-size:28px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}*,*::before,*::after{animation:none!important;transition:none!important}}
+@media print{.spec-checklist{break-inside:avoid;background:white}}

@@ -1,0 +1,30 @@
+AIVA TRADING — TAP TO PAY vs WEBSITE CHECKOUT
+
+These are two different Square products.
+
+1) Website checkout (aivatrading.uk)
+   - Uses Square Payment Links / hosted checkout via Cloudflare Pages Functions
+   - Accepts Visa/Mastercard and, where eligible, Apple Pay and Google Pay
+   - Customer pays in the browser — no Square hardware and no Tap to Pay
+   - This is what the online shop basket uses
+   - Stuck on a hardware shop page? See HARDWARE-BYPASS-GUIDE.txt — Skip / Not now
+
+2) Tap to Pay on iPhone (in person)
+   - Runs inside the Square Point of Sale app on an eligible iPhone
+   - Does NOT need a Square card reader
+   - If Square asks you to pick a physical reader, choose Tap to Pay / skip reader
+     (wording varies by app version), or open Square POS → More → Settings →
+     Account → Tap to Pay on iPhone and turn it ON
+   - Needs iPhone XS or newer, latest iOS, passcode, internet, Square UK account
+   - This does not replace website checkout and is not controlled by aivatrading.uk
+
+If you only need customers to pay on the website, ignore the card-reader setup and
+finish Square sandbox + Cloudflare Functions deploy for Payment Links instead.
+Do not purchase Square Reader or Terminal for aivatrading.uk.
+
+STATUS NOTE (15 Nov 2026, Europe/London)
+You confirmed Tap to Pay on iPhone is Active. That is good for in-person POS and
+strongly suggests Square identity verification for card acceptance is complete.
+It does not deploy aivatrading.uk checkout, webhooks, or Cloudflare Functions.
+Website Visa / Mastercard / Apple Pay / Google Pay still need Payment Links +
+sandbox secrets + a Functions deploy (see YOUR-NEXT-STEP.txt).

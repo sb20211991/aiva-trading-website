@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "currency": "GBP",
+  "shopEnabled": true,
+  "_comment": "SANDBOX EXAMPLE ONLY. Do not copy to aiva-products.json for production until Simon approves real stock. Use with SQUARE_ENVIRONMENT=sandbox.",
+  "businessAddress": "153 Whitehill Road, Gravesend, Kent, DA12 5LS",
+  "deliveryPolicy": "Sandbox delivery policy for test checkout only. No goods are shipped for sandbox payments.",
+  "returnsPolicy": "Sandbox returns policy for test checkout only. Use Square sandbox refunds after a test payment.",
+  "shipping": {
+    "allowedCountries": ["GB"],
+    "flatRatePence": 0,
+    "freeShippingThresholdPence": null
+  },
+  "categories": [
+    "Smart home & security",
+    "Energy & power",
+    "Consumer electronics",
+    "Cars & vehicles",
+    "Scooters & mobility",
+    "Parts & accessories",
+    "Laptops & computing",
+    "Barber & beauty",
+    "Home essentials"
+  ],
+  "products": [
+    {
+      "sku": "SANDBOX-POUND-01",
+      "name": "Sandbox £1 verification item",
+      "category": "Energy & power",
+      "description": "Square sandbox verification listing only. Not a real product for sale.",
+      "pricePence": 100,
+      "stock": 25,
+      "available": true
+    }
+  ]
+}

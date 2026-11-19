@@ -1,0 +1,31 @@
+/* Add-on only. Aiva homepage, global CSS and existing guide copy are untouched. */
+.aiva-guide-checkout{--guide-emerald:#173d33;--guide-gold:#a7813b;--guide-line:#d4ded6;margin:clamp(32px,5vw,64px) 0;padding:clamp(18px,3vw,34px);background:#f6f9f5;border:1px solid var(--guide-line);border-radius:20px;color:var(--guide-emerald);scroll-margin-top:85px}
+.aiva-guide-checkout *{box-sizing:border-box}
+.aiva-guide-checkout h2,.aiva-guide-checkout h3{color:var(--guide-emerald)}
+.aiva-guide-checkout>h2{margin-bottom:10px}
+.aiva-guide-checkout>p{max-width:900px}
+.aiva-guide-checkout-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:22px 0 26px}
+.aiva-guide-checkout-steps>div{display:flex;flex-direction:column;gap:7px;padding:16px;background:#fff;border:1px solid var(--guide-line);border-radius:12px}
+.aiva-guide-checkout-steps span{font-size:.92rem;line-height:1.5;color:#456556}
+.aiva-guide-payment-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0}
+.aiva-guide-payment-options--single{grid-template-columns:minmax(0,420px)}
+.aiva-guide-payment-options article{display:flex;flex-direction:column;gap:10px;min-width:0;background:#fff;padding:18px;border:1px solid var(--guide-line);border-radius:14px}
+.aiva-guide-method-glyph{display:grid;place-items:center;width:46px;height:46px;border:1px solid #d7c79e;border-radius:11px;color:var(--guide-emerald);background:#fcf9f0;font-size:1.4rem;font-weight:800}
+.aiva-guide-payment-options h3{font-size:1.1rem;line-height:1.3;margin:0}
+.aiva-guide-payment-options p{margin:0 0 6px;color:#4a6256;font-size:.91rem;line-height:1.5;flex-grow:1}
+.aiva-guide-pay-button{min-height:47px;width:100%;border:none;border-radius:9px;background:var(--guide-emerald);color:#fff;padding:10px;font:inherit;font-weight:700;cursor:pointer}
+.aiva-guide-pay-button:hover:not(:disabled){background:#275744}
+.aiva-guide-pay-button:focus-visible,.aiva-guide-shop-link:focus-visible{outline:3px solid #b49255;outline-offset:2px}
+.aiva-guide-pay-button:disabled{opacity:.52;cursor:not-allowed}
+.aiva-guide-payment-disclaimer{font-size:.86rem;line-height:1.55;color:#51675c}
+.aiva-guide-order-panel{margin-top:20px;padding:18px;background:#fff;border:1px solid var(--guide-line);border-radius:13px}
+.aiva-guide-order-panel h3{margin:0 0 5px}.aiva-guide-order-panel p{margin:8px 0}
+.aiva-guide-basket-items{display:grid;gap:8px;margin:14px 0}
+.aiva-guide-basket-item{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid #e5ebe5}
+.aiva-guide-basket-item strong{overflow-wrap:anywhere}
+.aiva-guide-total{font-weight:800}
+.aiva-guide-pay-status{border:1px solid #e0c995;background:#fff8eb;color:#604b2a;padding:10px 12px;border-radius:9px}
+.aiva-guide-pay-status[data-ready="true"]{background:#eaf3ed;border-color:#b9d6c3;color:#21593a}
+.aiva-guide-error{padding:11px;border-radius:9px;background:#fff1eb;color:#8f2619}
+.aiva-guide-shop-link{font-weight:700;color:#185343;display:inline-block;margin:10px 0 3px}
+@media(max-width:800px){.aiva-guide-payment-options{grid-template-columns:1fr}.aiva-guide-checkout-steps{grid-template-columns:1fr}.aiva-guide-payment-options article{padding:15px}}

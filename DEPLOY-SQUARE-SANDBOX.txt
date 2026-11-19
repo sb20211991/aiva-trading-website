@@ -1,0 +1,28 @@
+AIVA TRADING — CLOUDFLARE FUNCTIONS DEPLOY (SQUARE + OPTIONAL PAYPAL)
+
+IMPORTANT
+Do not ZIP-upload the site in a way that publishes root _worker.js as a file.
+This package uses Cloudflare Pages Functions under website/functions/.
+
+1) Secrets (Cursor secure form + Cloudflare Pages Variables)
+   Required for Square sandbox:
+   SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, SQUARE_ENVIRONMENT=sandbox
+   Required to deploy from this agent:
+   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN
+   Optional PayPal sandbox:
+   PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_ENVIRONMENT=sandbox
+
+2) D1
+   Create DB, run ORDER-DATABASE-SETUP.sql, bind as ORDERS_DB.
+
+3) Deploy
+   ./website/scripts/deploy-pages.sh aiva-trading
+   Or: npx wrangler@4 pages deploy website --project-name=aiva-trading
+
+4) Verify
+   curl -sS https://YOUR-PREVIEW-OR-DOMAIN/api/shop-status
+   → JSON with provider/providers, ready false while shopEnabled=false
+   curl -sS -o /dev/null -w '%{http_code}\n' https://DOMAIN/_worker.js
+   → 404
+
+5) Keep shopEnabled=false until a sandbox payment succeeds.

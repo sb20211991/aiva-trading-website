@@ -1,0 +1,42 @@
+AIVA TRADING — CHECKOUT RELEASE AND LIVE ACTIVATION RUNBOOK
+Supersedes the older status files in this folder (ONLINE-PAYMENTS-STATUS, RELEASE-STATUS,
+DEPLOYMENT-STATUS, MISSING-CONFIG, STRIPE-TEST-SETUP), which describe earlier attempts.
+
+Provider: Square hosted checkout (Payment Links). Visa, Mastercard, Apple Pay and Google Pay
+are enabled in checkout_options (functions/_lib/commerce.js). Card details never touch this site.
+Hosting: Cloudflare Pages project "aiva-trading" (aivatrading.uk, www, app).
+Orders: D1 database aiva_orders (binding ORDERS_DB), schema self-migrates at runtime.
+Webhook: POST /api/square-webhook, HMAC-SHA256 over SQUARE_WEBHOOK_NOTIFICATION_URL + body.
+
+STEP 1 — RELEASE (still sandbox, no real money)
+  Merge the release PR into main. deploy-production.yml runs npm test and deploys to Pages.
+  Check https://aivatrading.uk/api/shop-status shows "mode":"test", "ready":true.
+
+STEP 2 — OWNER ACTIONS BEFORE REAL PAYMENTS (cannot be done by an engineer)
+  a. Square Dashboard: confirm identity verification is complete and a UK bank account is
+     verified for payouts (Balances / Banking).
+  b. Square Developer → your app → Production: copy the Production access token and Location ID.
+  c. Square Developer → Webhooks (Production): subscribe
+       https://app.aivatrading.uk/api/square-webhook
+     events payment.created, payment.updated, refund.created, refund.updated; copy its signature key.
+  d. Replace the TEST catalogue: real products in data/aiva-products.json (pricePence = pence),
+     remove AIVA-TEST-1GBP, remove "testOnly", and finalise delivery/returns policy text.
+  e. Cloudflare: disconnect the unrelated Worker "black-scene-993d" from this GitHub repo
+     (Workers & Pages → black-scene-993d → Settings → Build → Disconnect). It fails every PR.
+
+STEP 3 — LIVE ACTIVATION (only with written owner approval)
+  1. Install production secrets on Pages (never commit them): SQUARE_ACCESS_TOKEN,
+     SQUARE_LOCATION_ID, SQUARE_WEBHOOK_SIGNATURE_KEY — Cloudflare Pages → aiva-trading →
+     Settings → Variables and secrets → Production (type: Secret), or the encrypted handoff in
+     deploy-production.yml (workflow_dispatch, handoff=true).
+  2. In wrangler.toml set SQUARE_ENVIRONMENT = "production" and
+     SQUARE_LIVE_PAYMENTS_APPROVED = "true"; update scripts/deployment-safety-test.mjs, which
+     deliberately fails while the flag is "true", in the same reviewed PR.
+  3. Merge to main. Confirm /api/shop-status shows "mode":"live", "ready":true.
+     Live mode is refused while the catalogue is testOnly or the Square location cannot process cards.
+  4. Make one low-value real purchase, confirm it in Square Dashboard and in
+     merchant-tools/refund.html (orders list), refund it, and confirm the refund is recorded.
+
+ROLLBACK
+  Set SQUARE_LIVE_PAYMENTS_APPROVED = "false" (or shopEnabled false in data/aiva-products.json)
+  and merge; checkout returns 503 with a "contact Aiva" message, the rest of the site is unchanged.

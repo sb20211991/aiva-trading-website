@@ -1,0 +1,43 @@
+/*.html
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache
+/assets/app-v5.js
+  Cache-Control: no-cache
+/assets/fixes-v5.css
+  Cache-Control: no-cache
+
+/assets/app-v6.js
+  Cache-Control: no-cache
+/assets/experience-v6.css
+  Cache-Control: no-cache
+
+/assets/app-v7.js
+  Cache-Control: no-cache
+/assets/samples-v7.css
+  Cache-Control: no-cache
+
+/assets/app-v8.js
+  Cache-Control: no-cache
+/assets/assurance-v8.css
+  Cache-Control: no-cache
+
+/assets/aiva-*.js
+  Cache-Control: no-cache
+/data/*
+  Cache-Control: no-store
+/deployment.json
+  Cache-Control: no-store
+/order-*.html
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(self), geolocation=(), payment=(self)
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+/merchant-tools/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
