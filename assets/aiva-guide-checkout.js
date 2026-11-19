@@ -145,6 +145,11 @@
       if (!r1.ok || !r2.ok) throw Error('Cannot verify store readiness.');
       catalog = normaliseCatalogue(await r1.json());
       if (!Array.isArray(catalog?.products)) throw Error('Invalid catalogue.');
+      const liveStock = online && typeof online.stock === 'object' && online.stock ? online.stock : {};
+      for (const p of catalog.products) {
+        const s = liveStock[p?.sku];
+        if (Number.isSafeInteger(s) && s >= 0 && Number.isSafeInteger(p.stock)) p.stock = Math.min(p.stock, s);
+      }
     } catch {
       online = { ready: false, mode: 'disabled' };
       catalog = { products: [] };

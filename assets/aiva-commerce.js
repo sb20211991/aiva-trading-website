@@ -84,6 +84,8 @@ async function load(){try{
   }
   if(!catalog||!Array.isArray(catalog.products))throw new Error('Product catalogue is invalid.');
   products=catalog.products.filter(listed);
+  const liveStock=shopStatus&&shopStatus.stock&&typeof shopStatus.stock==='object'?shopStatus.stock:{};
+  for(const p of products)if(validStock(liveStock[p.sku]))p.stock=Math.min(p.stock??liveStock[p.sku],liveStock[p.sku]);
   const seen=new Set();products=products.filter(p=>{if(seen.has(p.sku))return false;seen.add(p.sku);return true});
   const categories=new Set(Array.isArray(catalog.categories)?catalog.categories.filter(x=>typeof x==='string'&&x.length<80):[]);products.forEach(p=>categories.add(p.category));
   for(const c of categories){els.category.add(new Option(c,c));}

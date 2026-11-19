@@ -31,6 +31,11 @@
         /* private browsing */
       }
       if (a.paid) {
+        try {
+          localStorage.removeItem('aiva_cart_v2');
+        } catch {
+          /* storage not available */
+        }
         out.textContent =
           (a.mode === 'test'
             ? 'TEST PAYMENT CONFIRMED — no real money charged.'
