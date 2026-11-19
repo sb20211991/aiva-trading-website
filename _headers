@@ -24,6 +24,8 @@
 
 /assets/aiva-*.js
   Cache-Control: no-cache
+/i18n/*
+  Cache-Control: public, max-age=86400
 /data/*
   Cache-Control: no-store
 /deployment.json
