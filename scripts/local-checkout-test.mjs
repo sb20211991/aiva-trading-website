@@ -131,10 +131,12 @@ j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 2 }])).json();
 const o2 = j.orderId;
 await webhook(evt('E2', 'payment.updated', { payment: payment(o2, 695, 'FAILED') }));
 assert.equal(order(o2).payment_status, 'failed'); assert.equal(stock('AIVA-TEST-1GBP'), 4);
+j = await (await m.handleOrderStatus(new Request(base + '/api/order-status?order_id=' + o2), env)).json();
+assert.equal(j.paid, false); assert.equal(j.status, 'failed'); assert.equal(j.provider, 'square');
 j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }])).json();
 await webhook(evt('E3', 'payment.updated', { payment: payment(j.orderId, 595, 'CANCELED') }));
 assert.equal(order(j.orderId).payment_status, 'failed');
-console.log('ok failed and cancelled payments recorded, no stock change');
+console.log('ok failed and cancelled payments recorded, no stock change; D1 failed order-status');
 
 // Amount mismatch goes to review
 j = await (await checkout([{ sku: 'AIVA-TEST-1GBP', quantity: 1 }])).json();

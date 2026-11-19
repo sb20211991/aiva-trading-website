@@ -1,8 +1,13 @@
 AIVA TRADING — ONLY ACTIONS THAT STILL NEED YOU
-Updated: 18 November 2026 (Europe/London)
+Updated: 19 November 2026 (Europe/London)
 
-Checkout provider is Square (Stripe is retired). No real card charges without your approval.
+Checkout provider is Square Payment Links ONLY (Stripe and Shopify are not
+enabled for payments). No real card charges without your approval.
 CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN are already configured — do not redo those.
+
+Square-only checkout completion (wallets + scan-to-pay QR + failed-payment UX)
+is ready on branch cursor/square-checkout-complete-7d23 — merge via PR onto
+devin/1763498400-square-checkout (PR #5). Do not merge PR #6 dual Shopify for payments.
 
 ==================================================
 YOU MUST DO
@@ -27,10 +32,11 @@ YOU MUST DO
 3. Reply here with “secrets done” (do not paste token values). I will redeploy, confirm
    shop-status shows sandbox ready, then walk you through one £1 sandbox payment test
    (success + decline cards) on https://app.aivatrading.uk/shop.html
+   including scan-to-pay QR and Apple Pay / Google Pay where the device supports them.
 
 4. Before customer launch (after you approve): tell me to hide/remove AIVA-TEST-1GBP
    and switch catalogue to your real products. Do not set Square to production yourself
-   until you approve real charges.
+   until you approve real charges. Do not set SQUARE_LIVE_PAYMENTS_APPROVED=true yet.
 
 ==================================================
 ALREADY DONE WITHOUT YOU
@@ -39,11 +45,12 @@ ALREADY DONE WITHOUT YOU
 - Temporary £1 sandbox SKU AIVA-TEST-1GBP deployed on app.aivatrading.uk
 - shopEnabled=true; checkout stays disabled until Square secrets have real values
 - Basket UI, create-checkout-session, order-success / cancelled redirects, Square
-  webhook + order confirmation handlers, local checkout/integrity tests all green
+  webhook + order confirmation handlers, local checkout/integrity/scan tests all green
+- Wallets (Card / Apple Pay / Google Pay) + AIVA scan-to-pay QR + failed-payment UX
 - Stripe webhook returns 410; D1 ORDERS_DB binding present
 - Product add/edit/price/remove via data/aiva-products.json (+ merchant-tools/
   catalogue-builder.html) then redeploy — documented in MERCHANT-SETUP-CHECKLIST.txt
-- No production/live Square charges activated
+- No production/live Square charges activated; catalogue remains testOnly
 
 ==================================================
 PRODUCT MANAGEMENT (NO EXTRA ACCOUNT SETUP)

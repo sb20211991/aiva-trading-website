@@ -1,4 +1,6 @@
+@import url('./aiva-scan-pay.css');
 /* Add-on only. Aiva homepage, global CSS and existing guide copy are untouched. */
+.aiva-guide-payment-options--wallets{grid-template-columns:repeat(3,minmax(0,1fr))}
 .aiva-guide-checkout{--guide-emerald:#173d33;--guide-gold:#a7813b;--guide-line:#d4ded6;margin:clamp(32px,5vw,64px) 0;padding:clamp(18px,3vw,34px);background:#f6f9f5;border:1px solid var(--guide-line);border-radius:20px;color:var(--guide-emerald);scroll-margin-top:85px}
 .aiva-guide-checkout *{box-sizing:border-box}
 .aiva-guide-checkout h2,.aiva-guide-checkout h3{color:var(--guide-emerald)}
@@ -10,6 +12,7 @@
 .aiva-guide-payment-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0}
 .aiva-guide-payment-options--single{grid-template-columns:minmax(0,420px)}
 .aiva-guide-payment-options article{display:flex;flex-direction:column;gap:10px;min-width:0;background:#fff;padding:18px;border:1px solid var(--guide-line);border-radius:14px}
+.aiva-guide-scan-panel .aiva-guide-pay-button{margin-top:8px}
 .aiva-guide-method-glyph{display:grid;place-items:center;width:46px;height:46px;border:1px solid #d7c79e;border-radius:11px;color:var(--guide-emerald);background:#fcf9f0;font-size:1.4rem;font-weight:800}
 .aiva-guide-payment-options h3{font-size:1.1rem;line-height:1.3;margin:0}
 .aiva-guide-payment-options p{margin:0 0 6px;color:#4a6256;font-size:.91rem;line-height:1.5;flex-grow:1}

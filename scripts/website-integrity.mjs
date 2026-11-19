@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const requiredPages = [
@@ -35,6 +35,9 @@ const requiredAssets = [
   'assets/aiva-commerce.js',
   'assets/aiva-money.js',
   'assets/aiva-commerce.css',
+  'assets/aiva-scan-pay.js',
+  'assets/aiva-scan-pay.css',
+  'assets/aiva-qr-license.txt',
   'assets/language-switcher.js',
   'assets/language-switcher.css',
   'data/aiva-products.json'
@@ -70,8 +73,35 @@ assert.match(index, /#enquiry/);
 
 const shop = readFileSync(path.join(root, 'shop.html'), 'utf8');
 assert.match(shop, /Square/);
-for (const rel of ['shop.html', 'buying-guide.html', 'order-success.html', 'assets/aiva-commerce.js', 'assets/aiva-guide-checkout.js']) {
-  assert.doesNotMatch(readFileSync(path.join(root, rel), 'utf8'), /stripe/i, 'Obsolete Stripe reference in ' + rel);
+assert.match(shop, /Pay online securely/);
+assert.match(shop, /scan-to-pay|Scan to pay/i);
+assert.match(shop, /Apple Pay/);
+assert.match(shop, /Google Pay/);
+
+const guide = readFileSync(path.join(root, 'buying-guide.html'), 'utf8');
+assert.match(guide, /Apple Pay/);
+assert.match(guide, /Google Pay/);
+assert.match(guide, /data-aiva-checkout/);
+assert.match(guide, /data-aiva-scan-pay/);
+assert.match(guide, /AIVA · Scan to pay/);
+assert.match(guide, /All three buttons open the same Square/);
+
+const customerCheckoutAssets = [
+  'shop.html',
+  'buying-guide.html',
+  'order-success.html',
+  'order-cancelled.html',
+  'assets/aiva-commerce.js',
+  'assets/aiva-guide-checkout.js',
+  'assets/aiva-order.js',
+  'assets/aiva-scan-pay.js'
+];
+for (const rel of customerCheckoutAssets) {
+  assert.doesNotMatch(
+    readFileSync(path.join(root, rel), 'utf8'),
+    /stripe|shopify/i,
+    'Forbidden stripe/shopify reference in ' + rel
+  );
 }
 
 const company = readFileSync(path.join(root, 'company.html'), 'utf8');
@@ -94,7 +124,16 @@ assert.match(commerce, /online-checkout\/payment-links/);
 assert.match(commerce, /handleCreateRefund/);
 assert.match(commerce, /SQUARE_LIVE_PAYMENTS_APPROVED === 'true'/);
 assert.match(commerce, /x-square-hmacsha256-signature/);
-assert.doesNotMatch(commerce, /stripe|paypal/i);
+assert.doesNotMatch(commerce, /stripe|paypal|shopify/i);
+
+const { validateSquareCheckout } = await import(
+  pathToFileURL(path.join(root, 'assets/aiva-scan-pay.js')).href
+);
+assert.equal(
+  validateSquareCheckout('https://sandbox.square.link/u/integrity', 'test').url.hostname,
+  'sandbox.square.link'
+);
+assert.throws(() => validateSquareCheckout('https://checkout.stripe.com/c/pay/cs_test_x', 'test'));
 
 const assetCount = readdirSync(path.join(root, 'assets')).filter((name) =>
   /\.(webp|svg|css|js)$/i.test(name)
@@ -103,5 +142,6 @@ assert.ok(assetCount >= 40, 'Expected rich asset set, found ' + assetCount);
 
 console.log('WEBSITE INTEGRITY CHECKS PASSED');
 console.log('- pages, assets, company details and payment Functions present');
-console.log('- Square-only checkout; only labelled TEST products published');
+console.log('- Square-only checkout; wallets + scan-to-pay markup required');
+console.log('- stripe/shopify forbidden in customer checkout assets');
 console.log('- root _worker.js absent (Functions deploy path)');

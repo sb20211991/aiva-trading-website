@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const PENDING_KEY = 'aiva_pending_checkout_ref';
+  const CART_KEY = 'aiva_cart_v2';
   const out = document.getElementById('aiva-order-result');
   if (!out) return;
   const params = new URL(location.href).searchParams;
@@ -27,21 +28,50 @@
       if (!r.ok) throw Error(a.error || 'Status unavailable');
       try {
         sessionStorage.removeItem(PENDING_KEY);
+        sessionStorage.removeItem('aiva_pending_checkout_cart');
       } catch {
         /* private browsing */
       }
-      if (a.paid) {
+      if (a.paid === true) {
+        try {
+          localStorage.removeItem(CART_KEY);
+        } catch {
+          /* Storage is optional; payment is still verified by the server. */
+        }
+      }
+      const ending =
+        typeof a.reference === 'string' && a.reference
+          ? ' Your reference ends in ' + a.reference + '.'
+          : '';
+      if (a.status === 'refunded') {
+        out.textContent =
+          (a.mode === 'test'
+            ? 'TEST REFUND RECORDED — no real money remains charged.'
+            : 'This order has been refunded by the payment provider.') +
+          ending +
+          ' Contact Aiva if you need fulfilment details.';
+        return;
+      }
+      if (a.paid === true) {
         out.textContent =
           (a.mode === 'test'
             ? 'TEST PAYMENT CONFIRMED — no real money charged.'
-            : 'Payment confirmed by the payment provider.') +
-          ' Your reference ends in ' +
-          a.reference +
-          '. Aiva will review the order and delivery arrangements.';
-      } else {
-        out.textContent =
-          'Payment has not been confirmed. Do not assume your order is paid. Check your payment email or contact Aiva.';
+            : 'Payment confirmed by Square.') +
+          ending +
+          ' Aiva will review the order and delivery arrangements.';
+        return;
       }
+      if (a.status === 'failed') {
+        out.textContent =
+          'This Square payment failed or was declined. Do not pay twice.' +
+          ending +
+          ' Return to your basket and try again only if you still want to order.';
+        return;
+      }
+      out.textContent =
+        'Payment is still pending. Do not assume your order is paid.' +
+        ending +
+        ' Check your Square receipt or contact Aiva before making another payment.';
     })
     .catch(() => {
       out.textContent =

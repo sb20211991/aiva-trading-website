@@ -310,11 +310,34 @@ export async function handleOrderStatus(request, env) {
   const id = str(params.get('orderId') || params.get('order_id') || params.get('session_id'));
   if (!validId(id)) return respond({ error: 'Invalid checkout reference.' }, 400);
   if (!squareConfigured(env)) return respond({ error: 'Payment verification is not configured.' }, 503);
+  if (hasDb(env)) {
+    try {
+      await ensureSchema(env);
+      const row = await env.ORDERS_DB.prepare('SELECT payment_status, mode FROM orders WHERE session_id=?').bind(id).first();
+      if (row) {
+        const mode = row.mode === 'live' || row.mode === 'test' ? row.mode : getMode(env);
+        if (row.payment_status === 'paid') {
+          return respond({ paid: true, status: 'complete', reference: id.slice(-10), mode, provider: 'square' });
+        }
+        if (row.payment_status === 'refunded') {
+          return respond({ paid: true, status: 'refunded', reference: id.slice(-10), mode, provider: 'square' });
+        }
+        if (row.payment_status === 'failed') {
+          return respond({ paid: false, status: 'failed', reference: id.slice(-10), mode, provider: 'square' });
+        }
+      }
+    } catch {
+      /* Fall through to Square API when D1 is temporarily unavailable. */
+    }
+  }
   try {
     const { ok, status, data } = await squareFetch(env, '/v2/orders/' + encodeURIComponent(id));
     if (!ok) return respond({ error: 'Could not verify this payment.' }, status === 404 ? 404 : 502);
     const order = data?.order;
     if (!order || order.metadata?.source !== ORDER_SOURCE) return respond({ error: 'Unknown order origin.' }, 404);
+    if (order.state === 'CANCELED') {
+      return respond({ paid: false, status: 'failed', reference: id.slice(-10), mode: getMode(env), provider: 'square' });
+    }
     const paidTender = Array.isArray(order.tenders) && order.tenders.some((t) => Number(t?.amount_money?.amount || 0) > 0);
     const paid = order.state === 'COMPLETED' || (order.state === 'OPEN' && paidTender);
     return respond({ paid, status: paid ? 'complete' : 'pending', reference: id.slice(-10), mode: getMode(env), provider: 'square' });

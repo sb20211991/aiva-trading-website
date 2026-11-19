@@ -49,9 +49,18 @@
     view.status.dataset.ready = String(ready);
   }
 
+  function applyLiveStock(products) {
+    if (!online.stock || typeof online.stock !== 'object') return products;
+    return products.map((p) => {
+      if (!Object.prototype.hasOwnProperty.call(online.stock, p.sku)) return p;
+      const live = Number(online.stock[p.sku]);
+      return Number.isSafeInteger(live) && live >= 0 ? { ...p, stock: live } : p;
+    });
+  }
+
   function render() {
     if (!catalog) return;
-    const all = Array.isArray(catalog?.products) ? catalog.products : [];
+    const all = applyLiveStock(Array.isArray(catalog?.products) ? catalog.products : []);
     const map = new Map(all.filter((p) => p && validSku(p.sku)).map((p) => [p.sku, p]));
     let itemTotal = 0,
       unitCount = 0;
@@ -85,7 +94,10 @@
     saveCart();
     view.items.replaceChildren(...lines);
     const ready =
-      online.ready === true && ['live', 'test'].includes(online.mode) && unitCount > 0;
+      online.ready === true &&
+      online.provider === 'square' &&
+      ['live', 'test'].includes(online.mode) &&
+      unitCount > 0;
     buttons.forEach((button) => {
       button.disabled = busy || !ready;
       button.textContent = busy
@@ -116,14 +128,14 @@
               ' · Estimated total ' +
               formatPence(itemTotal + ship));
     } else view.total.textContent = '';
-    if (online.ready === true && online.mode === 'live')
+    if (online.ready === true && online.provider === 'square' && online.mode === 'live')
       setMessage(
         unitCount
-          ? 'Secure card checkout is available. Continue above to pay.'
+          ? 'Secure Square checkout is available. Continue above to pay.'
           : 'Choose an available product in the Shop to enable secure card checkout.',
         true
       );
-    else if (online.ready === true && online.mode === 'test')
+    else if (online.ready === true && online.provider === 'square' && online.mode === 'test')
       setMessage('TEST MODE ONLY — simulated checkout; no real money is charged and no goods are dispatched.');
     else
       setMessage(
@@ -145,6 +157,21 @@
       if (!r1.ok || !r2.ok) throw Error('Cannot verify store readiness.');
       catalog = normaliseCatalogue(await r1.json());
       if (!Array.isArray(catalog?.products)) throw Error('Invalid catalogue.');
+      const query = new URL(location.href).searchParams;
+      const requestedSku = query.get('sku');
+      const requestedQuantity = Number(query.get('quantity') || '1');
+      const liveProducts = applyLiveStock(catalog.products);
+      const product = liveProducts.find((item) => item.sku === requestedSku && item.available === true);
+      if (
+        validSku(requestedSku) &&
+        validQuantity(requestedQuantity) &&
+        product &&
+        validMoney(product.pricePence) &&
+        Number.isSafeInteger(product.stock) &&
+        product.stock > 0
+      ) {
+        cart[requestedSku] = Math.min(requestedQuantity, product.stock, 10);
+      }
     } catch {
       online = { ready: false, mode: 'disabled' };
       catalog = { products: [] };
@@ -169,10 +196,11 @@
     );
   }
 
-  async function checkout() {
+  async function checkout(scan = false, launcher = null) {
     if (
       busy ||
       online.ready !== true ||
+      online.provider !== 'square' ||
       !['live', 'test'].includes(online.mode) ||
       !Object.keys(cart).length
     )
@@ -182,6 +210,7 @@
     render();
     try {
       const items = Object.entries(cart).map(([sku, quantity]) => ({ sku, quantity }));
+      const cartSnapshot = JSON.stringify(Object.entries(cart).sort());
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -190,6 +219,7 @@
       const data = await response.json();
       if (!response.ok || typeof data.url !== 'string')
         throw Error(data.error || 'Could not start checkout.');
+      if (data.provider !== 'square') throw Error('Unexpected checkout provider.');
       const url = new URL(data.url);
       const pageHost = location.hostname.toLowerCase();
       const localPreview = pageHost === '127.0.0.1' || pageHost === 'localhost';
@@ -200,9 +230,22 @@
       if (typeof data.orderId === 'string' && /^[A-Za-z0-9_-]{8,191}$/.test(data.orderId)) {
         try {
           sessionStorage.setItem('aiva_pending_checkout_ref', data.orderId);
+          sessionStorage.setItem('aiva_pending_checkout_cart', cartSnapshot);
         } catch {
           /* private browsing */
         }
+      }
+      if (scan) {
+        const { showScanToPay } = await import('./aiva-scan-pay.js');
+        await showScanToPay({
+          url: url.href,
+          mode: online.mode,
+          reference: data.orderId,
+          returnFocus: launcher
+        });
+        busy = false;
+        render();
+        return;
       }
       window.location.assign(url.href);
     } catch (err) {
@@ -214,7 +257,9 @@
     }
   }
 
-  buttons.forEach((btn) => btn.addEventListener('click', checkout));
+  buttons.forEach((btn) =>
+    btn.addEventListener('click', () => checkout(btn.hasAttribute('data-aiva-scan-pay'), btn))
+  );
   window.addEventListener('pageshow', () => {
     if (catalog) {
       busy = false;

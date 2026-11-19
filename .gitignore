@@ -7,4 +7,5 @@
 node_modules/
 .wrangler/
 .pages-output/
+assets/aiva-qr-encoder.js
 *.pem

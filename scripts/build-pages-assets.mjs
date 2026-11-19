@@ -27,6 +27,8 @@ for (const entry of readdirSync(join(root, 'assets'), { withFileTypes: true })) 
     copy('assets/' + entry.name);
   }
 }
+copy('assets/aiva-qr-license.txt');
+copyFileSync(fileURLToPath(import.meta.resolve('qrcode-generator')), join(output, 'assets/aiva-qr-encoder.js'));
 for (const entry of readdirSync(join(root, 'merchant-tools'), { withFileTypes: true })) {
   if (entry.isFile() && /^[a-z0-9-]+\.html$/.test(entry.name)) copy('merchant-tools/' + entry.name);
 }
@@ -42,7 +44,8 @@ for (const excluded of ['.github', '.git', 'deploy', '.dev.vars', '.env', '_arch
   assert.equal(existsSync(join(output, excluded)), false, 'Private source copied: ' + excluded);
 }
 for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js',
-  'functions/api/shop-status.js', 'functions/_lib/commerce.js']) {
+  'assets/aiva-scan-pay.js', 'assets/aiva-scan-pay.css', 'assets/aiva-qr-encoder.js',
+  'assets/aiva-qr-license.txt', 'functions/api/shop-status.js', 'functions/_lib/commerce.js']) {
   assert.ok(existsSync(join(output, required)), 'Missing deployment file: ' + required);
 }
 console.log('Pages upload directory built and checked: .pages-output (no repository metadata, scripts, docs or archives).');

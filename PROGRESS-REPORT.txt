@@ -1,29 +1,32 @@
 AIVA TRADING LIMITED — PROGRESS REPORT
-Updated: 15 November 2026 (Europe/London)
-PR: https://cursor.com/codebase/simon-bolivar/aiva-trading/pull/6
+Updated: 19 November 2026 (Europe/London)
+Square-only base: https://github.com/sb20211991/aiva-trading-website/pull/5
 
 ==================================================
 COMPLETED
 ==================================================
 [x] Square Functions checkout (card + Apple Pay + Google Pay accepted_payment_methods)
+[x] Buying Guide wallet entry points + AIVA scan-to-pay QR modal
+[x] Failed / declined payment UX (scan poll, order-success, order-cancelled)
+[x] D1-first order-status; basket cleared only when paid===true
 [x] Webhooks, refunds, live-mode safety gates
 [x] Stripe website path retired in Functions package
-[x] Catalogue closed; design/pages/product data preserved
-[x] Local npm test PASS
-[x] Live Cloudflare probed: still old Stripe static package; /api not executing
-[x] Tap to Pay Active noted (in-person); hardware not required for website
-[x] Secrets re-requested via secure form (still MISSING in environment)
+[x] Catalogue closed (testOnly); design/pages/product data preserved
+[x] Local npm test PASS (checkout + integrity + deployment + scan + build:pages)
+[x] Do not merge PR #6 dual Shopify for payments — continue Square-only from #5
 
 ==================================================
 REMAINING
 ==================================================
-[ ] Secrets in Cursor form (blocks deploy + Square API eligibility check)
+[ ] Square sandbox secrets in GitHub Actions / Cloudflare
 [ ] Confirm bank payouts ready in Dashboard
-[ ] Preview deploy + sandbox £1 test after secrets
-[ ] Merge/promote Functions package to replace live Stripe-era static site
-[ ] Real products before shopEnabled=true
+[ ] Preview/production deploy + sandbox £1 test after secrets
+  (card success/decline + scan-to-pay + wallets where supported)
+[ ] Merge Square-only completion onto PR #5 / promote to replace live site
+[ ] Real products before shopEnabled=true for customers
+[ ] Owner approval before SQUARE_LIVE_PAYMENTS_APPROVED=true
 
 ==================================================
 SQUARE LIVE WEBSITE PAYMENTS READY?
 ==================================================
-NO. Tap to Pay ≠ website checkout live.
+NO. Catalogue is testOnly. Live charges remain off.
