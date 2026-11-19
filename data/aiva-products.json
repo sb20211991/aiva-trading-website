@@ -25,15 +25,15 @@
   ],
   "products": [
     {
-      "sku": "AIVA-TEST-1GBP",
-      "name": "TEST ITEM – Square sandbox £1 (not a real product)",
-      "description": "Clearly labelled test listing used only to verify the Square sandbox checkout. Sandbox payments never charge real money. Will be removed before launch.",
+      "sku": "AIVA-VERIFY-1GBP",
+      "name": "Payment verification £1 (refunded, not a product)",
+      "description": "Hidden merchant-only item used once to verify live card payments. It is refunded immediately and never dispatched.",
       "category": "Home essentials",
       "pricePence": 100,
-      "stock": 5,
+      "stock": 3,
       "available": true,
-      "testOnly": true
+      "hidden": true
     }
   ],
-  "testOnly": true
+  "testOnly": false
 }

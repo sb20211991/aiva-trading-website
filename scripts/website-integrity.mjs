@@ -82,9 +82,11 @@ assert.match(company, /Aivatradingltd2026@gmail\.com/);
 
 const catalogue = JSON.parse(readFileSync(path.join(root, 'data/aiva-products.json'), 'utf8'));
 for (const p of catalogue.products) {
-  assert.ok(p.testOnly === true && /TEST/.test(p.name), 'Only clearly labelled test products may be published: ' + p.sku);
+  const verification = p.hidden === true && /verification/i.test(p.name) && p.pricePence <= 100;
+  assert.ok((p.testOnly === true && /TEST/.test(p.name)) || verification,
+    'Only labelled test products or hidden £1 verification items may be published: ' + p.sku);
 }
-if (catalogue.products.length) assert.equal(catalogue.testOnly, true, 'Test catalogue must be flagged testOnly');
+if (catalogue.products.some((p) => p.testOnly === true)) assert.equal(catalogue.testOnly, true, 'Test catalogue must be flagged testOnly');
 assert.ok(String(catalogue.businessAddress || '').includes('Whitehill'));
 assert.ok(String(catalogue.deliveryPolicy || '').length >= 15);
 assert.ok(String(catalogue.returnsPolicy || '').length >= 15);
@@ -107,5 +109,5 @@ assert.ok(assetCount >= 40, 'Expected rich asset set, found ' + assetCount);
 
 console.log('WEBSITE INTEGRITY CHECKS PASSED');
 console.log('- pages, assets, company details and payment Functions present');
-console.log('- Shopify and Square checkout providers; only labelled TEST products published');
+console.log('- Shopify and Square checkout providers; only labelled TEST or hidden verification products published');
 console.log('- root _worker.js absent (Functions deploy path)');

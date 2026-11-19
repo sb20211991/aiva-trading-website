@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Live payment verification | Aiva Trading Limited</title>
+<link rel="icon" href="../assets/mark.svg">
+<link rel="stylesheet" href="../assets/style.css?v=trade-10">
+<link rel="stylesheet" href="../assets/aiva-commerce.css?v=3">
+</head>
+<body>
+<main id="main" class="section shop-page">
+  <section class="aiva-commerce">
+    <p class="eyebrow">MERCHANT ONLY</p>
+    <h1>Live payment verification (£1)</h1>
+    <p>Opens Square's secure checkout for the hidden £1 verification item. Pay with a real Visa, Mastercard, Apple Pay or Google Pay; the payment is refunded straight afterwards and nothing is dispatched.</p>
+    <p id="status">Checking live checkout…</p>
+    <button class="button" id="pay" type="button" disabled>Pay £1 with Square</button>
+    <p id="error" role="alert" hidden></p>
+  </section>
+</main>
+<script>
+(async () => {
+  const status = document.getElementById('status'), pay = document.getElementById('pay'), err = document.getElementById('error');
+  try {
+    const s = await (await fetch('/api/shop-status', { cache: 'no-store' })).json();
+    status.textContent = s.ready ? 'Live checkout ready (mode: ' + s.mode + ').' : 'Checkout not ready (mode: ' + s.mode + ', merchant ready: ' + s.merchantReady + ').';
+    pay.disabled = !s.ready;
+  } catch { status.textContent = 'Could not reach the checkout service.'; }
+  pay.addEventListener('click', async () => {
+    pay.disabled = true; err.hidden = true;
+    try {
+      const r = await fetch('/api/create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ sku: 'AIVA-VERIFY-1GBP', quantity: 1 }] }) });
+      const j = await r.json();
+      if (!r.ok || !j.url) throw Error(j.error || 'Checkout failed.');
+      try { localStorage.setItem('aiva_pending_checkout_ref', j.orderId); sessionStorage.setItem('aiva_pending_checkout_ref', j.orderId); } catch { /* private browsing */ }
+      location.href = j.url;
+    } catch (e) { err.textContent = e.message; err.hidden = false; pay.disabled = false; }
+  });
+})();
+</script>
+</body>
+</html>
