@@ -449,6 +449,8 @@ async function applyPaid(env, origin, orderId, paid, eventId) {
   for (const it of items) {
     if (!validSku(it.sku) || !Number.isSafeInteger(it.quantity)) continue;
     stmts.push(db.prepare('INSERT OR IGNORE INTO inventory (sku, stock, updated_at) VALUES (?,?,?)').bind(it.sku, cat.get(it.sku) ?? 0, t));
+    stmts.push(db.prepare(`UPDATE orders SET review_reason='insufficient_stock' WHERE session_id=? AND ${pendingGuard}
+       AND (SELECT stock FROM inventory WHERE sku=?) < ?`).bind(orderId, orderId, it.sku, it.quantity));
     stmts.push(db.prepare(`UPDATE inventory SET stock=MAX(stock-?,0), updated_at=? WHERE sku=? AND ${pendingGuard}`).bind(it.quantity, t, it.sku, orderId));
   }
   stmts.push(db.prepare(

@@ -180,6 +180,16 @@ w = await hook('orders/paid', { ...shopifyOrder('x', '1.00', '1.00'), note_attri
 assert.equal(w.data.ignored, 'not_website_order');
 console.log('ok non-website Shopify orders ignored');
 
+// Two checkouts for the last units: both payments are recorded, the oversold one is flagged.
+const big1 = (await checkout([{ sku: 'AIVA-TEST-BIG', quantity: 2 }])).data.orderId;
+const big2 = (await checkout([{ sku: 'AIVA-TEST-BIG', quantity: 2 }])).data.orderId;
+await hook('orders/paid', shopifyOrder(big1, '240.00', '240.00'));
+await hook('orders/paid', shopifyOrder(big2, '240.00', '240.00'));
+assert.equal(row(big1).payment_status, 'paid'); assert.equal(row(big1).review_reason, null);
+assert.equal(row(big2).payment_status, 'paid'); assert.equal(row(big2).review_reason, 'insufficient_stock');
+assert.equal(stock('AIVA-TEST-BIG'), 0);
+console.log('ok oversold order paid but flagged insufficient_stock for the merchant');
+
 // Refunds come from Shopify admin via webhook
 const shopifyId = row(okOrder).payment_id;
 w = await hook('refunds/create', { id: 901, order_id: Number(shopifyId), transactions: [{ kind: 'refund', status: 'success', amount: '2.00' }] });
