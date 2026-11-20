@@ -12,7 +12,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths-ignore: ['deploy/**']
+    paths-ignore: ['deploy/**', 'pocket-hub/**', '.github/workflows/deploy-pocket-hub.yml']
 permissions:
   contents: read
 concurrency:

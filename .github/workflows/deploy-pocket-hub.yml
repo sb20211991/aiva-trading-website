@@ -1,0 +1,54 @@
+name: Deploy Aiva Pocket Hub (app.aivatrading.uk)
+# Deploys pocket-hub/public to the aiva-pocket-hub Pages project only. Never touches the aiva-trading website project.
+# Pull requests: preview deploy. main: production deploy, then move app.aivatrading.uk (only) to Pocket Hub with rollback.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['pocket-hub/**', '.github/workflows/deploy-pocket-hub.yml']
+  push:
+    branches: [main]
+    paths: ['pocket-hub/**', '.github/workflows/deploy-pocket-hub.yml']
+permissions:
+  contents: read
+  deployments: write
+concurrency:
+  group: deploy-pocket-hub-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT: aiva-pocket-hub
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    defaults:
+      run:
+        working-directory: pocket-hub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test
+        run: node test/hub-test.mjs
+      - name: Deploy
+        id: deploy
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then BRANCH="pr-${{ github.event.pull_request.number }}"; else BRANCH=main; fi
+          npx --yes wrangler@4 pages deploy public --project-name="$PROJECT" --branch="$BRANCH" \
+            --commit-hash="$GITHUB_SHA" --commit-message="Pocket Hub ${GITHUB_SHA::7}" --commit-dirty=true | tee "$RUNNER_TEMP/deploy.log"
+          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' "$RUNNER_TEMP/deploy.log" | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Verify deployment
+        run: |
+          set -euo pipefail
+          sleep 10
+          U="${{ steps.deploy.outputs.url }}"; [ "${{ github.event_name }}" = "pull_request" ] || U="https://$PROJECT.pages.dev"
+          echo "== $U"
+          curl -sf -m 30 -o "$RUNNER_TEMP/app.html" "$U/"; grep -qF '<meta name="application-name" content="Aiva">' "$RUNNER_TEMP/app.html"
+          for p in /app.js /service-worker.js /manifest.webmanifest /icon-192.png; do printf '%s %s\n' "$p" "$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")"; done
+          printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
+      - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
+        if: github.event_name != 'pull_request'
+        run: python3 scripts/move-app-domain.py
