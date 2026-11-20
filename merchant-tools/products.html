@@ -123,10 +123,12 @@
   $('save').onclick = async () => {
     out.textContent = 'Saving…';
     try {
-      const r = await api({ products: readRows() });
-      document.querySelectorAll('.pm-row').forEach((row) => {
-        row.dataset.loadedSku = row.querySelector('[name="sku"]').value.trim();
-        row.dataset.loadedStock = row.querySelector('[name="stock"]').value;
+      const rows = [...document.querySelectorAll('.pm-row')];
+      const products = readRows();
+      const r = await api({ products });
+      rows.forEach((row, i) => {
+        row.dataset.loadedSku = products[i].sku;
+        row.dataset.loadedStock = String(products[i].stock);
       });
       out.textContent = 'Published ' + r.products + ' product(s). The shop is updated.';
     } catch (err) { out.textContent = err.message; }
