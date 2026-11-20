@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Merchant products | Aiva Trading Limited</title>
+<link rel="icon" href="../assets/mark.svg">
+<link rel="stylesheet" href="../assets/style.css?v=trade-10">
+<link rel="stylesheet" href="../assets/aiva-commerce.css?v=3">
+<style>
+.pm-row{border:1px solid #d3d9d3;border-radius:10px;padding:.8rem;margin:.8rem 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.6rem}
+.pm-row label{font-size:.85rem;font-weight:600}.pm-row input,.pm-row textarea,.pm-row select{width:100%;box-sizing:border-box;padding:.5rem}
+.pm-row .wide{grid-column:1/-1}.pm-actions{display:flex;gap:.6rem;flex-wrap:wrap;margin:1rem 0}
+</style>
+</head>
+<body>
+<main id="main" class="section shop-page">
+  <section class="aiva-commerce">
+    <p class="eyebrow">MERCHANT ONLY</p>
+    <h1>Products</h1>
+    <p>Add, edit or remove shop products. Press <strong>Save and publish</strong> and the shop updates straight away. Prices are in pounds.</p>
+    <form id="key-form" class="aiva-shop-terms">
+      <label>Merchant admin key <input id="merchant-key" type="password" required autocomplete="off" minlength="24"></label>
+      <button class="button" type="submit">Load products</button>
+    </form>
+    <div id="editor" hidden>
+      <div id="rows"></div>
+      <div class="pm-actions">
+        <button class="button" type="button" id="add">Add product</button>
+        <button class="button" type="button" id="save">Save and publish</button>
+      </div>
+    </div>
+    <p id="result" role="status"></p>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const out = $('result');
+  let categories = [];
+  async function api(body) {
+    const res = await fetch('/api/admin-products', {
+      method: body ? 'POST' : 'GET',
+      headers: { Authorization: 'Bearer ' + $('merchant-key').value, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed (' + res.status + ')');
+    return data;
+  }
+  function field(row, label, name, value, type, wide) {
+    const l = document.createElement('label');
+    if (wide) l.className = 'wide';
+    l.textContent = label;
+    let input;
+    if (type === 'textarea') { input = document.createElement('textarea'); input.maxLength = 700; }
+    else if (type === 'category') {
+      input = document.createElement('input');
+      input.setAttribute('list', 'pm-categories');
+    } else { input = document.createElement('input'); input.type = type || 'text'; }
+    input.name = name;
+    if (type === 'checkbox') input.checked = !!value; else input.value = value == null ? '' : value;
+    if (type === 'number') { input.min = '0'; input.step = name === 'price' ? '0.01' : '1'; }
+    l.append(input);
+    row.append(l);
+  }
+  function addRow(p = {}) {
+    const row = document.createElement('div');
+    row.className = 'pm-row';
+    field(row, 'SKU (letters, numbers, - or _)', 'sku', p.sku);
+    field(row, 'Name', 'name', p.name);
+    field(row, 'Price (£)', 'price', p.pricePence ? (p.pricePence / 100).toFixed(2) : '', 'number');
+    field(row, 'Stock', 'stock', p.stock ?? 0, 'number');
+    field(row, 'Category', 'category', p.category, 'category');
+    field(row, 'Brand (optional)', 'brand', p.brand);
+    field(row, 'Photo link (https://…)', 'image', p.image, 'url', true);
+    field(row, 'Description', 'description', p.description, 'textarea', true);
+    field(row, 'For sale', 'available', p.available !== false, 'checkbox');
+    field(row, 'Hidden from shop', 'hidden', p.hidden === true, 'checkbox');
+    if (Array.isArray(p.specifications)) row.dataset.specs = JSON.stringify(p.specifications);
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'button'; remove.textContent = 'Remove';
+    remove.onclick = () => row.remove();
+    row.append(remove);
+    $('rows').append(row);
+  }
+  function readRows() {
+    return [...document.querySelectorAll('.pm-row')].map((row) => {
+      const v = (n) => row.querySelector('[name="' + n + '"]');
+      const p = {
+        sku: v('sku').value.trim(), name: v('name').value.trim(), category: v('category').value.trim(),
+        description: v('description').value.trim(), pricePence: Math.round(Number(v('price').value) * 100),
+        stock: Number(v('stock').value), available: v('available').checked
+      };
+      if (v('hidden').checked) p.hidden = true;
+      if (v('image').value.trim()) p.image = v('image').value.trim();
+      if (v('brand').value.trim()) p.brand = v('brand').value.trim();
+      if (row.dataset.specs) p.specifications = JSON.parse(row.dataset.specs);
+      return p;
+    });
+  }
+  $('key-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    out.textContent = 'Loading…';
+    try {
+      const { catalogue } = await api();
+      categories = Array.isArray(catalogue.categories) ? catalogue.categories : [];
+      let list = document.getElementById('pm-categories');
+      if (!list) { list = document.createElement('datalist'); list.id = 'pm-categories'; document.body.append(list); }
+      list.replaceChildren(...categories.map((c) => new Option(c, c)));
+      $('rows').replaceChildren();
+      (catalogue.products || []).forEach(addRow);
+      $('editor').hidden = false;
+      out.textContent = (catalogue.products || []).length + ' product(s) loaded.';
+    } catch (err) { out.textContent = err.message; }
+  });
+  $('add').onclick = () => addRow({ available: true, stock: 1 });
+  $('save').onclick = async () => {
+    out.textContent = 'Saving…';
+    try {
+      const r = await api({ products: readRows() });
+      out.textContent = 'Published ' + r.products + ' product(s). The shop is updated.';
+    } catch (err) { out.textContent = err.message; }
+  };
+})();
+</script>
+</body>
+</html>
