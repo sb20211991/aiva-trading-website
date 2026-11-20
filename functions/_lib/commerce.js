@@ -766,6 +766,8 @@ function cleanProduct(p) {
   if (p.image) out.image = p.image;
   if (p.brand) out.brand = p.brand.trim();
   if (Array.isArray(p.specifications)) out.specifications = p.specifications.filter((x) => typeof x === 'string' && x.length <= 200).slice(0, 20);
+  else if (typeof p.specifications === 'string' && p.specifications.length <= 1000) out.specifications = p.specifications;
+  if (validVariantId(p.shopifyVariantId)) out.shopifyVariantId = p.shopifyVariantId;
   return out;
 }
 
@@ -786,20 +788,22 @@ export async function handleAdminProducts(request, env) {
   let data;
   try { data = JSON.parse(await readLimitedText(request, 400000)); } catch { return respond({ error: 'Invalid JSON.' }, 400); }
   if (!Array.isArray(data?.products) || data.products.length > 500) return respond({ error: 'Send a list of up to 500 products.' }, 400);
-  const products = [], skus = new Set();
+  const products = [], stockChanged = [], skus = new Set();
   for (const [i, raw] of data.products.entries()) {
     const p = cleanProduct(raw);
     if (!p) return respond({ error: 'Product ' + (i + 1) + ' is incomplete or invalid. Check SKU, name, category, price and stock.' }, 400);
     if (skus.has(p.sku)) return respond({ error: 'SKU ' + p.sku + ' is used twice.' }, 400);
     skus.add(p.sku);
     products.push(p);
+    /* Only stock the merchant actually changed is written, so sales made while the editor was open are kept. */
+    if (raw.loadedStock !== p.stock) stockChanged.push(p);
   }
   const categories = Array.from(new Set([...(Array.isArray(current.categories) ? current.categories : []), ...products.map((p) => p.category)]));
   const next = { ...current, categories, products };
   const t = now();
   await db.batch([
     db.prepare('INSERT INTO catalogue (id, json, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at').bind(JSON.stringify(next), t),
-    ...products.map((p) => db.prepare('INSERT INTO inventory (sku, stock, updated_at) VALUES (?,?,?) ON CONFLICT(sku) DO UPDATE SET stock=excluded.stock, updated_at=excluded.updated_at').bind(p.sku, p.stock, t))
+    ...stockChanged.map((p) => db.prepare('INSERT INTO inventory (sku, stock, updated_at) VALUES (?,?,?) ON CONFLICT(sku) DO UPDATE SET stock=excluded.stock, updated_at=excluded.updated_at').bind(p.sku, p.stock, t))
   ]);
   return respond({ ok: true, products: products.length });
 }

@@ -78,7 +78,9 @@
     field(row, 'Description', 'description', p.description, 'textarea', true);
     field(row, 'For sale', 'available', p.available !== false, 'checkbox');
     field(row, 'Hidden from shop', 'hidden', p.hidden === true, 'checkbox');
-    if (Array.isArray(p.specifications)) row.dataset.specs = JSON.stringify(p.specifications);
+    if (p.specifications !== undefined) row.dataset.specs = JSON.stringify(p.specifications);
+    if (p.shopifyVariantId) row.dataset.variant = p.shopifyVariantId;
+    if (p.sku) { row.dataset.loadedStock = String(p.stock ?? 0); row.dataset.loadedSku = p.sku; }
     const remove = document.createElement('button');
     remove.type = 'button'; remove.className = 'button'; remove.textContent = 'Remove';
     remove.onclick = () => row.remove();
@@ -97,6 +99,8 @@
       if (v('image').value.trim()) p.image = v('image').value.trim();
       if (v('brand').value.trim()) p.brand = v('brand').value.trim();
       if (row.dataset.specs) p.specifications = JSON.parse(row.dataset.specs);
+      if (row.dataset.variant) p.shopifyVariantId = row.dataset.variant;
+      if (row.dataset.loadedStock !== undefined && v('sku').value.trim() === row.dataset.loadedSku) p.loadedStock = Number(row.dataset.loadedStock);
       return p;
     });
   }
