@@ -27,6 +27,10 @@ for (const entry of readdirSync(join(root, 'assets'), { withFileTypes: true })) 
     copy('assets/' + entry.name);
   }
 }
+// Aiva Translate dictionaries: source.json plus one file per language offered by the selector.
+for (const entry of readdirSync(join(root, 'i18n'), { withFileTypes: true })) {
+  if (entry.isFile() && /^(source|[a-z]{2,3}(-[A-Z]{2})?)\.json$/.test(entry.name)) copy('i18n/' + entry.name);
+}
 for (const entry of readdirSync(join(root, 'merchant-tools'), { withFileTypes: true })) {
   if (entry.isFile() && /^[a-z0-9-]+\.html$/.test(entry.name)) copy('merchant-tools/' + entry.name);
 }
@@ -42,7 +46,7 @@ for (const excluded of ['.github', '.git', 'deploy', '.dev.vars', '.env', '_arch
   assert.equal(existsSync(join(output, excluded)), false, 'Private source copied: ' + excluded);
 }
 for (const required of ['index.html', 'shop.html', 'assets/aiva-commerce.js',
-  'functions/api/shop-status.js', 'functions/_lib/commerce.js']) {
+  'functions/api/shop-status.js', 'functions/_lib/commerce.js', 'i18n/source.json', 'functions/api/translate.js']) {
   assert.ok(existsSync(join(output, required)), 'Missing deployment file: ' + required);
 }
 console.log('Pages upload directory built and checked: .pages-output (no repository metadata, scripts, docs or archives).');
