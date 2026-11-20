@@ -46,7 +46,7 @@ jobs:
           sleep 10
           U="${{ steps.deploy.outputs.url }}"; [ "${{ github.event_name }}" = "pull_request" ] || U="https://$PROJECT.pages.dev"
           echo "== $U"
-          curl -sf -m 30 "$U/" | grep -q '<title>Aiva Pocket Hub'
+          curl -sf -m 30 -o "$RUNNER_TEMP/app.html" "$U/"; grep -qF '<meta name="application-name" content="Aiva">' "$RUNNER_TEMP/app.html"
           for p in /app.js /service-worker.js /manifest.webmanifest /icon-192.png; do printf '%s %s\n' "$p" "$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")"; done
           printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)

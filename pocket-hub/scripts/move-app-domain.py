@@ -7,7 +7,7 @@ ACC = os.environ["CLOUDFLARE_ACCOUNT_ID"].strip()
 TOK = os.environ["CLOUDFLARE_API_TOKEN"].strip()
 HOST, APP, SITE = "app.aivatrading.uk", "aiva-pocket-hub", "aiva-trading"
 API = "https://api.cloudflare.com/client/v4"
-MARK = "<title>Aiva Pocket Hub"
+MARK = '<meta name="application-name" content="Aiva">'
 
 
 def call(method, path, body=None):
@@ -51,7 +51,7 @@ app_domains, site_domains = domains(APP), domains(SITE)
 print("pocket hub domains:", {k: v.get("status") for k, v in app_domains.items()})
 print("website domains:", {k: v.get("status") for k, v in site_domains.items()})
 if app_domains.get(HOST, {}).get("status") == "active" and serves_app():
-    print(f"{HOST} already serves Aiva Pocket Hub. Nothing to do.")
+    print(f"{HOST} already serves the Aiva app. Nothing to do.")
     raise SystemExit(0)
 
 st, body = page(f"https://{APP}.pages.dev/")
@@ -118,7 +118,7 @@ while time.time() < deadline:
     _, d = call("GET", f"/accounts/{ACC}/pages/projects/{APP}/domains/{HOST}")
     status = (d.get("result") or {}).get("status", "")
     if status == "active" and serves_app():
-        print(f"{HOST} is active on {APP} and serves Aiva Pocket Hub.")
+        print(f"{HOST} is active on {APP} and serves the Aiva app.")
         break
     if status in ("error", "blocked"):
         rollback("domain status " + status)
