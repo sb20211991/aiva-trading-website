@@ -6,7 +6,7 @@ on:
   pull_request:
     paths: ['pocket-hub/**', '.github/workflows/deploy-pocket-hub.yml']
   push:
-    branches: [main]
+    branches: [main, devin/1795132978-pocket-hub]
     paths: ['pocket-hub/**', '.github/workflows/deploy-pocket-hub.yml']
 permissions:
   contents: read
