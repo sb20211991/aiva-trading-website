@@ -45,7 +45,7 @@ function updateCart(){sanitizeCart();els.lines.replaceChildren();let amount=0,to
 }
 function modify(sku,delta){const p=products.find(p=>p.sku===sku);if(!p||!available(p))return;cart[sku]=Math.max(0,Math.min(getQuantityLimit(p),(cart[sku]||0)+delta));if(!cart[sku])delete cart[sku];updateCart();}
 function card(p){const item=document.createElement('article');item.className='aiva-product-item';
-  if(typeof p.image==='string' && /^assets\/[a-zA-Z0-9_-]+\.(webp|png|jpe?g|avif)$/.test(p.image)){
+  if(typeof p.image==='string' && /^(assets\/[a-zA-Z0-9_-]+\.(webp|png|jpe?g|avif)|\/api\/product-image\/[a-f0-9-]{36}|https:\/\/[^\s"'<>]+)$/.test(p.image)){
     const img=document.createElement('img');img.src=p.image;img.loading='lazy';img.alt=p.name;item.append(img);
   }
   const content=document.createElement('div');content.className='aiva-product-content';
