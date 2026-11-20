@@ -63,12 +63,14 @@ for must in ("aivatrading.uk", "www.aivatrading.uk"):
 
 _, z = call("GET", "/zones?name=aivatrading.uk")
 zone = (z.get("result") or [{}])[0].get("id")
+old_dns = []
 if not zone:
-    raise SystemExit("Zone aivatrading.uk not visible to token.")
-st, recs = call("GET", f"/zones/{zone}/dns_records?name={HOST}")
-if st != 200 or not recs.get("success"):
-    raise SystemExit(f"Could not read current DNS for {HOST}; nothing changed.")
-old_dns = [r for r in recs.get("result") or [] if r["type"] in ("A", "AAAA", "CNAME")]
+    print("Zone aivatrading.uk not visible to token: DNS left as is, relying on Pages domain verification.")
+else:
+    st, recs = call("GET", f"/zones/{zone}/dns_records?name={HOST}")
+    if st != 200 or not recs.get("success"):
+        raise SystemExit(f"Could not read current DNS for {HOST}; nothing changed.")
+    old_dns = [r for r in recs.get("result") or [] if r["type"] in ("A", "AAAA", "CNAME")]
 for r in old_dns:
     print("dns before:", HOST, r["type"], r["content"], "proxied" if r.get("proxied") else "dns-only")
 had_site = HOST in site_domains
@@ -90,7 +92,8 @@ def rollback(reason):
     call("DELETE", f"/accounts/{ACC}/pages/projects/{APP}/domains/{HOST}")
     if had_site:
         call("POST", f"/accounts/{ACC}/pages/projects/{SITE}/domains", {"name": HOST})
-    print("dns restored:", set_dns(old_dns))
+    if zone:
+        print("dns restored:", set_dns(old_dns))
     raise SystemExit(f"Move failed ({reason}); {HOST} restored to {SITE}.")
 
 
@@ -104,11 +107,12 @@ if HOST not in app_domains:
     print(f"attached {HOST} to {APP}:", st, res.get("success"))
     if not res.get("success"):
         rollback("attach failed")
-if not set_dns([{"type": "CNAME", "name": HOST, "content": f"{APP}.pages.dev", "proxied": True, "ttl": 1, "comment": "Aiva Pocket Hub Pages"}]):
-    rollback("dns update failed")
-print("dns set:", HOST, "->", f"{APP}.pages.dev")
+if zone:
+    if not set_dns([{"type": "CNAME", "name": HOST, "content": f"{APP}.pages.dev", "proxied": True, "ttl": 1, "comment": "Aiva Pocket Hub Pages"}]):
+        rollback("dns update failed")
+    print("dns set:", HOST, "->", f"{APP}.pages.dev")
 
-deadline = time.time() + 900
+deadline = time.time() + 600
 status = ""
 while time.time() < deadline:
     _, d = call("GET", f"/accounts/{ACC}/pages/projects/{APP}/domains/{HOST}")
@@ -118,7 +122,7 @@ while time.time() < deadline:
         break
     if status in ("error", "blocked"):
         rollback("domain status " + status)
-    print("waiting… status:", status)
+    print("waiting… status:", status, ((d.get("result") or {}).get("verification_data") or {}).get("error_message", ""))
     time.sleep(20)
 else:
     rollback("timed out, last status " + status)
