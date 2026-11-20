@@ -23,6 +23,9 @@ def call(method, path, body=None):
             p = {}
         print(f"HTTP {e.code} {method} {path} errors={[(x.get('code'), x.get('message')) for x in p.get('errors', [])]}")
         return e.code, p
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        print(f"network error {method} {path}: {type(e).__name__}")
+        return 0, {}
 
 
 def page(url):
@@ -62,7 +65,9 @@ _, z = call("GET", "/zones?name=aivatrading.uk")
 zone = (z.get("result") or [{}])[0].get("id")
 if not zone:
     raise SystemExit("Zone aivatrading.uk not visible to token.")
-_, recs = call("GET", f"/zones/{zone}/dns_records?name={HOST}")
+st, recs = call("GET", f"/zones/{zone}/dns_records?name={HOST}")
+if st != 200 or not recs.get("success"):
+    raise SystemExit(f"Could not read current DNS for {HOST}; nothing changed.")
 old_dns = [r for r in recs.get("result") or [] if r["type"] in ("A", "AAAA", "CNAME")]
 for r in old_dns:
     print("dns before:", HOST, r["type"], r["content"], "proxied" if r.get("proxied") else "dns-only")
