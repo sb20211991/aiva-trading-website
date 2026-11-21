@@ -4,7 +4,28 @@
 import { SOURCES, TARGETS } from '../_lib/languages.js';
 
 const ENDPOINT = 'https://translate.googleapis.com/translate_a/t?client=gtx';
-const MAX_CHARS = 5000;
+const MAX_CHARS = 5000, MAX_BODY_BYTES = MAX_CHARS * 4 + 512;
+
+/* Reads at most `limit` bytes of the body; returns null as soon as it is exceeded. */
+async function readLimited(request, limit) {
+  if (Number(request.headers.get('Content-Length')) > limit) return null;
+  if (!request.body) return '';
+  const reader = request.body.getReader(), parts = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) { reader.cancel().catch(() => {}); return null; }
+      parts.push(value);
+    }
+  } catch { return ''; }
+  const all = new Uint8Array(size);
+  let off = 0;
+  for (const p of parts) { all.set(p, off); off += p.byteLength; }
+  return new TextDecoder().decode(all);
+}
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
 });
@@ -22,8 +43,8 @@ function allowedOrigin(request) {
 
 export async function onRequestPost({ request }, fetcher = fetch) {
   if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
-  const raw = await request.text().catch(() => '');
-  if (raw.length > MAX_CHARS * 4 + 200) return json({ error: 'Text is too long' }, 413);
+  const raw = await readLimited(request, MAX_BODY_BYTES);
+  if (raw === null) return json({ error: 'Text is too long' }, 413);
   let body;
   try { body = JSON.parse(raw); } catch { return json({ error: 'Invalid request' }, 400); }
   const text = typeof body?.text === 'string' ? body.text.trim() : '';

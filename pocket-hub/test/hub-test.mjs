@@ -45,6 +45,7 @@ assert.equal((await hubTranslate({ request: tReq({ text: 'x', source: 'en', targ
 assert.equal((await hubTranslate({ request: tReq({ text: '   ', target: 'ar' }) }, engine([]))).status, 400);
 assert.equal((await hubTranslate({ request: tReq({ text: 'a'.repeat(5001), target: 'ar' }) }, engine([]))).status, 413);
 assert.equal((await hubTranslate({ request: tReq('not json') }, engine([]))).status, 400);
+assert.equal((await hubTranslate({ request: tReq('x'.repeat(30000)) }, engine([]))).status, 413);
 assert.equal((await hubTranslate({ request: tReq({ text: 'hi', target: 'ar' }, 'https://evil.example') }, engine([]))).status, 403);
 assert.equal((await hubTranslate({ request: tReq({ text: 'hi', target: 'ar' }) }, engine({}, false))).status, 502);
 assert.equal((await hubTranslate({ request: tReq({ text: 'hi', target: 'ar' }) }, async () => { throw new TypeError('down'); })).status, 502);
