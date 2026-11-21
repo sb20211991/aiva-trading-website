@@ -1,4 +1,4 @@
-/* Aiva Trading checkout for Cloudflare Pages Functions. CHECKOUT_PROVIDER selects Shopify or Square.
+/* Aiva checkout for Cloudflare Pages Functions. CHECKOUT_PROVIDER selects Shopify or Square.
    Prices, stock and totals are always taken from the server catalogue, never from the browser. */
 import { normaliseCatalogue, minorFromMajor } from '../../assets/aiva-money.js';
 import { readLimitedText, BodyTooLarge } from './body.js';
@@ -333,7 +333,7 @@ export async function handleCreateCheckout(request, env) {
   }));
   const body = {
     idempotency_key: 'aiva_' + crypto.randomUUID(),
-    description: 'Aiva Trading online order',
+    description: 'Aiva online order',
     order: {
       location_id: str(env.SQUARE_LOCATION_ID),
       reference_id: ORDER_SOURCE,
