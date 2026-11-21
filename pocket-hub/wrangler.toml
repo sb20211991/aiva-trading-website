@@ -1,0 +1,10 @@
+# Aiva Pocket Hub super app (original v1.0 recovered from Worker winter-water-9e14): Pages project aiva-pocket-hub,
+# served at app.aivatrading.uk. Independent of the Aiva Trading website (Pages project aiva-trading, aivatrading.uk + www).
+# Deployed only by .github/workflows/deploy-pocket-hub.yml.
+name = "aiva-pocket-hub"
+compatibility_date = "2025-11-01"
+pages_build_output_dir = "public"
+
+[vars]
+# Website API paths that still arrive on app.aivatrading.uk (e.g. the Square webhook) are forwarded here.
+WEBSITE_ORIGIN = "https://aiva-trading.pages.dev"

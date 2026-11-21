@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - '**.txt'
       - '**.md'
+      - 'pocket-hub/**'
+      - '.github/workflows/deploy-pocket-hub.yml'
 permissions:
   contents: read
   deployments: write

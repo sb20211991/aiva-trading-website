@@ -190,13 +190,25 @@ async function stockOverrides(env) {
     return new Map();
   }
 }
-async function getCatalogue(request, env) {
-  const url = new URL(request.url);
-  url.pathname = '/data/aiva-products.json';
-  url.search = '';
-  const r = await env.ASSETS.fetch(new Request(url.toString(), { method: 'GET' }));
+/* Products saved from merchant-tools/products.html live in D1 and replace the catalogue file. */
+async function storedCatalogue(env) {
+  if (!hasDb(env)) return null;
+  try {
+    const row = await env.ORDERS_DB.prepare('SELECT json FROM catalogue WHERE id=1').first();
+    return row?.json ? JSON.parse(row.json) : null;
+  } catch {
+    return null;
+  }
+}
+async function rawCatalogue(env, origin) {
+  const stored = await storedCatalogue(env);
+  if (stored) return stored;
+  const r = await env.ASSETS.fetch(new Request(origin + '/data/aiva-products.json', { method: 'GET' }));
   if (!r.ok) throw Error('CATALOGUE_UNAVAILABLE');
-  const cat = normaliseCatalogue(await r.json());
+  return r.json();
+}
+async function getCatalogue(request, env) {
+  const cat = normaliseCatalogue(await rawCatalogue(env, new URL(request.url).origin));
   const overrides = await stockOverrides(env);
   cat.products = cat.products.map((p) => (overrides.has(p.sku) ? { ...p, stock: Math.max(0, overrides.get(p.sku)) } : p));
   return cat;
@@ -492,8 +504,7 @@ async function applyPaid(env, origin, orderId, paid, eventId) {
 }
 async function getCatalogueForStock(env, origin) {
   try {
-    const r = await env.ASSETS.fetch(new Request(origin + '/data/aiva-products.json'));
-    const cat = await r.json();
+    const cat = await rawCatalogue(env, origin);
     return new Map((cat.products || []).map((p) => [p.sku, Number(p.stock) || 0]));
   } catch {
     return new Map();
@@ -734,4 +745,97 @@ export async function handleCreateRefund(request, env) {
   }
   await recordRefund(env.ORDERS_DB, str(refund.id), row.payment_id, amount, str(refund.status) || 'PENDING', false);
   return respond({ ok: true, refundId: refund.id, status: refund.status, amountPence: amount, mode: row.mode || squareMode(env) });
+}
+
+export async function handlePublicCatalogue(request, env) {
+  const stored = await storedCatalogue(env);
+  return stored ? respond(stored) : env.ASSETS.fetch(request);
+}
+
+const validImageRef = (v) => /^(https:\/\/[^\s"'<>]+|\/api\/product-image\/[a-f0-9-]{36}|assets\/[a-zA-Z0-9_-]+\.(webp|png|jpe?g|avif))$/.test(v);
+const optionalText = (v, max) => v === undefined || v === null || v === '' || (typeof v === 'string' && v.length <= max);
+function cleanProduct(p) {
+  if (!p || !validSku(p.sku) || typeof p.name !== 'string' || p.name.trim().length < 2 || p.name.length > 140) return null;
+  if (typeof p.description !== 'string' || p.description.length > 700) return null;
+  if (typeof p.category !== 'string' || !p.category.trim() || p.category.length > 80) return null;
+  if (!validPrice(p.pricePence) || !validStock(p.stock) || typeof p.available !== 'boolean') return null;
+  if (!optionalText(p.image, 500) || (p.image && !validImageRef(p.image))) return null;
+  if (!optionalText(p.brand, 80)) return null;
+  const out = { sku: p.sku, name: p.name.trim(), description: p.description.trim(), category: p.category.trim(),
+    pricePence: p.pricePence, stock: p.stock, available: p.available };
+  if (p.hidden === true) out.hidden = true;
+  if (p.image) out.image = p.image;
+  if (p.brand) out.brand = p.brand.trim();
+  if (Array.isArray(p.specifications)) out.specifications = p.specifications.filter((x) => typeof x === 'string' && x.length <= 200).slice(0, 20);
+  else if (typeof p.specifications === 'string' && p.specifications.length <= 1000) out.specifications = p.specifications;
+  if (validVariantId(p.shopifyVariantId)) out.shopifyVariantId = p.shopifyVariantId;
+  return out;
+}
+
+/* Merchant product editor: GET returns the live catalogue, POST replaces its product list. */
+export async function handleAdminProducts(request, env) {
+  if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
+  if (!hasDb(env)) return respond({ error: 'Order database not configured.' }, 503);
+  const db = env.ORDERS_DB;
+  await ensureSchema(env);
+  await db.prepare('CREATE TABLE IF NOT EXISTS catalogue (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL, updated_at INTEGER NOT NULL)').run();
+  const current = await rawCatalogue(env, new URL(request.url).origin);
+  if (request.method === 'GET') {
+    const overrides = await stockOverrides(env);
+    const products = (current.products || []).map((p) => (overrides.has(p.sku) ? { ...p, stock: Math.max(0, overrides.get(p.sku)) } : p));
+    return respond({ catalogue: { ...current, products } });
+  }
+  if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
+  let data;
+  try { data = JSON.parse(await readLimitedText(request, 400000)); } catch { return respond({ error: 'Invalid JSON.' }, 400); }
+  if (!Array.isArray(data?.products) || data.products.length > 500) return respond({ error: 'Send a list of up to 500 products.' }, 400);
+  const products = [], stockChanged = [], skus = new Set();
+  for (const [i, raw] of data.products.entries()) {
+    const p = cleanProduct(raw);
+    if (!p) return respond({ error: 'Product ' + (i + 1) + ' is incomplete or invalid. Check SKU, name, category, price and stock.' }, 400);
+    if (skus.has(p.sku)) return respond({ error: 'SKU ' + p.sku + ' is used twice.' }, 400);
+    skus.add(p.sku);
+    products.push(p);
+    /* Only stock the merchant actually changed is written, so sales made while the editor was open are kept. */
+    if (raw.loadedStock !== p.stock) stockChanged.push(p);
+  }
+  const categories = Array.from(new Set([...(Array.isArray(current.categories) ? current.categories : []), ...products.map((p) => p.category)]));
+  const next = { ...current, categories, products };
+  const t = now();
+  await db.batch([
+    db.prepare('INSERT INTO catalogue (id, json, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at').bind(JSON.stringify(next), t),
+    ...stockChanged.map((p) => db.prepare('INSERT INTO inventory (sku, stock, updated_at) VALUES (?,?,?) ON CONFLICT(sku) DO UPDATE SET stock=excluded.stock, updated_at=excluded.updated_at').bind(p.sku, p.stock, t))
+  ]);
+  return respond({ ok: true, products: products.length });
+}
+
+const IMAGE_TYPES = { 'image/jpeg': 1, 'image/png': 1, 'image/webp': 1 };
+async function ensureImageTable(db) {
+  await db.prepare('CREATE TABLE IF NOT EXISTS product_images (id TEXT PRIMARY KEY, mime TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL)').run();
+}
+
+/* Merchant photo upload: the editor sends a resized data URL, stored in D1 and served by handleProductImage. */
+export async function handleAdminProductImage(request, env) {
+  if (!merchantAuthorised(request, env)) return respond({ error: 'Unauthorized.' }, 401);
+  if (!hasDb(env)) return respond({ error: 'Order database not configured.' }, 503);
+  if (request.method !== 'POST') return respond({ error: 'Method not allowed.' }, 405);
+  let body;
+  try { body = JSON.parse(await readLimitedText(request, 1500000)); } catch { return respond({ error: 'Photo is too large or invalid. Try a smaller photo.' }, 400); }
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(str(body?.dataUrl));
+  if (!m || !IMAGE_TYPES[m[1]]) return respond({ error: 'Use a JPG, PNG or WebP photo.' }, 400);
+  const id = crypto.randomUUID();
+  await ensureImageTable(env.ORDERS_DB);
+  await env.ORDERS_DB.prepare('INSERT INTO product_images (id, mime, data, created_at) VALUES (?,?,?,?)').bind(id, m[1], m[2], now()).run();
+  return respond({ ok: true, url: '/api/product-image/' + id });
+}
+
+export async function handleProductImage(request, env, id) {
+  if (!hasDb(env) || !/^[a-f0-9-]{36}$/.test(str(id))) return new Response('Not found', { status: 404 });
+  let row = null;
+  try { row = await env.ORDERS_DB.prepare('SELECT mime, data FROM product_images WHERE id=?').bind(id).first(); } catch { row = null; }
+  if (!row) return new Response('Not found', { status: 404 });
+  const bin = atob(row.data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Response(bytes, { headers: { 'Content-Type': row.mime, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } });
 }
