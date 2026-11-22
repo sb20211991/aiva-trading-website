@@ -6,11 +6,11 @@ import { TFL, NOMINATIM, json, coords, distanceM, fetchJSON, cached, overpass } 
 
 export const inLondon = ({ lat, lon }) => lat > 51.25 && lat < 51.72 && lon > -0.56 && lon < 0.35;
 const CLOSED = new Set([1, 2, 4, 16, 20]); // Closed, Suspended, Planned Closure, Not Running, Service Closed
-const DISRUPTED = new Set([3, 5, 6, 11, 12, 13, 14, 15, 17]);
+const OK = new Set([10, 18, 19]); // Good Service, No Issues, Information
 const LIVE_MODES = new Set(['bus', 'tube', 'tram', 'dlr', 'overground', 'elizabeth-line']);
 const withKey = (u, env) => env?.TFL_APP_KEY ? u + (u.includes('?') ? '&' : '?') + 'app_key=' + encodeURIComponent(env.TFL_APP_KEY) : u;
 
-export function lineState(severity) { return CLOSED.has(severity) ? 'closed' : DISRUPTED.has(severity) ? 'disrupted' : 'ok'; }
+export function lineState(severity) { return CLOSED.has(severity) ? 'closed' : OK.has(severity) ? 'ok' : 'disrupted'; }
 
 async function tflStops(origin, radius, env, fetcher) {
   const url = withKey(`${TFL}/StopPoint?lat=${origin.lat}&lon=${origin.lon}&radius=${radius}&returnLines=true` +
