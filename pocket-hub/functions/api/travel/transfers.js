@@ -2,7 +2,7 @@
    Airport-to-destination options: public transport with schedules (Google Routes API with GOOGLE_MAPS_API_KEY, or keyless Entur /
    opendata.ch in Norway and Switzerland) split into train, metro, tram and bus, the last evening departure and night service,
    taxi / car-hire / ride-hailing driving time, walking with directions, plus stations, taxi ranks and car-hire desks at the airport (OpenStreetMap). */
-import { json, point, localToUTC, googleRoutes, osrm, airportServices } from '../../_lib/travel.js';
+import { json, point, localToUTC, googleRoutes, osrm, airportServices, cached } from '../../_lib/travel.js';
 import { openTransit, transitZone, lateSummary } from '../../_lib/transit.js';
 import { rideHailing } from '../../_lib/rides.js';
 
@@ -24,7 +24,11 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     google ? (lateTime ? googleRoutes(from, to, 'TRANSIT', env, fetcher, lateTime).catch(soft('google-late')) : null) : openTransit(from, to, fetcher, lateTime, true).catch(soft('open-late')),
     (google ? googleRoutes(from, to, 'DRIVE', env, fetcher).then((r) => r[0] || null) : osrm(from, to, 'car', fetcher)).catch(soft('drive')),
     osrm(from, to, 'foot', fetcher, true).catch(soft('walk')),
-    airportServices(from, fetcher).catch(soft('osm'))
+    cached(`airport-services-v1/${from.lat.toFixed(3)},${from.lon.toFixed(3)}`, 86400, async () => {
+      const r = await airportServices(from, fetcher);
+      if (!Object.values(r).some((x) => x.length)) throw Object.assign(new Error('No airport services found'), { status: 'empty' });
+      return r;
+    }).catch(soft('osm'))
   ]);
   const list = (x) => ((google ? x : x?.routes) || []).filter((r) => r.steps.length);
   const routes = list(transit).slice(0, 5), lateBy = lateSummary(list(late));
