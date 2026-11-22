@@ -1,11 +1,11 @@
-/* GET /api/travel/hotels?lat=&lon=&checkin=&checkout=&adults=&currency=
+/* GET /api/travel/hotels?lat=&lon=&checkin=&checkout=&adults=&children=<ages, e.g. 8,1>&currency=
    LiteAPI live rates and photos when LITEAPI_KEY is set; otherwise real hotels from OpenStreetMap without prices. */
 import { json, point, isDate, clampInt, liteHotels, osmHotels, isSandboxKey } from '../../_lib/travel.js';
 
 export async function onRequestGet({ request, env }, fetcher = fetch) {
   const u = new URL(request.url).searchParams, p = point(`${u.get('lat')},${u.get('lon')}`);
   if (!p) return json({ error: 'Destination is required' }, 400);
-  const q = { ...p, checkin: u.get('checkin'), checkout: u.get('checkout'), adults: clampInt(u.get('adults'), 1, 9, 1),
+  const q = { ...p, checkin: u.get('checkin'), checkout: u.get('checkout'), adults: clampInt(u.get('adults'), 1, 9, 1), children: String(u.get('children') || '').split(',').filter((x) => /^\d{1,2}$/.test(x) && +x <= 17).slice(0, 6).map(Number),
     currency: /^[A-Z]{3}$/.test(u.get('currency') || '') ? u.get('currency') : 'GBP' };
   const dated = isDate(q.checkin) && isDate(q.checkout) && q.checkout > q.checkin;
   const errors = [];
