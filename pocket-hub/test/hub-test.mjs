@@ -76,6 +76,8 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
   assert.equal(openingStatus('', at(0, 11)).state, 'unknown');
   assert.equal(openingStatus('Mo-Fr 09:00-18:00', null).state, 'unknown');
   assert.equal(parseOpeningHours('sunrise-sunset'), null);
+  assert.equal(openingStatus('Mo-Su 18:00-02:00; Tu off', at(2, 1)).state, 'closed');
+  assert.equal(openingStatus('Mo-Su 18:00-02:00; Tu off', at(1, 1)).state, 'open');
 
   const req = (path) => ({ request: new Request('https://app.aivatrading.uk/api/emergency/' + path), env: {} });
   const fake = (routes) => async (url) => {
@@ -119,7 +121,7 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
   assert.deepEqual(d.stops.map(s => s.state), ['live', 'closed', 'none']);
   assert.match(d.stops[0].label, /^Live · next 12 in [34] min$/);
   assert.equal(d.stops[1].lines[0].reason, 'Weekdays only');
-  assert.equal(lineState(10), 'ok'); assert.equal(lineState(20), 'closed'); assert.equal(lineState(6), 'disrupted');
+  assert.equal(lineState(9), 'disrupted'); assert.equal(lineState(7), 'disrupted'); assert.equal(lineState(10), 'ok'); assert.equal(lineState(20), 'closed'); assert.equal(lineState(6), 'disrupted');
   // Outside London: OSM stops, never presented as live; official National Rail link from the CRS code.
   r = await transport(req('transport?lat=53.4774&lon=-2.2309'), fake([[/overpass/, { elements: [
     { type: 'node', id: 5, lat: 53.4774, lon: -2.2309, tags: { railway: 'station', name: 'Manchester Piccadilly', 'ref:crs': 'MAN' } }] }]]));
@@ -141,6 +143,7 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
     [/direction=outbound/, { direction: 'outbound', timetable: { routes: [{ schedules: week.map(n => sched(n, [6, 23])) }] } }],
     [/Timetable\/940GZZLUWLO\?/, { disambiguation: { disambiguationOptions: [
       { description: 'Stratford Underground Station - Stanmore Underground Station', uri: '/Line/jubilee/Timetable/940GZZLUWLO?direction=inbound' },
+      { description: 'Stratford Underground Station - Willesden Green Underground Station', uri: '/Line/jubilee/Timetable/940GZZLUWLO?direction=inbound&x=1' },
       { description: 'Stanmore Underground Station - Stratford Underground Station', uri: '/Line/jubilee/Timetable/940GZZLUWLO?direction=outbound' }] } }]]));
   d = await r.json();
   assert.deepEqual(d.directions.map(x => [x.towards, x.first, x.last, x.runs24h]),
