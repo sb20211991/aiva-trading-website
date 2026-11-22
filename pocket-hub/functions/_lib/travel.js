@@ -57,28 +57,37 @@ export async function duffelFlights({ legs, adults, children = 0, infants = 0, c
 export const isSandboxKey = (k) => /^sand_/.test(k || '');
 const segOf = (g) => ({ from: g.originCode || '', fromName: g.originName || '', to: g.destinationCode || '', toName: g.destinationName || '', departing: g.departureTime || '', arriving: g.arrivalTime || '',
   flight: `${g.carrier?.marketingCode || ''}${g.flight?.marketingNumber || ''}`, airline: g.carrier?.marketingName || '', operator: g.carrier?.operatingName || '', minutes: g.duration?.minutes || 0 });
-/* Splits a journey's segments into one slice per requested leg: by direction for returns, by leg date for multi-city
-   (a new leg starts only after a stopover of 6 h or more on/after the next leg's date). */
+/* Splits a journey's segments into one slice per requested leg: by direction for returns; for multi-city, at the requested
+   leg endpoints when the airport codes match, otherwise (city codes such as PAR) after a stopover of 6 h or more on/after
+   the next leg's date. */
 export function journeySlices(segs, legs = []) {
   const groups = [];
   if (legs.length > 2 || (legs.length === 2 && segs.every((g) => (g.direction || 'OUTBOUND') === 'OUTBOUND'))) {
     let k = 0;
     segs.forEach((g, i) => {
-      const prev = segs[i - 1], gap = prev ? Date.parse(g.departureTime) - Date.parse(prev.arrivalTime) : 0;
-      if (i && legs[k + 1] && String(g.departureTime).slice(0, 10) >= legs[k + 1].date && gap >= 6 * 3600e3) k++;
+      const prev = segs[i - 1], next = legs[k + 1];
+      if (i && next) {
+        const exact = prev.destinationCode === legs[k].to || g.originCode === next.from;
+        const known = [legs[k].to, next.from].some((c) => segs.some((x) => x.originCode === c || x.destinationCode === c));
+        const gap = Date.parse(g.departureTime) - Date.parse(prev.arrivalTime);
+        if (exact || (!known && String(g.departureTime).slice(0, 10) >= next.date && gap >= 6 * 3600e3)) k++;
+      }
       (groups[k] ||= []).push(g);
     });
   } else for (const d of [...new Set(segs.map((g) => g.direction || 'OUTBOUND'))]) groups.push(segs.filter((g) => (g.direction || 'OUTBOUND') === d));
   return groups.filter(Boolean);
 }
+/* Elapsed minutes of one slice: flight times plus layovers (each layover is measured in one airport's local clock). */
+export const sliceMinutes = (ss) => ss.reduce((n, g, i) => n + (g.duration?.minutes || 0) + (i ? Math.max(0, Math.round((Date.parse(g.departureTime) - Date.parse(ss[i - 1].arrivalTime)) / 60000)) : 0), 0);
 export function shapeJourney(j, legs) {
   const o = j.cheapestOffer || j.offers?.[0] || {}, segs = j.segments || [], c = segs[0]?.carrier || {};
   const groups = journeySlices(segs, legs);
   const slices = groups.map((ss, i) => {
     const first = ss[0] || {}, last = ss.at(-1) || {}, dir = first.direction || 'OUTBOUND';
-    const legMin = groups.length <= 2 ? j.legDurations?.find((l) => l.direction === dir)?.duration?.minutes : 0;
+    const byDir = groups.length <= 2 && new Set(groups.map((x) => x[0]?.direction || 'OUTBOUND')).size === groups.length;
+    const legMin = byDir ? j.legDurations?.find((l) => l.direction === dir)?.duration?.minutes : 0;
     return { from: first.originCode || '', to: last.destinationCode || '', departing: first.departureTime || '', arriving: last.arrivalTime || '', arrivingTz: '',
-      minutes: legMin || Math.round((Date.parse(last.arrivalTime) - Date.parse(first.departureTime)) / 60000) || 0, stops: Math.max(0, ss.length - 1),
+      minutes: legMin || sliceMinutes(ss), stops: Math.max(0, ss.length - 1),
       flights: ss.map((g) => `${g.carrier?.marketingCode || ''}${g.flight?.marketingNumber || ''}`).filter(Boolean), segments: ss.map(segOf) };
   });
   const bag = o.baggage || {}, money = (b) => b.pricing?.display ? ` (${b.pricing.display.amount} ${b.pricing.display.currency})` : '';
@@ -93,6 +102,9 @@ export function shapeJourney(j, legs) {
     perPassenger: Object.fromEntries(Object.entries(per).filter(([, v]) => Number.isFinite(v?.total)).map(([k, v]) => [k, v.total])),
     refundable: !!o.terms?.refundable, changeable: !!o.terms?.changeable };
 }
+/* A slice matches its leg when each endpoint equals the requested code, or the code is a city code (never an airport in the offer). */
+const slicesMatch = (x, leg, all) => { const codes = new Set(all.flatMap((s) => [s.from, s.to, ...(s.segments || []).flatMap((g) => [g.from, g.to])]));
+  return (x.from === leg.from || !codes.has(leg.from)) && (x.to === leg.to || !codes.has(leg.to)); };
 const NUITEE_CABIN = { economy: 'ECONOMY', premium_economy: 'PREMIUM_ECONOMY', business: 'BUSINESS', first: 'FIRST' };
 export async function nuiteeFlights({ legs, adults, children = 0, infants = 0, cabin = 'economy', currency }, env, fetcher = fetch) {
   const ret = legs.length === 2 && legs[1].from === legs[0].to && legs[1].to === legs[0].from;
@@ -101,21 +113,21 @@ export async function nuiteeFlights({ legs, adults, children = 0, infants = 0, c
   const data = await fetchJSON(`${LITEAPI}/flights/rates`, {
     method: 'POST', headers: { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }, fetcher, 28000);
-  const offers = (data?.data?.[0]?.journeys || []).map((j) => shapeJourney(j, legs)).filter((o) => Number.isFinite(o.price) && o.slices.length === legs.length);
+  const offers = (data?.data?.[0]?.journeys || []).map((j) => shapeJourney(j, legs)).filter((o) => Number.isFinite(o.price) && o.slices.length === legs.length && o.slices.every((x, i) => slicesMatch(x, legs[i], o.slices)));
   offers.sort((a, b) => a.price - b.price);
   return { offers: offers.slice(0, 10), currency: offers[0]?.currency || currency, live: !isSandboxKey(env.LITEAPI_KEY) };
 }
 
 /* ---------- Hotels ---------- */
 const commons = (f) => f ? 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(String(f).replace(/^File:/i, '')) + '?width=480' : '';
-export async function liteHotels({ lat, lon, checkin, checkout, adults, currency }, env, fetcher = fetch) {
+export async function liteHotels({ lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
   const headers = { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' };
   const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25`, { headers }, fetcher, 15000);
   const hotels = (list?.data || []).filter((h) => h.id && h.name);
   if (!hotels.length) return [];
   const rates = await fetchJSON(`${LITEAPI}/hotels/rates`, {
     method: 'POST', headers,
-    body: JSON.stringify({ hotelIds: hotels.map((h) => h.id), occupancies: [{ adults }], currency, guestNationality: 'GB', checkin, checkout, timeout: 12 })
+    body: JSON.stringify({ hotelIds: hotels.map((h) => h.id), occupancies: [{ adults, ...(children.length ? { children } : {}) }], currency, guestNationality: 'GB', checkin, checkout, timeout: 12 })
   }, fetcher, 20000);
   const price = {};
   for (const r of rates?.data || []) {

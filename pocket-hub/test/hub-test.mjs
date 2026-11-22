@@ -274,6 +274,20 @@ console.log('POCKET HUB CHECKS PASSED');
     assert.equal(d.query.trip, 'oneway'); assert.equal(sent.legs.length, 1); assert.equal(sent.cabinClass, 'ECONOMY');
     assert.equal((await flights({ request: rq('flights?legs=LHR:CDG:2027-04-10'), env: { LITEAPI_KEY: 'k' } })).status, 400);
     assert.equal((await flights({ request: rq('flights?legs=LHR:CDG:2027-04-10,CDG:MAD:2027-04-01'), env: { LITEAPI_KEY: 'k' } })).status, 400);
+    const { journeySlices, shapeJourney } = await import('../functions/_lib/travel.js');
+    const s2 = (o, d, dep, arr, m) => ({ originCode: o, destinationCode: d, departureTime: dep, arrivalTime: arr, direction: 'OUTBOUND', duration: { minutes: m } });
+    // overnight connection in AMS on the next leg's date must not split leg 1; leg 2 starts at the requested CDG
+    const legs = [{ from: 'JFK', to: 'CDG', date: '2027-04-10' }, { from: 'CDG', to: 'FCO', date: '2027-04-11' }];
+    const segs = [s2('JFK', 'AMS', '2027-04-10T18:00:00', '2027-04-11T07:00:00', 420), s2('AMS', 'CDG', '2027-04-11T14:00:00', '2027-04-11T15:20:00', 80), s2('CDG', 'FCO', '2027-04-11T22:00:00', '2027-04-12T00:05:00', 125)];
+    assert.deepEqual(journeySlices(segs, legs).map((g) => g.length), [2, 1]);
+    const sj = shapeJourney({ segments: segs, legDurations: [{ direction: 'OUTBOUND', duration: { minutes: 999 } }], cheapestOffer: { pricing: { display: { total: 1 } } } }, legs);
+    assert.equal(sj.slices[0].minutes, 420 + 420 + 80); assert.equal(sj.slices[1].minutes, 125);
+    const { onRequestGet: hotelsFn } = await import('../functions/api/travel/hotels.js');
+    let occ;
+    await hotelsFn({ request: rq('hotels?lat=48.85&lon=2.35&checkin=2027-04-10&checkout=2027-04-12&adults=2&children=8,1'), env: { LITEAPI_KEY: 'sand_x' } }, async (url, init) => {
+      if (/data\/hotels/.test(url)) return new Response(JSON.stringify({ data: [{ id: 'h1', name: 'H', latitude: 48.85, longitude: 2.35 }] }));
+      occ = JSON.parse(init.body).occupancies; return new Response(JSON.stringify({ data: [] })); });
+    assert.deepEqual(occ, [{ adults: 2, children: [8, 1] }]);
     const { lateSummary } = await import('../functions/_lib/transit.js');
     const late = lateSummary([{ steps: [{ kind: 'train', departs: '23:40' }] }, { steps: [{ kind: 'train', departs: '00:50' }] }, { steps: [{ kind: 'bus', departs: '02:10' }] }, { steps: [{ kind: 'metro', departs: '04:55' }] }]);
     assert.deepEqual(late.train, { last: '00:50', night: false }); assert.equal(late.bus.night, true); assert.equal(late.metro, undefined);
