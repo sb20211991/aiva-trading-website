@@ -36,7 +36,8 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     const directions = await cached(`tt-${line}-${stop}-${today}`, 3600, async () => {
       const first = await fetchJSON(`${TFL}/Line/${line}/Timetable/${stop}?${key.slice(1)}`, {}, fetcher, 20000);
       if (!first?.disambiguation) return [summarise(first, today)].filter(Boolean);
-      const options = (first.disambiguation.disambiguationOptions || []).slice(0, 2);
+      const all = first.disambiguation.disambiguationOptions || [], seen = new Set();
+      const options = all.filter(o => { const d = /direction=(\w+)/.exec(o.uri || '')?.[1] || o.uri; return !seen.has(d) && seen.add(d); }).slice(0, 2);
       const pages = await Promise.all(options.map(o => fetchJSON(`${TFL}${o.uri}${key}`, {}, fetcher, 20000).catch(() => null)));
       return pages.map((p, i) => summarise(p, today, options[i].description || '')).filter(Boolean);
     });
