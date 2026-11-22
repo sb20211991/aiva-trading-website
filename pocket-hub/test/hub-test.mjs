@@ -131,6 +131,52 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
   assert.equal(d.stops[0].state, 'unverified');
   assert.equal(d.stops[0].links[0].url, 'https://www.nationalrail.co.uk/live-trains/departures/MAN/');
 
+  // Live providers outside London: Entur (Norway), opendata.ch (Switzerland), iRail (Belgium), National Rail (GB, keyed).
+  const inMin = m => new Date(Date.now() + m * 60000).toISOString();
+  r = await transport(req('transport?lat=59.9111&lon=10.7528&cc=no'), fake([[/entur/, { data: { nearest: { edges: [
+    { node: { distance: 40, place: { id: 'NSR:StopPlace:1', name: 'Oslo S', latitude: 59.91, longitude: 10.75, transportMode: ['rail'], estimatedCalls: [
+      { realtime: true, cancellation: false, aimedDepartureTime: inMin(3), expectedDepartureTime: inMin(8), quay: { publicCode: '5' }, destinationDisplay: { frontText: 'Drammen' },
+        situations: [{ summary: [{ value: 'Sporarbeid', language: 'no' }, { value: 'Track works', language: 'en' }] }], serviceJourney: { line: { id: 'L1', publicCode: 'R13' } } }] } } },
+    { node: { distance: 90, place: { id: 'NSR:StopPlace:2', name: 'Cancelled Stop', transportMode: ['bus'], estimatedCalls: [
+      { realtime: true, cancellation: true, aimedDepartureTime: inMin(4), expectedDepartureTime: inMin(4), destinationDisplay: { frontText: 'X' }, serviceJourney: { line: { publicCode: '60' } } }] } } },
+    { node: { distance: 120, place: { id: 'NSR:StopPlace:3', name: 'Rural', transportMode: ['bus'], estimatedCalls: [
+      { realtime: false, cancellation: false, aimedDepartureTime: inMin(30), destinationDisplay: { frontText: 'Y' }, serviceJourney: { line: { publicCode: '7' } } }] } } }] } } }]]));
+  d = await r.json();
+  assert.equal(d.provider, 'entur'); assert.equal(d.live, true);
+  assert.deepEqual(d.stops.map(s => s.state), ['live', 'closed', 'unverified']);
+  assert.match(d.stops[0].departures[0].status, /^5 min late$/);
+  assert.deepEqual(d.stops[0].alerts, ['Track works']);
+  assert.match(d.stops[2].label, /^Timetabled times only/);
+  r = await transport(req('transport?lat=47.378&lon=8.540&cc=ch'), fake([
+    [/locations/, { stations: [{ id: '8503000', name: 'Zürich HB', icon: 'train', distance: 25, coordinate: { x: 47.378, y: 8.54 } }, { id: '9', name: 'Far', distance: 5000 }] }],
+    [/stationboard/, { stationboard: [{ category: 'S', number: '7', to: 'Winterthur', stop: { departure: inMin(2), delay: 2, platform: '41', prognosis: { departure: inMin(4) } } }] }]]));
+  d = await r.json();
+  assert.equal(d.provider, 'swiss'); assert.equal(d.stops.length, 1);
+  assert.equal(d.stops[0].state, 'live'); assert.equal(d.stops[0].departures[0].line, 'S 7'); assert.equal(d.stops[0].departures[0].status, '2 min late');
+  r = await transport(req('transport?lat=50.8456&lon=4.357&cc=be'), fake([
+    [/overpass/, { elements: [{ type: 'node', id: 7, lat: 50.8456, lon: 4.357, tags: { railway: 'station', name: 'Bruxelles-Central', uic_ref: '8813003' } }] }],
+    [/irail.*id=BE\.NMBS\.008813003/, { departures: { departure: [
+      { station: 'Ostend', time: String(Math.floor(Date.now() / 1000) + 300), delay: '0', canceled: '1', vehicleinfo: { shortname: 'IC 1' }, platform: '3' },
+      { station: 'Liège', time: String(Math.floor(Date.now() / 1000) + 600), delay: '120', canceled: '0', vehicleinfo: { shortname: 'IC 2' }, platform: '1' }] } }]]));
+  d = await r.json();
+  assert.equal(d.stops[0].state, 'live'); assert.match(d.stops[0].label, /1 cancelled$/); assert.match(d.source, /iRail/);
+  assert.deepEqual(d.stops[0].departures.map(x => [x.cancelled, x.status]), [[true, 'Cancelled'], [false, '2 min late']]);
+  const manc = fake([[/overpass/, { elements: [{ type: 'node', id: 5, lat: 53.4774, lon: -2.2309, tags: { railway: 'station', name: 'Manchester Piccadilly', 'ref:crs': 'MAN' } }] }],
+    [/raildata.*GetDepBoardWithDetails\/MAN/, { generatedAt: new Date().toISOString(), nrccMessages: [{ Value: '<p>Engineering works</p>' }], trainServices: [
+      { std: new Date(Date.now() + 10 * 60000).toISOString().slice(11, 16), etd: 'Cancelled', isCancelled: true, cancelReason: 'a fault', operator: 'Northern', destination: [{ locationName: 'Leeds' }] },
+      { std: new Date(Date.now() + 20 * 60000).toISOString().slice(11, 16), etd: 'On time', platform: '4', operator: 'Avanti', destination: [{ locationName: 'London Euston' }] }] }]]);
+  r = await transport({ request: new Request('https://app.aivatrading.uk/api/emergency/transport?lat=53.4774&lon=-2.2309&cc=gb'), env: { RAIL_DATA_LDB_KEY: 'k' } }, manc);
+  d = await r.json();
+  assert.equal(d.stops[0].state, 'live'); assert.deepEqual(d.stops[0].alerts, ['Engineering works']);
+  assert.deepEqual(d.stops[0].departures.map(x => x.status), ['Cancelled · a fault', 'On time']);
+  assert.equal(d.stops[0].departures[1].platform, 'Platform 4');
+  r = await transport(req('transport?lat=53.4774&lon=-2.2309&cc=gb'), manc);
+  assert.equal((await r.json()).stops[0].state, 'unverified');
+  r = await transport(req('transport?lat=59.9111&lon=10.7528&cc=no'), fake([[/entur/, { errors: [{ message: 'x' }] }],
+    [/overpass/, { elements: [{ type: 'node', id: 8, lat: 59.91, lon: 10.75, tags: { railway: 'station', name: 'Oslo S' } }] }]]));
+  d = await r.json();
+  assert.equal(d.provider, 'osm'); assert.deepEqual(d.upstreamErrors, ['entur-error']); assert.equal(d.stops[0].state, 'unverified');
+
   assert.deepEqual([...scheduleDays('Monday - Thursday')], [0, 1, 2, 3]);
   assert.deepEqual([...scheduleDays('Saturday (also Good Friday)')], [5]);
   const sched = (name, hours) => ({ name, firstJourney: { hour: String(hours[0]), minute: '5' }, lastJourney: { hour: String(hours.at(-1)), minute: '10' }, knownJourneys: hours.map(h => ({ hour: String(h), minute: '0' })) });
