@@ -304,4 +304,16 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'o'.repeat(1600) }), env: sb }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
   assert.match(app, /payment-wrapper\.liteapi\.travel\/dist\/liteAPIPayment\.js/); assert.match(html, /id="asBookings"/);
 }
+// Keyless open planners: tram-only connections count as local transport; an empty planner reply is not timetable coverage.
+{
+  const { onRequestGet: tf } = await import('../functions/api/travel/transfers.js');
+  const osm = () => new Response(JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 59.65, lon: 17.93, tags: { railway: 'station', name: 'Arlanda C' } }] }));
+  const enturReply = (patterns) => async (url) => String(url).includes('entur') ? new Response(JSON.stringify({ data: { trip: { tripPatterns: patterns } } }))
+    : String(url).includes('routing.openstreetmap.de') ? new Response(JSON.stringify({ code: 'Ok', routes: [{ duration: 1800, distance: 20000 }] })) : osm();
+  const tramTrip = [{ duration: 1500, distance: 9000, legs: [{ mode: 'tram', line: { publicCode: '11', authority: { name: 'Ruter' } }, expectedStartTime: '2026-12-06T10:00:00+01:00', expectedEndTime: '2026-12-06T10:25:00+01:00', fromPlace: { name: 'A' }, toPlace: { name: 'B' }, intermediateQuays: [] }] }];
+  let d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.91,10.75&to=59.92,10.73'), env: {} }, enturReply(tramTrip))).json();
+  assert.equal(d.schedules, true); assert.equal(d.modes.bus.available, true); assert.equal(d.modes.bus.routes.length, 1);
+  d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.65,17.93&to=59.33,18.06'), env: {} }, enturReply([]))).json();
+  assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
+}
 console.log('AIVA SEARCH CHECKS PASSED');

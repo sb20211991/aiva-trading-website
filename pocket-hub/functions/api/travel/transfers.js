@@ -15,13 +15,13 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     (google ? googleRoutes(from, to, 'WALK', env, fetcher).then((r) => r[0] || null) : osrm(from, to, 'foot', fetcher)).catch(soft('walk')),
     airportServices(from, fetcher).catch(soft('osm'))
   ]);
-  const open = !google && transit ? transit.provider : '', timetabled = google || !!open;
-  const routes = ((open ? transit.routes : transit) || []).filter((r) => r.steps.length).slice(0, 4);
-  const has = (k) => routes.some((r) => r.steps.some((s) => s.kind === k));
+  const routes = ((google ? transit : transit?.routes) || []).filter((r) => r.steps.length).slice(0, 4);
+  const open = !google && routes.length ? transit.provider : '', timetabled = google || !!open;
+  const local = (k) => k === 'bus' || k === 'tram', has = (k) => routes.some((r) => r.steps.some((s) => k === 'bus' ? local(s.kind) : s.kind === k));
   const s = services || { stations: [], busStations: [], carRental: [], taxiRanks: [] };
   const modes = {
     train: { available: has('train') || (!timetabled && s.stations.length ? null : false), routes: routes.filter((r) => r.steps.some((x) => x.kind === 'train')), places: s.stations },
-    bus: { available: has('bus') || (!timetabled && s.busStations.length ? null : false), routes: routes.filter((r) => r.steps.some((x) => x.kind === 'bus') && !r.steps.some((x) => x.kind === 'train')), places: s.busStations },
+    bus: { available: has('bus') || (!timetabled && s.busStations.length ? null : false), routes: routes.filter((r) => r.steps.some((x) => local(x.kind)) && !r.steps.some((x) => x.kind === 'train')), places: s.busStations },
     taxi: { available: drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.taxiRanks },
     car: { available: s.carRental.length ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.carRental },
     walk: { available: walk ? walk.distance <= 6000 : null, minutes: walk?.minutes ?? null, distance: walk?.distance ?? null }
