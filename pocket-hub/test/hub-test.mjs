@@ -119,6 +119,7 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
   d = await r.json();
   assert.equal(d.provider, 'tfl');
   assert.deepEqual(d.stops.map(s => s.state), ['live', 'closed', 'none']);
+  assert.deepEqual(d.upstreamErrors, []);
   assert.match(d.stops[0].label, /^Live · next 12 in [34] min$/);
   assert.equal(d.stops[1].lines[0].reason, 'Weekdays only');
   assert.equal(lineState(9), 'disrupted'); assert.equal(lineState(7), 'disrupted'); assert.equal(lineState(10), 'ok'); assert.equal(lineState(20), 'closed'); assert.equal(lineState(6), 'disrupted');

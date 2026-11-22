@@ -13,6 +13,7 @@ const withKey = (u, env) => env?.TFL_APP_KEY ? u + (u.includes('?') ? '&' : '?')
 export function lineState(severity) { return CLOSED.has(severity) ? 'closed' : OK.has(severity) ? 'ok' : 'disrupted'; }
 
 async function tflStops(origin, radius, env, fetcher) {
+  const upstream = new Set();
   const url = withKey(`${TFL}/StopPoint?lat=${origin.lat}&lon=${origin.lon}&radius=${radius}&returnLines=true` +
     '&stopTypes=NaptanPublicBusCoachTram,NaptanMetroStation,NaptanRailStation', env);
   const data = await fetchJSON(url, {}, fetcher);
@@ -22,8 +23,8 @@ async function tflStops(origin, radius, env, fetcher) {
   const stops = [...all.filter(s => !isBus(s)).slice(0, 3), ...all.filter(isBus).slice(0, 4)].sort((a, b) => a.distance - b.distance);
   const lineIds = [...new Set(stops.flatMap(s => s.lines.map(l => l.id)))];
   const [arrivals, statuses] = await Promise.all([
-    Promise.all(stops.map(s => fetchJSON(withKey(`${TFL}/StopPoint/${encodeURIComponent(s.naptanId)}/Arrivals`, env), {}, fetcher).catch(() => null))),
-    lineIds.length ? fetchJSON(withKey(`${TFL}/Line/${lineIds.map(encodeURIComponent).join(',')}/Status`, env), {}, fetcher).catch(() => []) : []
+    Promise.all(stops.map(s => fetchJSON(withKey(`${TFL}/StopPoint/${encodeURIComponent(s.naptanId)}/Arrivals`, env), {}, fetcher).catch(e => { upstream.add(e.status || e.name); return null; }))),
+    lineIds.length ? fetchJSON(withKey(`${TFL}/Line/${lineIds.map(encodeURIComponent).join(',')}/Status`, env), {}, fetcher).catch(e => { upstream.add(e.status || e.name); return []; }) : []
   ]);
   const status = new Map((Array.isArray(statuses) ? statuses : []).map(l => {
     const worst = [...(l.lineStatuses || [])].sort((a, b) => a.statusSeverity - b.statusSeverity)[0] || {};
@@ -32,7 +33,7 @@ async function tflStops(origin, radius, env, fetcher) {
       state: Number.isFinite(worst.statusSeverity) ? lineState(worst.statusSeverity) : 'unknown' }];
   }));
   const now = Date.now();
-  return stops.map((s, i) => {
+  const result = stops.map((s, i) => {
     const modes = s.modes || [];
     const lines = s.lines.map(l => status.get(l.id) || { id: l.id, name: l.name, status: 'Status not reported', state: 'unknown' });
     const feed = arrivals[i];
@@ -49,6 +50,7 @@ async function tflStops(origin, radius, env, fetcher) {
     return { id: s.naptanId, name: s.commonName, indicator: s.indicator || '', modes, distance: Math.round(s.distance),
       lat: s.lat, lon: s.lon, state, label, departures, lines, timetable: liveCapable };
   });
+  return { stops: result, upstream: [...upstream] };
 }
 
 async function osmStops(origin, radius, fetcher) {
@@ -83,11 +85,11 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const radius = Math.min(1000, Math.max(200, Math.round(Number(url.searchParams.get('radius')) || 600)));
   try {
     if (inLondon(origin)) {
-      const stops = await cached(`tfl-${radius}-${origin.lat},${origin.lon}`, 30, () => tflStops(origin, radius, env, fetcher));
-      return json({ provider: 'tfl', live: true, stops, source: 'Powered by TfL Open Data', retrieved: new Date().toISOString() });
+      const { stops, upstream } = await cached(`tfl2-${radius}-${origin.lat},${origin.lon}`, 30, () => tflStops(origin, radius, env, fetcher));
+      return json({ provider: 'tfl', live: true, stops, upstreamErrors: upstream, source: 'Powered by TfL Open Data', retrieved: new Date().toISOString() });
     }
     const stops = await cached(`osm-stops-${radius}-${origin.lat.toFixed(3)},${origin.lon.toFixed(3)}`, 3600, () => osmStops(origin, radius, fetcher));
     return json({ provider: 'osm', live: false, stops, source: 'OpenStreetMap', retrieved: new Date().toISOString() });
-  } catch { return json({ error: 'Transport data is temporarily unavailable. Please try again shortly.' }, 502); }
+  } catch { return json({ error: 'Transport data is temporarily unavailable. Please try again shortly.' }, 503); }
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);

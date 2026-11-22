@@ -43,6 +43,6 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     });
     if (!directions.length) return json({ error: 'No timetable is published for this stop' }, 404);
     return json({ line, stop, directions, source: 'Powered by TfL Open Data' }, 200, 600);
-  } catch { return json({ error: 'Timetable is temporarily unavailable' }, 502); }
+  } catch (e) { return json({ error: 'Timetable is temporarily unavailable', upstream: e.status || e.name }, 503); }
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);

@@ -63,7 +63,7 @@ export async function onRequestGet({ request }, fetcher = fetch) {
         return { source: 'OpenStreetMap (Nominatim)', raw: out };
       }
     }));
-  } catch { return json({ error: 'Place data is temporarily unavailable. Please try again shortly.' }, 502); }
+  } catch { return json({ error: 'Place data is temporarily unavailable. Please try again shortly.' }, 503); }
 
   const seen = new Set();
   const places = raw.filter(r => Number.isFinite(r.lat) && Number.isFinite(r.lon) && !seen.has(r.id) && seen.add(r.id))
