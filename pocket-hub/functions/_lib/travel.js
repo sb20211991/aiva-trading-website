@@ -30,7 +30,7 @@ export function shapeOffer(o) {
     const segs = s.segments || [], first = segs[0] || {}, last = segs.at(-1) || {};
     return {
       from: first.origin?.iata_code || s.origin?.iata_code || '', to: last.destination?.iata_code || s.destination?.iata_code || '',
-      departing: first.departing_at || '', arriving: last.arriving_at || '', minutes: isoMinutes(s.duration), stops: Math.max(0, segs.length - 1),
+      departing: first.departing_at || '', arriving: last.arriving_at || '', arrivingTz: last.destination?.time_zone || '', minutes: isoMinutes(s.duration), stops: Math.max(0, segs.length - 1),
       flights: segs.map((g) => `${g.marketing_carrier?.iata_code || ''}${g.marketing_carrier_flight_number || ''}`).filter(Boolean)
     };
   });
@@ -103,6 +103,26 @@ export async function osmHotels({ lat, lon }, fetcher = fetch) {
 
 /* ---------- Airport -> hotel routes ---------- */
 const VEHICLE = { BUS: 'bus', INTERCITY_BUS: 'bus', TROLLEYBUS: 'bus', SHARE_TAXI: 'bus', HEAVY_RAIL: 'train', COMMUTER_TRAIN: 'train', HIGH_SPEED_TRAIN: 'train', LONG_DISTANCE_TRAIN: 'train', RAIL: 'train', METRO_RAIL: 'train', SUBWAY: 'train', MONORAIL: 'train', TRAM: 'train', LIGHT_RAIL: 'train', FERRY: 'ferry' };
+const tzOffset = (ms, tz) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(ms).map((x) => [x.type, x.value]));
+  return Date.UTC(+p.year, p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - ms;
+};
+/* Duffel times are airport-local without an offset; convert to UTC using the airport time zone (or a longitude estimate). */
+export function localToUTC(local, tz, lon) {
+  const s = String(local || '');
+  if (/(Z|[+-]\d\d:?\d\d)$/.test(s)) return Number.isFinite(Date.parse(s)) ? new Date(s).toISOString() : '';
+  const g = Date.parse(s + 'Z');
+  if (!Number.isFinite(g)) return '';
+  try { if (tz) return new Date(g - tzOffset(g - tzOffset(g, tz), tz)).toISOString(); } catch { /* unknown zone */ }
+  return new Date(g - Math.round((Number(lon) || 0) / 15) * 3600000).toISOString();
+}
+/* Clock time of a Google UTC timestamp in the stop's own time zone. */
+export function localClock(iso, loc) {
+  if (!iso) return '';
+  try { if (loc?.timeZone) return new Intl.DateTimeFormat('en-GB', { timeZone: loc.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso)); } catch { /* fall through */ }
+  return loc?.time?.text || String(iso).slice(11, 16);
+}
 export async function googleRoutes(from, to, mode, env, fetcher = fetch, departure) {
   const body = { origin: { location: { latLng: { latitude: from.lat, longitude: from.lon } } }, destination: { location: { latLng: { latitude: to.lat, longitude: to.lon } } }, travelMode: mode, languageCode: 'en-GB', units: 'METRIC' };
   if (mode === 'TRANSIT') { body.computeAlternativeRoutes = true; if (departure) body.departureTime = departure; }
@@ -115,7 +135,7 @@ export async function googleRoutes(from, to, mode, env, fetcher = fetch, departu
     steps: (r.legs?.[0]?.steps || []).filter((s) => s.travelMode === 'TRANSIT' && s.transitDetails).map((s) => {
       const t = s.transitDetails, line = t.transitLine || {};
       return { kind: VEHICLE[line.vehicle?.type] || 'transit', line: line.nameShort || line.name || '', operator: line.agencies?.[0]?.name || '', headsign: t.headsign || '',
-        from: t.stopDetails?.departureStop?.name || '', to: t.stopDetails?.arrivalStop?.name || '', departs: t.stopDetails?.departureTime || '', arrives: t.stopDetails?.arrivalTime || '', stops: t.stopCount || 0 };
+        from: t.stopDetails?.departureStop?.name || '', to: t.stopDetails?.arrivalStop?.name || '', departs: localClock(t.stopDetails?.departureTime, t.localizedValues?.departureTime), arrives: localClock(t.stopDetails?.arrivalTime, t.localizedValues?.arrivalTime), stops: t.stopCount || 0 };
     })
   }));
 }

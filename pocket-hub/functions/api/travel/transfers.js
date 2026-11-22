@@ -1,12 +1,12 @@
-/* GET /api/travel/transfers?from=<lat,lon airport>&to=<lat,lon hotel>&time=<ISO>
+/* GET /api/travel/transfers?from=<lat,lon airport>&to=<lat,lon hotel>&time=<ISO, airport-local if no offset>&tz=<IANA zone>
    Airport-to-hotel options: public transport with schedules (Google Routes API, GOOGLE_MAPS_API_KEY), taxi and car-hire
    driving time, walking, plus train/bus stations, taxi ranks and car-hire desks at the airport (OpenStreetMap). */
-import { json, point, googleRoutes, osrm, airportServices } from '../../_lib/travel.js';
+import { json, point, localToUTC, googleRoutes, osrm, airportServices } from '../../_lib/travel.js';
 
 export async function onRequestGet({ request, env }, fetcher = fetch) {
   const u = new URL(request.url).searchParams, from = point(u.get('from')), to = point(u.get('to'));
   if (!from || !to) return json({ error: 'Airport and hotel locations are required' }, 400);
-  const time = Date.parse(u.get('time') || '') > Date.now() ? new Date(u.get('time')).toISOString() : undefined;
+  const utc = localToUTC(u.get('time'), u.get('tz'), from.lon), time = utc && Date.parse(utc) > Date.now() ? utc : undefined;
   const errors = [], google = !!env?.GOOGLE_MAPS_API_KEY, soft = (tag) => (e) => { errors.push(`${tag}-${e.status || 'error'}`); return null; };
   const [transit, drive, walk, services] = await Promise.all([
     google ? googleRoutes(from, to, 'TRANSIT', env, fetcher, time).catch(soft('google-transit')) : null,
