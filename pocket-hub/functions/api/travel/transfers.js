@@ -20,13 +20,15 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   let lateDay = day, lateAt = dayAt(day, '22:00', tz, from.lon);
   if (lateAt && Date.parse(lateAt) <= Date.now()) { lateDay = new Date(Date.parse(day) + 864e5).toISOString().slice(0, 10); lateAt = dayAt(lateDay, '22:00', tz, from.lon); }
   const lateTime = lateAt || undefined;
-  const services = await cached(`airport-services-v1/${from.lat.toFixed(3)},${from.lon.toFixed(3)}`, 86400, async () => {
+  const servicesP = cached(`airport-services-v1/${from.lat.toFixed(3)},${from.lon.toFixed(3)}`, 86400, async () => {
     const r = await airportServices(from, fetcher);
     if (!Object.values(r).some((x) => x.length)) throw Object.assign(new Error('No airport services found'), { status: 'empty' });
     return r;
   }).catch(soft('osm'));
+  /* Wait at most 6 s for the (usually edge-cached) station lookup before routing, so a slow Overpass miss cannot stall the reply. */
+  const early = await Promise.race([servicesP, new Promise((r) => setTimeout(r, 6000))]);
   /* Plan public transport from the airport's own station when OpenStreetMap has one: airport centroids can sit nearer another town's stop. */
-  const hub = (services?.stations || []).find((x) => AIRPORT_STATION.test(x.name) && x.distance <= 2500 && Number.isFinite(x.lat));
+  const hub = (early?.stations || []).find((x) => AIRPORT_STATION.test(x.name) && x.distance <= 2500 && Number.isFinite(x.lat));
   const start = hub ? { lat: hub.lat, lon: hub.lon } : from;
   const [transit, late, drive, walk] = await Promise.all([
     google ? googleRoutes(start, to, 'TRANSIT', env, fetcher, time).catch(soft('google-transit')) : openTransit(start, to, fetcher, time).catch(soft('open-transit')),
@@ -34,6 +36,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     (google ? googleRoutes(from, to, 'DRIVE', env, fetcher).then((r) => r[0] || null) : osrm(from, to, 'car', fetcher)).catch(soft('drive')),
     osrm(from, to, 'foot', fetcher, true).catch(soft('walk'))
   ]);
+  const services = await servicesP;
   const list = (x) => ((google ? x : x?.routes) || []).filter((r) => r.steps.some((st) => st.kind !== 'walk'));
   const routes = list(transit).slice(0, 5), lateBy = lateSummary(list(late));
   const open = !google && routes.length ? transit.provider : '', timetabled = google || !!open;
