@@ -110,3 +110,51 @@ export async function darwin(crs, env, fetcher, now = Date.now()) {
   const alerts = (d?.nrccMessages || []).map(m => String(m.Value ?? m.value ?? '').replace(/<[^>]*>/g, '').trim()).filter(Boolean).slice(0, 2);
   return { departures, alerts };
 }
+
+/* Keyless airport-to-hotel journey planning where an open national planner exists: Entur (Norway) and
+   transport.opendata.ch (Switzerland/Liechtenstein). Returns routes shaped like googleRoutes(), or null elsewhere. */
+const inBox = (p, [s, w, n, e]) => p.lat >= s && p.lat <= n && p.lon >= w && p.lon <= e;
+const NO_BOX = [57.9, 4.4, 71.3, 31.2], CH_BOX = [45.8, 5.9, 47.9, 10.6];
+const clock = (s) => (/T(\d{2}:\d{2})/.exec(s || '') || [])[1] || '';
+const SWISS_CAT = (c) => /^(B|BUS|NFB|KB|EXB|NB|BN|BP)$/i.test(c) ? 'bus' : /^(T|TRAM|NFT)$/i.test(c) ? 'tram' : /^(BAT|FAE|KAT)$/i.test(c) ? 'ferry' : 'train';
+export function openTransitProvider(from, to) {
+  if (inBox(from, NO_BOX) && inBox(to, NO_BOX)) return 'entur';
+  if (inBox(from, CH_BOX) && inBox(to, CH_BOX)) return 'swiss';
+  return '';
+}
+export async function openTransit(from, to, fetcher, departure) {
+  const provider = openTransitProvider(from, to);
+  if (provider === 'entur') {
+    const when = departure ? `,dateTime:"${new Date(departure).toISOString()}"` : '';
+    const query = `{trip(from:{coordinates:{latitude:${from.lat},longitude:${from.lon}}},to:{coordinates:{latitude:${to.lat},longitude:${to.lon}}},numTripPatterns:5${when}){tripPatterns{duration distance legs{mode distance expectedStartTime expectedEndTime fromPlace{name} toPlace{name} line{publicCode name authority{name}} fromEstimatedCall{destinationDisplay{frontText}} intermediateQuays{id}}}}}`;
+    const data = await fetchJSON(ENTUR, { method: 'POST', body: JSON.stringify({ query }),
+      headers: { 'Content-Type': 'application/json', 'ET-Client-Name': 'aivatrading-pockethub' } }, fetcher);
+    if (data?.errors?.length) throw Object.assign(new Error('Entur error'), { status: 'entur-error' });
+    return { provider: 'Entur', routes: (data?.data?.trip?.tripPatterns || []).map((p) => ({
+      minutes: Math.round((p.duration || 0) / 60), distance: Math.round(p.distance || 0), fare: null,
+      steps: (p.legs || []).filter((l) => l.line && ENTUR_MODE[l.mode]).map((l) => ({
+        kind: ENTUR_MODE[l.mode] === 'tube' ? 'train' : ENTUR_MODE[l.mode], line: l.line.publicCode || l.line.name || '', operator: l.line.authority?.name || '',
+        headsign: l.fromEstimatedCall?.destinationDisplay?.frontText || '', from: l.fromPlace?.name || '', to: l.toPlace?.name || '',
+        departs: clock(l.expectedStartTime), arrives: clock(l.expectedEndTime), stops: (l.intermediateQuays || []).length + 1 }))
+    })) };
+  }
+  if (provider === 'swiss') {
+    const q = new URLSearchParams({ from: `${from.lat},${from.lon}`, to: `${to.lat},${to.lon}`, limit: '4' });
+    if (departure) {
+      const local = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(departure));
+      q.set('date', local.slice(0, 10)); q.set('time', local.slice(11, 16));
+    }
+    const data = await fetchJSON(`${SWISS}/connections?${q}`, {}, fetcher, 15000);
+    return { provider: 'opendata.ch', routes: (data?.connections || []).map((c) => {
+      const [, d = 0, h = 0, m = 0] = /(\d+)d(\d+):(\d+)/.exec(c.duration || '') || [];
+      return { minutes: (+d) * 1440 + (+h) * 60 + (+m), distance: 0, fare: null,
+        steps: (c.sections || []).filter((s) => s.journey).map((s) => ({
+          kind: SWISS_CAT(s.journey.category || ''), line: `${s.journey.category || ''} ${s.journey.number || ''}`.trim(), operator: s.journey.operator || '',
+          headsign: s.journey.to || '', from: s.departure?.station?.name || '', to: s.arrival?.station?.name || '',
+          departs: clock(s.departure?.prognosis?.departure || s.departure?.departure), arrives: clock(s.arrival?.prognosis?.arrival || s.arrival?.arrival),
+          stops: Math.max(1, (s.journey.passList || []).length - 1) }))
+      };
+    }) };
+  }
+  return null;
+}

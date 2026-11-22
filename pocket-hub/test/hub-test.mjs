@@ -248,6 +248,17 @@ console.log('POCKET HUB CHECKS PASSED');
     return new Response(JSON.stringify({ elements: [] })); });
   d = await r.json();
   assert.equal(d.schedules, true); assert.equal(d.modes.train.routes[0].steps[0].line, '3'); assert.equal(d.modes.train.routes[0].minutes, 50); assert.equal(d.modes.taxi.minutes, 40);
+  r = await transfers({ request: rq('transfers?from=60.1976,11.1004&to=59.9127,10.7461'), env: {} }, fk([[/entur/, { data: { trip: { tripPatterns: [{ duration: 3592, distance: 46343, legs: [
+    { mode: 'foot', line: null, fromPlace: { name: 'Origin' }, toPlace: { name: 'Oslo lufthavn stasjon' } },
+    { mode: 'rail', expectedStartTime: '2026-11-22T23:30:00+01:00', expectedEndTime: '2026-11-22T23:52:00+01:00', fromPlace: { name: 'Oslo lufthavn stasjon' }, toPlace: { name: 'Oslo S' }, line: { publicCode: 'FLY1', authority: { name: 'Flytoget' } }, fromEstimatedCall: { destinationDisplay: { frontText: 'Drammen' } }, intermediateQuays: [{ id: 'q' }] }] }] } } }],
+    [/routed-car/, { routes: [{ duration: 2700, distance: 48000 }] }], [/routed-foot/, { routes: [{ duration: 36000, distance: 46000 }] }], [/overpass/, { elements: [] }]]));
+  d = await r.json();
+  assert.equal(d.schedules, true); assert.equal(d.modes.train.routes[0].steps[0].line, 'FLY1'); assert.equal(d.modes.train.routes[0].steps[0].departs, '23:30'); assert.equal(d.modes.train.routes[0].steps[0].stops, 2); assert.match(d.source, /Entur/);
+  r = await transfers({ request: rq('transfers?from=47.4581,8.5555&to=47.3769,8.5417'), env: {} }, fk([[/opendata\.ch\/v1\/connections/, { connections: [{ duration: '00d00:36:00', sections: [{ walk: { duration: 1080 }, journey: null, departure: { station: { name: 'x' } }, arrival: { station: { name: 'y' } } },
+    { journey: { category: 'B', number: '510', operator: 'PAG', to: 'Kaiserstuhl', passList: [1, 2, 3] }, departure: { station: { name: 'Zürich Flughafen, Bahnhof' }, departure: '2026-11-22T23:18:00+0100', prognosis: {} }, arrival: { station: { name: 'Kloten Balsberg' }, arrival: '2026-11-22T23:20:00+0100', prognosis: {} } }] }] }],
+    [/routed-car/, { routes: [{ duration: 1200, distance: 12000 }] }], [/routed-foot/, { routes: [{ duration: 9000, distance: 11000 }] }], [/overpass/, { elements: [] }]]));
+  d = await r.json();
+  assert.equal(d.modes.bus.routes[0].minutes, 36); assert.equal(d.modes.bus.routes[0].steps[0].line, 'B 510'); assert.equal(d.modes.bus.routes[0].steps[0].departs, '23:18'); assert.equal(d.modes.train.available, false);
   assert.match((await tmap({ request: rq('map?lat=23.13&lon=113.26'), env: {} })).headers.get('Location'), /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html/);
   assert.match((await tmap({ request: rq('map?from=1,2&to=3,4'), env: { GOOGLE_MAPS_EMBED_KEY: 'e' } })).headers.get('Location'), /^https:\/\/www\.google\.com\/maps\/embed\/v1\/directions\?key=e&origin=1,2&destination=3,4/);
   const { localToUTC, localClock } = await import('../functions/_lib/travel.js');
@@ -261,5 +272,48 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.doesNotMatch(travel, /<a [^>]*href="https?:/); assert.match(travel, /Aiva Search/);
   for (const id of ['asForm', 'asFrom', 'asTo', 'asDepart', 'asReturn', 'asPax', 'asTabs', 'asFlights', 'asHotels', 'asTransport', 'asTransfers', 'asMap', 'asTrip', 'asAttrib']) assert.match(html, new RegExp(`id="${id}"`));
   for (const t of ['flights', 'hotels', 'transport', 'maps', 'transfers']) assert.match(html, new RegExp(`data-as-tab="${t}"`));
+}
+// In-app hotel booking (Nuitee prebook + payment SDK + book): sandbox only unless HOTEL_BOOKING_LIVE.
+{
+  const { onRequestPost: hb } = await import('../functions/api/travel/hotel-book.js');
+  const req = (b, origin = 'https://app.aivatrading.uk') => new Request('https://app.aivatrading.uk/api/travel/hotel-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: origin, 'content-type': 'application/json' } });
+  let sent;
+  const up = (reply, status = 200) => async (url, init) => { sent = { url: String(url), body: JSON.parse(init.body), key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
+  const sb = { LITEAPI_KEY: 'sand_x' };
+  let r = await hb({ request: req({ action: 'prebook', offerId: 'off_123' }), env: sb }, up({ data: { prebookId: 'PB12345', transactionId: 'tr_12345', secretKey: 'pi_s', price: 329.6, currency: 'GBP', checkin: '2026-12-06', checkout: '2026-12-10', priceDifferencePercent: 0,
+    roomTypes: [{ rates: [{ name: 'Double', boardName: 'Breakfast included', cancellationPolicies: { refundableTag: 'RFN', cancelPolicyInfos: [{ cancelTime: '2026-12-04 12:00:00' }] }, retailRate: { taxesAndFees: [{ included: false, amount: 12 }] } }] }] } }));
+  let d = await r.json();
+  assert.equal(r.status, 200); assert.equal(sent.url, 'https://book.liteapi.travel/v3.0/rates/prebook'); assert.deepEqual(sent.body, { offerId: 'off_123', usePaymentSdk: true });
+  assert.deepEqual([d.prebookId, d.transactionId, d.secretKey, d.paymentEnv, d.testMode, d.board, d.refundable, d.taxesDue], ['PB12345', 'tr_12345', 'pi_s', 'sandbox', true, 'Breakfast included', true, 12]);
+  r = await hb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345', holder: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' } }), env: sb },
+    up({ data: { bookingId: 'BK9', status: 'CONFIRMED', hotelConfirmationCode: 'HC1', hotel: { name: 'Hotel Paris' }, price: 329.6, currency: 'GBP', checkin: '2026-12-06', checkout: '2026-12-10' } }));
+  d = await r.json();
+  assert.equal(sent.url, 'https://book.liteapi.travel/v3.0/rates/book'); assert.deepEqual(sent.body.payment, { method: 'TRANSACTION_ID', transactionId: 'tr_12345' }); assert.equal(sent.body.clientReference, 'aiva-PB12345');
+  assert.deepEqual([d.bookingId, d.status, d.confirmation, d.hotel], ['BK9', 'CONFIRMED', 'HC1', 'Hotel Paris']);
+  assert.equal((await hb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345', holder: { firstName: 'A', lastName: 'B', email: 'bad' } }), env: sb }, up({}))).status, 400);
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x' } }, up({}))).status, 403);
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }, 'https://evil.example'), env: sb }, up({}))).status, 403);
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: {} }, up({}))).status, 503);
+  r = await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: sb }, up({ error: { description: 'Rate no longer available' } }, 400));
+  assert.equal(r.status, 409); assert.equal((await r.json()).error, 'Rate no longer available');
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x', HOTEL_BOOKING_LIVE: 'true' } }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
+  // A confirmed booking whose reply was lost is recovered by clientReference instead of failing the retry.
+  r = await hb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345', holder: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' } }), env: sb },
+    async (url) => String(url).includes('/bookings?clientReference=aiva-PB12345') ? new Response(JSON.stringify({ data: [{ bookingId: 'BK9', status: 'CONFIRMED', hotel: { name: 'Hotel Paris' } }] })) : new Response(JSON.stringify({ error: { description: 'duplicate clientReference' } }), { status: 400 }));
+  assert.equal(r.status, 200); assert.equal((await r.json()).bookingId, 'BK9');
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'o'.repeat(1600) }), env: sb }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
+  assert.match(app, /payment-wrapper\.liteapi\.travel\/dist\/liteAPIPayment\.js/); assert.match(html, /id="asBookings"/);
+}
+// Keyless open planners: tram-only connections count as local transport; an empty planner reply is not timetable coverage.
+{
+  const { onRequestGet: tf } = await import('../functions/api/travel/transfers.js');
+  const osm = () => new Response(JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 59.65, lon: 17.93, tags: { railway: 'station', name: 'Arlanda C' } }] }));
+  const enturReply = (patterns) => async (url) => String(url).includes('entur') ? new Response(JSON.stringify({ data: { trip: { tripPatterns: patterns } } }))
+    : String(url).includes('routing.openstreetmap.de') ? new Response(JSON.stringify({ code: 'Ok', routes: [{ duration: 1800, distance: 20000 }] })) : osm();
+  const tramTrip = [{ duration: 1500, distance: 9000, legs: [{ mode: 'tram', line: { publicCode: '11', authority: { name: 'Ruter' } }, expectedStartTime: '2026-12-06T10:00:00+01:00', expectedEndTime: '2026-12-06T10:25:00+01:00', fromPlace: { name: 'A' }, toPlace: { name: 'B' }, intermediateQuays: [] }] }];
+  let d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.91,10.75&to=59.92,10.73'), env: {} }, enturReply(tramTrip))).json();
+  assert.equal(d.schedules, true); assert.equal(d.modes.bus.available, true); assert.equal(d.modes.bus.routes.length, 1);
+  d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.65,17.93&to=59.33,18.06'), env: {} }, enturReply([]))).json();
+  assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
 }
 console.log('AIVA SEARCH CHECKS PASSED');
