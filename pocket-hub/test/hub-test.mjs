@@ -212,3 +212,47 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
   for (const id of ['emLocate', 'emQuery', 'emSearch', 'emRadius', 'emNumbers', 'emTransport', 'emPlaces']) assert.match(html, new RegExp(`id="${id}"`));
 }
 console.log('POCKET HUB CHECKS PASSED');
+
+// Aiva Search: travel endpoints stay in-app and use provider data only.
+{
+  const { onRequestGet: flights } = await import('../functions/api/travel/flights.js');
+  const { onRequestGet: hotels } = await import('../functions/api/travel/hotels.js');
+  const { onRequestGet: transfers } = await import('../functions/api/travel/transfers.js');
+  const { onRequestGet: tmap } = await import('../functions/api/travel/map.js');
+  const rq = (p) => new Request('https://app.aivatrading.uk/api/travel/' + p);
+  const fk = (routes) => async (url) => { const hit = routes.find(([re]) => re.test(String(url))); return hit ? new Response(JSON.stringify(hit[1])) : new Response('{}', { status: 404 }); };
+  let r = await flights({ request: rq('flights?from=LHR&to=CAN&depart=2027-04-15'), env: {} });
+  assert.equal((await r.json()).configured, false);
+  assert.equal((await flights({ request: rq('flights?from=LH&to=CAN&depart=2027-04-15'), env: {} })).status, 400);
+  r = await flights({ request: rq('flights?from=LHR&to=CAN&depart=2027-04-15&return=2027-04-19&adults=1'), env: { DUFFEL_ACCESS_TOKEN: 't' } }, fk([[/duffel/, { data: { live_mode: true, offers: [
+    { id: 'o2', total_amount: '712.00', total_currency: 'GBP', owner: { name: 'Cathay Pacific', iata_code: 'CX' }, slices: [{ duration: 'PT12H30M', segments: [{ origin: { iata_code: 'LHR' }, destination: { iata_code: 'HKG' }, departing_at: '2027-04-15T21:35:00', arriving_at: '2027-04-16T17:05:00' }, { origin: { iata_code: 'HKG' }, destination: { iata_code: 'CAN' } }] }] },
+    { id: 'o1', total_amount: '689.00', total_currency: 'GBP', owner: { name: 'China Southern', iata_code: 'CZ' }, slices: [{ duration: 'PT12H35M', segments: [{ origin: { iata_code: 'LHR' }, destination: { iata_code: 'CAN' }, departing_at: '2027-04-15T11:00:00', arriving_at: '2027-04-16T06:35:00', marketing_carrier: { iata_code: 'CZ' }, marketing_carrier_flight_number: '304' }] }] }] } }]]));
+  let d = await r.json();
+  assert.deepEqual(d.offers.map((o) => [o.airline, o.price, o.slices[0].stops, o.slices[0].minutes]), [['China Southern', 689, 0, 755], ['Cathay Pacific', 712, 1, 750]]);
+  assert.deepEqual(d.offers[0].slices[0].flights, ['CZ304']);
+  r = await hotels({ request: rq('hotels?lat=23.13&lon=113.26&checkin=2027-04-15&checkout=2027-04-19'), env: { LITEAPI_KEY: 'k' } }, fk([
+    [/data\/hotels/, { data: [{ id: 'h1', name: 'Langham Place Guangzhou', stars: 5, latitude: 23.1, longitude: 113.3, main_photo: 'https://img/1.jpg' }, { id: 'h2', name: 'Full', latitude: 23.13, longitude: 113.26 }] }],
+    [/hotels\/rates/, { data: [{ hotelId: 'h1', roomTypes: [{ offerRetailRate: { amount: 432, currency: 'GBP' }, rates: [{ name: 'Deluxe King' }] }] }] }]]));
+  d = await r.json();
+  assert.equal(d.priced, true); assert.equal(d.hotels[0].name, 'Langham Place Guangzhou'); assert.equal(d.hotels[0].price.total, 432); assert.equal(d.hotels[1].available, false);
+  r = await hotels({ request: rq('hotels?lat=23.13&lon=113.26'), env: {} }, fk([[/overpass/, { elements: [{ type: 'node', id: 1, lat: 23.13, lon: 113.27, tags: { tourism: 'hotel', name: 'White Swan', stars: '5', wikimedia_commons: 'File:Swan.jpg' } }] }]]));
+  d = await r.json();
+  assert.equal(d.priced, false); assert.equal(d.hotels[0].price, null); assert.match(d.hotels[0].image, /Special:FilePath\/Swan\.jpg/);
+  r = await transfers({ request: rq('transfers?from=23.39,113.30&to=23.13,113.27'), env: {} }, fk([[/routed-car/, { routes: [{ duration: 2700, distance: 38000 }] }], [/routed-foot/, { routes: [{ duration: 30000, distance: 37000 }] }],
+    [/overpass/, { elements: [{ type: 'node', id: 2, lat: 23.392, lon: 113.30, tags: { railway: 'station', name: 'Airport South' } }, { type: 'node', id: 3, lat: 23.39, lon: 113.301, tags: { amenity: 'car_rental', name: 'Hertz' } }] }]]));
+  d = await r.json();
+  assert.equal(d.modes.taxi.minutes, 45); assert.equal(d.modes.walk.available, false); assert.equal(d.modes.car.places[0].name, 'Hertz'); assert.equal(d.modes.train.places[0].name, 'Airport South');
+  r = await transfers({ request: rq('transfers?from=23.39,113.30&to=23.13,113.27'), env: { GOOGLE_MAPS_API_KEY: 'g' } }, async (url, init) => {
+    if (/routes\.googleapis/.test(url)) { const mode = JSON.parse(init.body).travelMode; return new Response(JSON.stringify({ routes: [{ duration: mode === 'TRANSIT' ? '3000s' : '2400s', distanceMeters: 38000,
+      legs: [{ steps: mode === 'TRANSIT' ? [{ travelMode: 'TRANSIT', transitDetails: { transitLine: { nameShort: '3', vehicle: { type: 'SUBWAY' } }, stopDetails: { departureStop: { name: 'Airport South' }, arrivalStop: { name: 'Tiyu Xilu' }, departureTime: '2027-04-16T07:30:00Z' }, stopCount: 14 } }] : [] }] }] })); }
+    return new Response(JSON.stringify({ elements: [] })); });
+  d = await r.json();
+  assert.equal(d.schedules, true); assert.equal(d.modes.train.routes[0].steps[0].line, '3'); assert.equal(d.modes.train.routes[0].minutes, 50); assert.equal(d.modes.taxi.minutes, 40);
+  assert.match((await tmap({ request: rq('map?lat=23.13&lon=113.26'), env: {} })).headers.get('Location'), /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html/);
+  assert.match((await tmap({ request: rq('map?from=1,2&to=3,4'), env: { GOOGLE_MAPS_EMBED_KEY: 'e' } })).headers.get('Location'), /^https:\/\/www\.google\.com\/maps\/embed\/v1\/directions\?key=e&origin=1,2&destination=3,4/);
+  const travel = html.slice(html.indexOf('<section id="travel"'), html.indexOf('</section>', html.indexOf('<section id="travel"')));
+  assert.doesNotMatch(travel, /<a [^>]*href="https?:/); assert.match(travel, /Aiva Search/);
+  for (const id of ['asForm', 'asFrom', 'asTo', 'asDepart', 'asReturn', 'asPax', 'asTabs', 'asFlights', 'asHotels', 'asTransport', 'asTransfers', 'asMap', 'asTrip', 'asAttrib']) assert.match(html, new RegExp(`id="${id}"`));
+  for (const t of ['flights', 'hotels', 'transport', 'maps', 'transfers']) assert.match(html, new RegExp(`data-as-tab="${t}"`));
+}
+console.log('AIVA SEARCH CHECKS PASSED');
