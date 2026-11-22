@@ -172,6 +172,11 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
   assert.equal(d.stops[0].state, 'live'); assert.deepEqual(d.stops[0].alerts, ['Engineering works']);
   assert.deepEqual(d.stops[0].departures.map(x => x.status), ['Cancelled · a fault', 'On time']);
   assert.equal(d.stops[0].departures[1].platform, 'Platform 4');
+  r = await transport({ request: new Request('https://app.aivatrading.uk/api/emergency/transport?lat=53.4774&lon=-2.2309&cc=gb'), env: { RAIL_DATA_LDB_KEY: 'k' } },
+    fake([[/overpass/, { elements: [{ type: 'node', id: 5, lat: 53.4774, lon: -2.2309, tags: { railway: 'station', name: 'Manchester Piccadilly', 'ref:crs': 'MAN' } }] }],
+      [/raildata/, { generatedAt: new Date().toISOString(), trainServices: [{ std: new Date(Date.now() - 5 * 60000).toISOString().slice(11, 16), etd: 'Delayed', operator: 'Northern', destination: [{ locationName: 'Leeds' }] }] }]]));
+  d = await r.json();
+  assert.equal(d.stops[0].state, 'unverified'); assert.equal(d.stops[0].departures[0].unknownTime, true);
   r = await transport(req('transport?lat=53.4774&lon=-2.2309&cc=gb'), manc);
   assert.equal((await r.json()).stops[0].state, 'unverified');
   r = await transport(req('transport?lat=59.9111&lon=10.7528&cc=no'), fake([[/entur/, { errors: [{ message: 'x' }] }],

@@ -14,7 +14,7 @@ const byTime = list => list.sort((a, b) => Date.parse(a.expected) - Date.parse(b
 /* Common stop verdict: green only for live departures, red when every reported departure is cancelled. */
 export function verdict(departures, providerName) {
   const running = departures.filter(d => !d.cancelled);
-  const live = running.filter(d => d.realtime);
+  const live = running.filter(d => d.realtime && !d.unknownTime);
   if (departures.length && !running.length) return { state: 'closed', label: 'Cancelled · every listed departure is cancelled' };
   if (live.length) {
     const n = departures.length - running.length;
@@ -103,7 +103,8 @@ export async function darwin(crs, env, fetcher, now = Date.now()) {
       : /delayed/i.test(etd) ? 'Delayed' + (s.delayReason ? ` · ${s.delayReason}` : '') : late(Math.round((exp - plan) / 60000));
     return { line: s.operator || 'Train', lineId: s.serviceID || '', destination: (s.destination || []).map(x => x.locationName).join(' & '),
       platform: s.platform ? 'Platform ' + s.platform : '', expected: Number.isFinite(exp) ? new Date(exp).toISOString() : '', minutes: mins(exp, now),
-      realtime: /on time/i.test(etd) || hhmm(etd) || /delayed/i.test(etd), cancelled, status: /on time/i.test(etd) ? 'On time' : status };
+      realtime: /on time/i.test(etd) || hhmm(etd) || /delayed/i.test(etd), unknownTime: !cancelled && !hhmm(etd) && !/on time/i.test(etd),
+      cancelled, status: /on time/i.test(etd) ? 'On time' : status };
   }).filter(x => Number.isFinite(x.minutes));
   const alerts = (d?.nrccMessages || []).map(m => String(m.Value ?? m.value ?? '').replace(/<[^>]*>/g, '').trim()).filter(Boolean).slice(0, 2);
   return { departures, alerts };
