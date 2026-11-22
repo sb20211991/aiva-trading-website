@@ -49,6 +49,8 @@ jobs:
           curl -sf -m 30 -o "$RUNNER_TEMP/app.html" "$U/"; grep -qF '<meta name="application-name" content="Aiva">' "$RUNNER_TEMP/app.html"
           for p in /app.js /service-worker.js /manifest.webmanifest /icon-192.png; do printf '%s %s\n' "$p" "$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")"; done
           printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
+          grep -q 'id="asForm"' "$RUNNER_TEMP/app.html"
+          U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'
         run: python3 scripts/move-app-domain.py

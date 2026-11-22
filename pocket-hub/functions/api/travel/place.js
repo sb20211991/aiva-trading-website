@@ -20,6 +20,10 @@ export async function onRequestGet({ request }, fetcher = fetch) {
   if (!raw) return json({ error: 'Enter a city, airport or IATA code' }, 400);
   const code = (/\(([A-Za-z]{3})\)\s*$/.exec(raw)?.[1] || (/^[A-Za-z]{3}$/.test(raw) ? raw : '')).toUpperCase();
   const name = raw.replace(/\([A-Za-z]{3}\)\s*$/, '').trim();
+  if (!code) {
+    const cityCode = Object.keys(CITY_NAMES).find((k) => CITY_NAMES[k].toLowerCase() === name.toLowerCase());
+    if (cityCode) return onRequestGet({ request: new Request(`https://x/?q=${encodeURIComponent(`${CITY_NAMES[cityCode]} (${cityCode})`)}`) }, fetcher);
+  }
   const codes = CITY_CODES[code] || (byCode.has(code) ? [code] : []);
   if (codes.length) {
     const first = shape(byCode.get(codes.find((c) => byCode.has(c))));
