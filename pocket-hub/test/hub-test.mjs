@@ -247,7 +247,7 @@ console.log('POCKET HUB CHECKS PASSED');
       legs: [{ steps: mode === 'TRANSIT' ? [{ travelMode: 'TRANSIT', transitDetails: { transitLine: { nameShort: '3', vehicle: { type: 'SUBWAY' } }, stopDetails: { departureStop: { name: 'Airport South' }, arrivalStop: { name: 'Tiyu Xilu' }, departureTime: '2027-04-16T07:30:00Z' }, stopCount: 14 } }] : [] }] }] })); }
     return new Response(JSON.stringify({ elements: [] })); });
   d = await r.json();
-  assert.equal(d.schedules, true); assert.equal(d.modes.train.routes[0].steps[0].line, '3'); assert.equal(d.modes.train.routes[0].minutes, 50); assert.equal(d.modes.taxi.minutes, 40);
+  assert.equal(d.schedules, true); assert.equal(d.modes.metro.routes[0].steps[0].line, '3'); assert.equal(d.modes.metro.routes[0].minutes, 50); assert.equal(d.modes.train.available, false); assert.equal(d.modes.taxi.minutes, 40);
   r = await transfers({ request: rq('transfers?from=60.1976,11.1004&to=59.9127,10.7461'), env: {} }, fk([[/entur/, { data: { trip: { tripPatterns: [{ duration: 3592, distance: 46343, legs: [
     { mode: 'foot', line: null, fromPlace: { name: 'Origin' }, toPlace: { name: 'Oslo lufthavn stasjon' } },
     { mode: 'rail', expectedStartTime: '2026-11-22T23:30:00+01:00', expectedEndTime: '2026-11-22T23:52:00+01:00', fromPlace: { name: 'Oslo lufthavn stasjon' }, toPlace: { name: 'Oslo S' }, line: { publicCode: 'FLY1', authority: { name: 'Flytoget' } }, fromEstimatedCall: { destinationDisplay: { frontText: 'Drammen' } }, intermediateQuays: [{ id: 'q' }] }] }] } } }],
@@ -258,9 +258,51 @@ console.log('POCKET HUB CHECKS PASSED');
     { journey: { category: 'B', number: '510', operator: 'PAG', to: 'Kaiserstuhl', passList: [1, 2, 3] }, departure: { station: { name: 'Zürich Flughafen, Bahnhof' }, departure: '2026-11-22T23:18:00+0100', prognosis: {} }, arrival: { station: { name: 'Kloten Balsberg' }, arrival: '2026-11-22T23:20:00+0100', prognosis: {} } }] }] }],
     [/routed-car/, { routes: [{ duration: 1200, distance: 12000 }] }], [/routed-foot/, { routes: [{ duration: 9000, distance: 11000 }] }], [/overpass/, { elements: [] }]]));
   d = await r.json();
-  assert.equal(d.modes.bus.routes[0].minutes, 36); assert.equal(d.modes.bus.routes[0].steps[0].line, 'B 510'); assert.equal(d.modes.bus.routes[0].steps[0].departs, '23:18'); assert.equal(d.modes.train.available, false);
+  assert.equal(d.modes.bus.routes[0].minutes, 36); assert.equal(d.modes.bus.routes[0].steps[0].kind, 'walk'); assert.equal(d.modes.bus.routes[0].steps[0].line, 'Walk 18 min'); assert.equal(d.modes.bus.routes[0].steps[1].line, 'B 510'); assert.equal(d.modes.bus.routes[0].steps[1].departs, '23:18'); assert.equal(d.modes.train.available, false);
   assert.match((await tmap({ request: rq('map?lat=23.13&lon=113.26'), env: {} })).headers.get('Location'), /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html/);
   assert.match((await tmap({ request: rq('map?from=1,2&to=3,4'), env: { GOOGLE_MAPS_EMBED_KEY: 'e' } })).headers.get('Location'), /^https:\/\/www\.google\.com\/maps\/embed\/v1\/directions\?key=e&origin=1,2&destination=3,4/);
+  { // Nuitee flights: one way, multi-city legs, cabin and children/infants
+    let sent;
+    const seg = (o, d, dep, arr, n) => ({ originCode: o, destinationCode: d, departureTime: dep, arrivalTime: arr, direction: 'OUTBOUND', carrier: { marketingCode: 'ND', marketingName: 'Nuitee Air' }, flight: { marketingNumber: n }, duration: { minutes: 90 } });
+    const nf = async (url, init) => { sent = JSON.parse(init.body); return new Response(JSON.stringify({ data: [{ journeys: [{ segments: [seg('LHR', 'CDG', '2027-04-10T08:00:00', '2027-04-10T10:00:00', '1'), seg('CDG', 'FCO', '2027-04-14T09:00:00', '2027-04-14T11:00:00', '2'), seg('FCO', 'MAD', '2027-04-14T12:30:00', '2027-04-14T15:00:00', '3')],
+      cheapestOffer: { offerId: 'o1', pricing: { display: { total: 300, currency: 'GBP', perPassenger: { adult: { total: 120 }, child: { total: 60 } } } }, fare: { family: 'Light', seatsRemaining: 3 }, segmentFares: [{ cabin: 'Business' }], baggage: { hasCheckedBag: true, included: [{ pieces: 1, description: 'Checked bag 23kg' }] }, terms: { refundable: true } } }] }] })); };
+    let d = await (await flights({ request: rq('flights?legs=LHR:CDG:2027-04-10,CDG:MAD:2027-04-14&adults=2&children=1&infants=3&cabin=business'), env: { LITEAPI_KEY: 'sand_x' } }, nf)).json();
+    assert.equal(d.query.trip, 'multi'); assert.equal(sent.legs.length, 2); assert.equal(sent.legs[0].direction, undefined); assert.equal(sent.cabinClass, 'BUSINESS'); assert.equal(sent.children, 1); assert.equal(sent.infants, 2);
+    assert.equal(d.offers[0].slices.length, 2); assert.equal(d.offers[0].slices[1].from, 'CDG'); assert.equal(d.offers[0].slices[1].to, 'MAD'); assert.equal(d.offers[0].slices[1].stops, 1);
+    assert.equal(d.offers[0].seatsLeft, 3); assert.equal(d.offers[0].bags.checked, true); assert.equal(d.offers[0].perPassenger.child, 60);
+    d = await (await flights({ request: rq('flights?from=LHR&to=CDG&depart=2027-04-10'), env: { LITEAPI_KEY: 'sand_x' } }, nf)).json();
+    assert.equal(d.query.trip, 'oneway'); assert.equal(sent.legs.length, 1); assert.equal(sent.cabinClass, 'ECONOMY');
+    assert.equal((await flights({ request: rq('flights?legs=LHR:CDG:2027-04-10'), env: { LITEAPI_KEY: 'k' } })).status, 400);
+    assert.equal((await flights({ request: rq('flights?legs=LHR:CDG:2027-04-10,CDG:MAD:2027-04-01'), env: { LITEAPI_KEY: 'k' } })).status, 400);
+    const { journeySlices, shapeJourney } = await import('../functions/_lib/travel.js');
+    const s2 = (o, d, dep, arr, m) => ({ originCode: o, destinationCode: d, departureTime: dep, arrivalTime: arr, direction: 'OUTBOUND', duration: { minutes: m } });
+    // overnight connection in AMS on the next leg's date must not split leg 1; leg 2 starts at the requested CDG
+    const legs = [{ from: 'JFK', to: 'CDG', date: '2027-04-10' }, { from: 'CDG', to: 'FCO', date: '2027-04-11' }];
+    const segs = [s2('JFK', 'AMS', '2027-04-10T18:00:00', '2027-04-11T07:00:00', 420), s2('AMS', 'CDG', '2027-04-11T14:00:00', '2027-04-11T15:20:00', 80), s2('CDG', 'FCO', '2027-04-11T22:00:00', '2027-04-12T00:05:00', 125)];
+    assert.deepEqual(journeySlices(segs, legs).map((g) => g.length), [2, 1]);
+    // open jaw connecting through the next leg's origin: LHR→CDG→FCO, then CDG→MAD
+    const oj = [s2('LHR', 'CDG', '2027-04-10T08:00:00', '2027-04-10T10:00:00', 70), s2('CDG', 'FCO', '2027-04-10T11:00:00', '2027-04-10T13:00:00', 120), s2('CDG', 'MAD', '2027-04-14T09:00:00', '2027-04-14T11:00:00', 120)];
+    assert.deepEqual(journeySlices(oj, [{ from: 'LHR', to: 'FCO', date: '2027-04-10' }, { from: 'CDG', to: 'MAD', date: '2027-04-14' }]).map((g) => g.length), [2, 1]);
+    // city code destination with a same-day 4 h stop: LHR→PAR, CDG→FCO
+    const cc = [s2('LHR', 'CDG', '2027-04-10T08:00:00', '2027-04-10T10:00:00', 70), s2('CDG', 'FCO', '2027-04-10T14:00:00', '2027-04-10T16:00:00', 120)];
+    assert.deepEqual(journeySlices(cc, [{ from: 'LHR', to: 'PAR', date: '2027-04-10' }, { from: 'CDG', to: 'FCO', date: '2027-04-10' }]).map((g) => g.length), [1, 1]);
+    // city destination with a connection at the next leg's origin: LHR→CDG→FCO (ROM), then CDG→MAD the same day
+    const rj = [s2('LHR', 'CDG', '2027-04-10T06:00:00', '2027-04-10T08:00:00', 70), s2('CDG', 'FCO', '2027-04-10T10:00:00', '2027-04-10T12:00:00', 120), s2('CDG', 'MAD', '2027-04-10T18:00:00', '2027-04-10T20:00:00', 120)];
+    assert.deepEqual(journeySlices(rj, [{ from: 'LHR', to: 'ROM', date: '2027-04-10' }, { from: 'CDG', to: 'MAD', date: '2027-04-10' }]).map((g) => g.length), [2, 1]);
+    const sj = shapeJourney({ segments: segs, legDurations: [{ direction: 'OUTBOUND', duration: { minutes: 999 } }], cheapestOffer: { pricing: { display: { total: 1 } } } }, legs);
+    assert.equal(sj.slices[0].minutes, 420 + 420 + 80); assert.equal(sj.slices[1].minutes, 125);
+    const { onRequestGet: hotelsFn } = await import('../functions/api/travel/hotels.js');
+    let occ;
+    await hotelsFn({ request: rq('hotels?lat=48.85&lon=2.35&checkin=2027-04-10&checkout=2027-04-12&adults=2&children=8,1'), env: { LITEAPI_KEY: 'sand_x' } }, async (url, init) => {
+      if (/data\/hotels/.test(url)) return new Response(JSON.stringify({ data: [{ id: 'h1', name: 'H', latitude: 48.85, longitude: 2.35 }] }));
+      occ = JSON.parse(init.body).occupancies; return new Response(JSON.stringify({ data: [] })); });
+    assert.deepEqual(occ, [{ adults: 2, children: [8, 1] }]);
+    const { lateSummary } = await import('../functions/_lib/transit.js');
+    const late = lateSummary([{ steps: [{ kind: 'train', departs: '23:40' }] }, { steps: [{ kind: 'train', departs: '00:50' }] }, { steps: [{ kind: 'bus', departs: '02:10' }] }, { steps: [{ kind: 'metro', departs: '04:55' }] }]);
+    assert.deepEqual(late.train, { last: '00:50', night: false }); assert.equal(late.bus.night, true); assert.equal(late.metro, undefined);
+    const { rideHailing } = await import('../functions/_lib/rides.js');
+    assert.ok(rideHailing('GB').includes('Uber')); assert.deepEqual(rideHailing('zz'), []);
+  }
   const { localToUTC, localClock } = await import('../functions/_lib/travel.js');
   assert.equal(localToUTC('2027-04-16T06:10:00', 'Asia/Shanghai'), '2027-04-15T22:10:00.000Z');
   assert.equal(localToUTC('2027-07-16T06:10:00', 'Europe/London'), '2027-07-16T05:10:00.000Z');
@@ -271,7 +313,9 @@ console.log('POCKET HUB CHECKS PASSED');
   const travel = html.slice(html.indexOf('<section id="travel"'), html.indexOf('</section>', html.indexOf('<section id="travel"')));
   assert.doesNotMatch(travel, /<a [^>]*href="https?:/); assert.match(travel, /Aiva Search/);
   for (const id of ['asForm', 'asFrom', 'asTo', 'asDepart', 'asReturn', 'asPax', 'asTabs', 'asFlights', 'asHotels', 'asTransport', 'asTransfers', 'asMap', 'asTrip', 'asAttrib']) assert.match(html, new RegExp(`id="${id}"`));
-  for (const t of ['flights', 'hotels', 'transport', 'maps', 'transfers']) assert.match(html, new RegExp(`data-as-tab="${t}"`));
+  for (const t of ['flights', 'hotels', 'taxi', 'train', 'metro', 'tram', 'bus', 'car', 'walk', 'ride', 'transport', 'maps']) assert.match(html, new RegExp(`data-as-tab="${t}"`));
+  for (const t of ['oneway', 'return', 'multi']) assert.match(html, new RegExp(`data-as-trip="${t}"`));
+  for (const id of ['asCabin', 'asChildren', 'asInfants', 'asFlex', 'asLegs', 'asFlexDays', 'asModes']) assert.match(html, new RegExp(`id="${id}"`));
 }
 // In-app hotel booking (Nuitee prebook + payment SDK + book): sandbox only unless HOTEL_BOOKING_LIVE.
 {
@@ -312,7 +356,9 @@ console.log('POCKET HUB CHECKS PASSED');
     : String(url).includes('routing.openstreetmap.de') ? new Response(JSON.stringify({ code: 'Ok', routes: [{ duration: 1800, distance: 20000 }] })) : osm();
   const tramTrip = [{ duration: 1500, distance: 9000, legs: [{ mode: 'tram', line: { publicCode: '11', authority: { name: 'Ruter' } }, expectedStartTime: '2026-12-06T10:00:00+01:00', expectedEndTime: '2026-12-06T10:25:00+01:00', fromPlace: { name: 'A' }, toPlace: { name: 'B' }, intermediateQuays: [] }] }];
   let d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.91,10.75&to=59.92,10.73'), env: {} }, enturReply(tramTrip))).json();
-  assert.equal(d.schedules, true); assert.equal(d.modes.bus.available, true); assert.equal(d.modes.bus.routes.length, 1);
+  assert.equal(d.schedules, true); assert.equal(d.modes.tram.available, true); assert.equal(d.modes.tram.routes.length, 1); assert.equal(d.modes.bus.available, false);
+  d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.91,10.75&to=59.92,10.73'), env: {} }, enturReply([{ duration: 900, distance: 1200, legs: [{ mode: 'foot', distance: 1200, expectedStartTime: '2026-12-06T10:00:00+01:00', expectedEndTime: '2026-12-06T10:15:00+01:00', fromPlace: { name: 'Origin' }, toPlace: { name: 'Destination' } }] }]))).json();
+  assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
   d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.65,17.93&to=59.33,18.06'), env: {} }, enturReply([]))).json();
   assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
 }
