@@ -157,10 +157,12 @@ for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate
     [/overpass/, { elements: [{ type: 'node', id: 7, lat: 50.8456, lon: 4.357, tags: { railway: 'station', name: 'Bruxelles-Central', uic_ref: '8813003' } }] }],
     [/irail.*id=BE\.NMBS\.008813003/, { departures: { departure: [
       { station: 'Ostend', time: String(Math.floor(Date.now() / 1000) + 300), delay: '0', canceled: '1', vehicleinfo: { shortname: 'IC 1' }, platform: '3' },
-      { station: 'Liège', time: String(Math.floor(Date.now() / 1000) + 600), delay: '120', canceled: '0', vehicleinfo: { shortname: 'IC 2' }, platform: '1' }] } }]]));
+      { station: 'Liège', time: String(Math.floor(Date.now() / 1000) + 600), delay: '600', canceled: '0', vehicleinfo: { shortname: 'IC 2' }, platform: '1' },
+      { station: 'Ghent', time: String(Math.floor(Date.now() / 1000) + 900), delay: '0', canceled: '0', vehicleinfo: { shortname: 'IC 3' }, platform: '2' }] } }]]));
   d = await r.json();
   assert.equal(d.stops[0].state, 'live'); assert.match(d.stops[0].label, /1 cancelled$/); assert.match(d.source, /iRail/);
-  assert.deepEqual(d.stops[0].departures.map(x => [x.cancelled, x.status]), [[true, 'Cancelled'], [false, '2 min late']]);
+  assert.deepEqual(d.stops[0].departures.map(x => [x.line, x.status]), [['IC 1', 'Cancelled'], ['IC 3', ''], ['IC 2', '10 min late']]);
+  assert.match(d.stops[0].label, /^Live · next IC 3 in 1[45] min/);
   const manc = fake([[/overpass/, { elements: [{ type: 'node', id: 5, lat: 53.4774, lon: -2.2309, tags: { railway: 'station', name: 'Manchester Piccadilly', 'ref:crs': 'MAN' } }] }],
     [/raildata.*GetDepBoardWithDetails\/MAN/, { generatedAt: new Date().toISOString(), nrccMessages: [{ Value: '<p>Engineering works</p>' }], trainServices: [
       { std: new Date(Date.now() + 10 * 60000).toISOString().slice(11, 16), etd: 'Cancelled', isCancelled: true, cancelReason: 'a fault', operator: 'Northern', destination: [{ locationName: 'Leeds' }] },

@@ -9,6 +9,7 @@ export const LDB = 'https://api1.raildata.org.uk/1010-live-departure-board-dep1_
 
 const mins = (t, now) => Math.max(0, Math.round((t - now) / 60000));
 const late = d => d >= 1 ? `${d} min late` : '';
+const byTime = list => list.sort((a, b) => Date.parse(a.expected) - Date.parse(b.expected));
 
 /* Common stop verdict: green only for live departures, red when every reported departure is cancelled. */
 export function verdict(departures, providerName) {
@@ -34,9 +35,10 @@ export async function entur(origin, radius, fetcher, now = Date.now()) {
     const departures = calls.map(c => {
       const t = Date.parse(c.expectedDepartureTime || c.aimedDepartureTime), line = c.serviceJourney?.line || {};
       return { line: line.publicCode || line.name || '', lineId: line.id || '', destination: c.destinationDisplay?.frontText || '',
-        platform: c.quay?.publicCode || '', expected: new Date(t).toISOString(), minutes: mins(t, now), realtime: !!c.realtime,
+        platform: c.quay?.publicCode || '', expected: Number.isFinite(t) ? new Date(t).toISOString() : '', minutes: mins(t, now), realtime: !!c.realtime,
         cancelled: !!c.cancellation, status: c.cancellation ? 'Cancelled' : late(Math.round((t - Date.parse(c.aimedDepartureTime)) / 60000)) };
     }).filter(x => Number.isFinite(x.minutes));
+    byTime(departures);
     const alerts = [...new Set(calls.flatMap(c => (c.situations || []).map(s => (s.summary?.find(v => v.language === 'en') || s.summary?.[0])?.value).filter(Boolean)))].slice(0, 2);
     const modes = [...new Set((p.transportMode || []).map(m => ENTUR_MODE[m]).filter(Boolean))];
     return { id: p.id, name: p.name, indicator: '', modes: modes.length ? modes : ['bus'], distance: Math.round(d), lat: p.latitude, lon: p.longitude,
@@ -60,6 +62,7 @@ export async function swiss(origin, radius, fetcher, now = Date.now()) {
         expected: Number.isFinite(t) ? new Date(t).toISOString() : '', minutes: mins(t, now), realtime: Number.isFinite(prog) || Number.isFinite(j.stop?.delay),
         cancelled: false, status: late(Number(j.stop?.delay) || 0) };
     }).filter(x => Number.isFinite(x.minutes));
+    byTime(departures);
     const base = { id: s.id, name: s.name, indicator: '', modes: [SWISS_MODE[s.icon] || 'train'], distance: Math.round(s.distance ?? 0),
       lat: s.coordinate?.x, lon: s.coordinate?.y, departures: departures.slice(0, 8), lines: [], alerts: [], timetable: false,
       links: [] };
@@ -72,12 +75,12 @@ export async function swiss(origin, radius, fetcher, now = Date.now()) {
 export async function irail(uic, fetcher, now = Date.now()) {
   const id = 'BE.NMBS.00' + String(uic).replace(/\D/g, '').slice(-7).padStart(7, '0');
   const d = await fetchJSON(`${IRAIL}/liveboard/?id=${id}&format=json&lang=en&arrdep=departure`, {}, fetcher);
-  return (d?.departures?.departure || []).map(x => {
+  return byTime((d?.departures?.departure || []).map(x => {
     const delay = Number(x.delay) || 0, t = (Number(x.time) + delay) * 1000, cancelled = x.canceled === '1';
     return { line: x.vehicleinfo?.shortname || '', lineId: x.vehicle || '', destination: x.station || '', platform: x.platform || '',
-      expected: new Date(t).toISOString(), minutes: mins(t, now), realtime: true, cancelled,
+      expected: Number.isFinite(t) ? new Date(t).toISOString() : '', minutes: mins(t, now), realtime: true, cancelled,
       status: cancelled ? 'Cancelled' : late(Math.round(delay / 60)) };
-  }).filter(x => Number.isFinite(x.minutes) && (t => t >= now - 60000)(Date.parse(x.expected))).slice(0, 8);
+  }).filter(x => Number.isFinite(x.minutes) && Date.parse(x.expected) >= now - 60000)).slice(0, 8);
 }
 
 /* Great Britain National Rail (Darwin, via the Rail Data Marketplace) by CRS code. Needs RAIL_DATA_LDB_KEY. */
