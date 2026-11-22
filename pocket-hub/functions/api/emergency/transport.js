@@ -109,7 +109,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const radius = Math.min(1000, Math.max(200, Math.round(Number(url.searchParams.get('radius')) || 600)));
   const cc = (url.searchParams.get('cc') || '').toLowerCase();
   const key = `${radius}-${origin.lat},${origin.lon}`, now = () => new Date().toISOString();
-  const live = stops => stops.some(s => s.departures?.length);
+  const live = stops => stops.some(s => s.state === 'live');
   const provider = inLondon(origin) ? 'tfl' : cc === 'no' ? 'entur' : cc === 'ch' || cc === 'li' ? 'swiss' : 'osm';
   let upstreamErrors = [];
   try {
