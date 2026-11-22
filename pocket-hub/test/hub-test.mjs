@@ -280,6 +280,9 @@ console.log('POCKET HUB CHECKS PASSED');
     const legs = [{ from: 'JFK', to: 'CDG', date: '2027-04-10' }, { from: 'CDG', to: 'FCO', date: '2027-04-11' }];
     const segs = [s2('JFK', 'AMS', '2027-04-10T18:00:00', '2027-04-11T07:00:00', 420), s2('AMS', 'CDG', '2027-04-11T14:00:00', '2027-04-11T15:20:00', 80), s2('CDG', 'FCO', '2027-04-11T22:00:00', '2027-04-12T00:05:00', 125)];
     assert.deepEqual(journeySlices(segs, legs).map((g) => g.length), [2, 1]);
+    // open jaw connecting through the next leg's origin: LHR→CDG→FCO, then CDG→MAD
+    const oj = [s2('LHR', 'CDG', '2027-04-10T08:00:00', '2027-04-10T10:00:00', 70), s2('CDG', 'FCO', '2027-04-10T11:00:00', '2027-04-10T13:00:00', 120), s2('CDG', 'MAD', '2027-04-14T09:00:00', '2027-04-14T11:00:00', 120)];
+    assert.deepEqual(journeySlices(oj, [{ from: 'LHR', to: 'FCO', date: '2027-04-10' }, { from: 'CDG', to: 'MAD', date: '2027-04-14' }]).map((g) => g.length), [2, 1]);
     const sj = shapeJourney({ segments: segs, legDurations: [{ direction: 'OUTBOUND', duration: { minutes: 999 } }], cheapestOffer: { pricing: { display: { total: 1 } } } }, legs);
     assert.equal(sj.slices[0].minutes, 420 + 420 + 80); assert.equal(sj.slices[1].minutes, 125);
     const { onRequestGet: hotelsFn } = await import('../functions/api/travel/hotels.js');

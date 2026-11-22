@@ -67,8 +67,8 @@ export function journeySlices(segs, legs = []) {
     segs.forEach((g, i) => {
       const prev = segs[i - 1], next = legs[k + 1];
       if (i && next) {
-        const exact = prev.destinationCode === legs[k].to || g.originCode === next.from;
-        const known = [legs[k].to, next.from].some((c) => segs.some((x) => x.originCode === c || x.destinationCode === c));
+        const exact = prev.destinationCode === legs[k].to;
+        const known = segs.some((x) => x.destinationCode === legs[k].to);
         const gap = Date.parse(g.departureTime) - Date.parse(prev.arrivalTime);
         if (exact || (!known && String(g.departureTime).slice(0, 10) >= next.date && gap >= 6 * 3600e3)) k++;
       }
