@@ -31,7 +31,7 @@ async function call(path, body, env, fetcher, timeout) {
 async function existing(clientReference, env, fetcher) {
   const res = await fetcher(`${BOOK}/bookings?clientReference=${encodeURIComponent(clientReference)}`, { signal: AbortSignal.timeout(20000), headers: { 'X-API-Key': env.LITEAPI_KEY, Accept: 'application/json' } });
   const data = res.ok ? await res.json() : null;
-  return (data?.data || []).find((b) => b?.bookingId && b.status !== 'FAILED') || null;
+  return (data?.data || []).find((b) => b?.bookingId && !/FAIL|CANCEL/i.test(b.status || '')) || null;
 }
 export const shapePrebook = (p) => {
   const r = p.roomTypes?.[0]?.rates?.[0] || {}, cp = r.cancellationPolicies || {};
