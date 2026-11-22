@@ -59,7 +59,8 @@ const segOf = (g) => ({ from: g.originCode || '', fromName: g.originName || '', 
   flight: `${g.carrier?.marketingCode || ''}${g.flight?.marketingNumber || ''}`, airline: g.carrier?.marketingName || '', operator: g.carrier?.operatingName || '', minutes: g.duration?.minutes || 0 });
 /* Splits a journey's segments into one slice per requested leg: by direction for returns; for multi-city, at the requested
    leg endpoints when the airport codes match, otherwise (city codes such as PAR) on/after the next leg's date when the
-   segment leaves from the next leg's origin or after a stopover of 6 h or more. */
+   segment leaves from the next leg's origin or after a stopover of 6 h or more, unless a later open-jaw break marks the
+   real boundary. A segment that does not start where the previous one ended always starts a new leg. */
 export function journeySlices(segs, legs = []) {
   const groups = [];
   if (legs.length > 2 || (legs.length === 2 && segs.every((g) => (g.direction || 'OUTBOUND') === 'OUTBOUND'))) {
@@ -71,7 +72,9 @@ export function journeySlices(segs, legs = []) {
         const known = segs.some((x) => x.destinationCode === legs[k].to);
         const gap = Date.parse(g.departureTime) - Date.parse(prev.arrivalTime);
         const onDate = String(g.departureTime).slice(0, 10) >= next.date;
-        if (exact || (!known && onDate && (g.originCode === next.from || gap >= 6 * 3600e3))) k++;
+        const broken = g.originCode !== prev.destinationCode;
+        const laterBreak = segs.slice(i + 1).some((x, j) => x.originCode !== segs[i + j].destinationCode);
+        if (exact || broken || (!known && onDate && !laterBreak && (g.originCode === next.from || gap >= 6 * 3600e3))) k++;
       }
       (groups[k] ||= []).push(g);
     });
