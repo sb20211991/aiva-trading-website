@@ -100,7 +100,8 @@ export async function darwin(crs, env, fetcher, now = Date.now()) {
     const etd = s.etd || '', cancelled = !!s.isCancelled || /cancel/i.test(etd);
     const plan = darwinTime(s.std, d.generatedAt), exp = hhmm(etd) ? darwinTime(etd, d.generatedAt) : plan;
     const status = cancelled ? 'Cancelled' + (s.cancelReason ? ` · ${s.cancelReason}` : '')
-      : /delayed/i.test(etd) ? 'Delayed' + (s.delayReason ? ` · ${s.delayReason}` : '') : late(Math.round((exp - plan) / 60000));
+      : /delayed/i.test(etd) ? 'Delayed' + (s.delayReason ? ` · ${s.delayReason}` : '')
+      : hhmm(etd) ? late(Math.round((exp - plan) / 60000)) : /on time/i.test(etd) ? '' : etd || 'No estimate reported';
     return { line: s.operator || 'Train', lineId: s.serviceID || '', destination: (s.destination || []).map(x => x.locationName).join(' & '),
       platform: s.platform ? 'Platform ' + s.platform : '', expected: Number.isFinite(exp) ? new Date(exp).toISOString() : '', minutes: mins(exp, now),
       realtime: /on time/i.test(etd) || hhmm(etd) || /delayed/i.test(etd), unknownTime: !cancelled && !hhmm(etd) && !/on time/i.test(etd),
