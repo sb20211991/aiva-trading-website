@@ -21,6 +21,6 @@ export async function onRequestGet({ request }, fetcher = fetch) {
     });
     if (!result) return json({ error: 'Place not found. Try a town, street or postcode.' }, 404);
     return json({ ...result, source: 'OpenStreetMap Nominatim' }, 200, 3600);
-  } catch { return json({ error: 'Location service is unavailable. Please try again.' }, 502); }
+  } catch { return json({ error: 'Location service is unavailable. Please try again.' }, 503); }
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);
