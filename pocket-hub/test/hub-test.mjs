@@ -351,6 +351,8 @@ console.log('POCKET HUB CHECKS PASSED');
   const tramTrip = [{ duration: 1500, distance: 9000, legs: [{ mode: 'tram', line: { publicCode: '11', authority: { name: 'Ruter' } }, expectedStartTime: '2026-12-06T10:00:00+01:00', expectedEndTime: '2026-12-06T10:25:00+01:00', fromPlace: { name: 'A' }, toPlace: { name: 'B' }, intermediateQuays: [] }] }];
   let d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.91,10.75&to=59.92,10.73'), env: {} }, enturReply(tramTrip))).json();
   assert.equal(d.schedules, true); assert.equal(d.modes.tram.available, true); assert.equal(d.modes.tram.routes.length, 1); assert.equal(d.modes.bus.available, false);
+  d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.91,10.75&to=59.92,10.73'), env: {} }, enturReply([{ duration: 900, distance: 1200, legs: [{ mode: 'foot', distance: 1200, expectedStartTime: '2026-12-06T10:00:00+01:00', expectedEndTime: '2026-12-06T10:15:00+01:00', fromPlace: { name: 'Origin' }, toPlace: { name: 'Destination' } }] }]))).json();
+  assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
   d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.65,17.93&to=59.33,18.06'), env: {} }, enturReply([]))).json();
   assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
 }

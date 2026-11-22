@@ -34,7 +34,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     (google ? googleRoutes(from, to, 'DRIVE', env, fetcher).then((r) => r[0] || null) : osrm(from, to, 'car', fetcher)).catch(soft('drive')),
     osrm(from, to, 'foot', fetcher, true).catch(soft('walk'))
   ]);
-  const list = (x) => ((google ? x : x?.routes) || []).filter((r) => r.steps.length);
+  const list = (x) => ((google ? x : x?.routes) || []).filter((r) => r.steps.some((st) => st.kind !== 'walk'));
   const routes = list(transit).slice(0, 5), lateBy = lateSummary(list(late));
   const open = !google && routes.length ? transit.provider : '', timetabled = google || !!open;
   const s = services || { stations: [], busStations: [], carRental: [], taxiRanks: [] };
