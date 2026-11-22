@@ -97,7 +97,7 @@ export async function osmHotels({ lat, lon }, fetcher = fetch) {
       image: /^https:\/\/upload\.wikimedia\.org\//.test(t.image || '') ? t.image : commons(t.wikimedia_commons?.startsWith('File:') ? t.wikimedia_commons : ''),
       distance: distanceM({ lat, lon }, p), available: null, price: null
     };
-  }).filter((h) => h.name && Number.isFinite(h.lat))
+  }).filter((h) => h.name && h.name.trim().length > 3 && !/^(test|hotel|fixme)$/i.test(h.name.trim()) && Number.isFinite(h.lat))
     .sort((a, b) => (!!b.image - !!a.image) || ((b.stars || 0) - (a.stars || 0)) || a.distance - b.distance).slice(0, 15);
 }
 
