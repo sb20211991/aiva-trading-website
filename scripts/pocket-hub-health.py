@@ -1,5 +1,5 @@
 """Aiva Search health check: fails (non-zero exit) when a travel endpoint errors or returns no results.
-Providers that are not connected yet are reported as warnings, not failures. U = base URL to check."""
+Providers without credentials are warnings; a configured provider that errors or returns nothing fails. U = base URL to check."""
 import json, os, sys, urllib.request, datetime
 
 U = os.environ.get('U', 'https://app.aivatrading.uk').rstrip('/')
@@ -21,11 +21,13 @@ def check(name, path, test):
         print(f'FAIL {name}: {e}')
 
 def place(j):
-    assert j.get('airports'), 'no airports'
+    iatas = {a['iata'] for a in j.get('airports') or []}
+    assert j.get('code') == 'PAR' and {'CDG', 'ORY'} <= iatas, f"Paris should be PAR with CDG+ORY, got {j.get('code')} {sorted(iatas)}"
     return f"{j['code']} {[a['iata'] for a in j['airports']]}"
 
 def hotels(j):
     assert j.get('hotels'), 'no hotels'
+    assert not j.get('upstreamErrors'), f"LiteAPI failed: {j['upstreamErrors']}"
     if not j.get('priced'): warn.append('hotels: no live prices (' + (j.get('note') or j.get('provider', '')) + ')')
     return f"{j.get('provider')} priced={j.get('priced')} n={len(j['hotels'])}"
 
@@ -38,6 +40,8 @@ def flights(j):
 def transfers(j):
     m = j.get('modes') or {}
     assert m.get('taxi', {}).get('minutes'), 'no drive route'
+    bad = [e for e in j.get('upstreamErrors') or [] if not e.startswith('osm-')]
+    assert not bad, f'routing provider failed: {bad}'
     if not j.get('schedules'): warn.append('transfers: no live train/bus timetables (Google Routes not connected)')
     return f"taxi {m['taxi']['minutes']} min, upstream errors {j.get('upstreamErrors')}"
 
