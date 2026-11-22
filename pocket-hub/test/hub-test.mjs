@@ -283,6 +283,9 @@ console.log('POCKET HUB CHECKS PASSED');
     // open jaw connecting through the next leg's origin: LHR→CDG→FCO, then CDG→MAD
     const oj = [s2('LHR', 'CDG', '2027-04-10T08:00:00', '2027-04-10T10:00:00', 70), s2('CDG', 'FCO', '2027-04-10T11:00:00', '2027-04-10T13:00:00', 120), s2('CDG', 'MAD', '2027-04-14T09:00:00', '2027-04-14T11:00:00', 120)];
     assert.deepEqual(journeySlices(oj, [{ from: 'LHR', to: 'FCO', date: '2027-04-10' }, { from: 'CDG', to: 'MAD', date: '2027-04-14' }]).map((g) => g.length), [2, 1]);
+    // city code destination with a same-day 4 h stop: LHR→PAR, CDG→FCO
+    const cc = [s2('LHR', 'CDG', '2027-04-10T08:00:00', '2027-04-10T10:00:00', 70), s2('CDG', 'FCO', '2027-04-10T14:00:00', '2027-04-10T16:00:00', 120)];
+    assert.deepEqual(journeySlices(cc, [{ from: 'LHR', to: 'PAR', date: '2027-04-10' }, { from: 'CDG', to: 'FCO', date: '2027-04-10' }]).map((g) => g.length), [1, 1]);
     const sj = shapeJourney({ segments: segs, legDurations: [{ direction: 'OUTBOUND', duration: { minutes: 999 } }], cheapestOffer: { pricing: { display: { total: 1 } } } }, legs);
     assert.equal(sj.slices[0].minutes, 420 + 420 + 80); assert.equal(sj.slices[1].minutes, 125);
     const { onRequestGet: hotelsFn } = await import('../functions/api/travel/hotels.js');
