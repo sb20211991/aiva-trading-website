@@ -262,4 +262,30 @@ console.log('POCKET HUB CHECKS PASSED');
   for (const id of ['asForm', 'asFrom', 'asTo', 'asDepart', 'asReturn', 'asPax', 'asTabs', 'asFlights', 'asHotels', 'asTransport', 'asTransfers', 'asMap', 'asTrip', 'asAttrib']) assert.match(html, new RegExp(`id="${id}"`));
   for (const t of ['flights', 'hotels', 'transport', 'maps', 'transfers']) assert.match(html, new RegExp(`data-as-tab="${t}"`));
 }
+// In-app hotel booking (Nuitee prebook + payment SDK + book): sandbox only unless HOTEL_BOOKING_LIVE.
+{
+  const { onRequestPost: hb } = await import('../functions/api/travel/hotel-book.js');
+  const req = (b, origin = 'https://app.aivatrading.uk') => new Request('https://app.aivatrading.uk/api/travel/hotel-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: origin, 'content-type': 'application/json' } });
+  let sent;
+  const up = (reply, status = 200) => async (url, init) => { sent = { url: String(url), body: JSON.parse(init.body), key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
+  const sb = { LITEAPI_KEY: 'sand_x' };
+  let r = await hb({ request: req({ action: 'prebook', offerId: 'off_123' }), env: sb }, up({ data: { prebookId: 'PB12345', transactionId: 'tr_12345', secretKey: 'pi_s', price: 329.6, currency: 'GBP', checkin: '2026-12-06', checkout: '2026-12-10', priceDifferencePercent: 0,
+    roomTypes: [{ rates: [{ name: 'Double', boardName: 'Breakfast included', cancellationPolicies: { refundableTag: 'RFN', cancelPolicyInfos: [{ cancelTime: '2026-12-04 12:00:00' }] }, retailRate: { taxesAndFees: [{ included: false, amount: 12 }] } }] }] } }));
+  let d = await r.json();
+  assert.equal(r.status, 200); assert.equal(sent.url, 'https://book.liteapi.travel/v3.0/rates/prebook'); assert.deepEqual(sent.body, { offerId: 'off_123', usePaymentSdk: true });
+  assert.deepEqual([d.prebookId, d.transactionId, d.secretKey, d.paymentEnv, d.testMode, d.board, d.refundable, d.taxesDue], ['PB12345', 'tr_12345', 'pi_s', 'sandbox', true, 'Breakfast included', true, 12]);
+  r = await hb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345', holder: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' } }), env: sb },
+    up({ data: { bookingId: 'BK9', status: 'CONFIRMED', hotelConfirmationCode: 'HC1', hotel: { name: 'Hotel Paris' }, price: 329.6, currency: 'GBP', checkin: '2026-12-06', checkout: '2026-12-10' } }));
+  d = await r.json();
+  assert.equal(sent.url, 'https://book.liteapi.travel/v3.0/rates/book'); assert.deepEqual(sent.body.payment, { method: 'TRANSACTION_ID', transactionId: 'tr_12345' }); assert.equal(sent.body.clientReference, 'aiva-PB12345');
+  assert.deepEqual([d.bookingId, d.status, d.confirmation, d.hotel], ['BK9', 'CONFIRMED', 'HC1', 'Hotel Paris']);
+  assert.equal((await hb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345', holder: { firstName: 'A', lastName: 'B', email: 'bad' } }), env: sb }, up({}))).status, 400);
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x' } }, up({}))).status, 403);
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }, 'https://evil.example'), env: sb }, up({}))).status, 403);
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: {} }, up({}))).status, 503);
+  r = await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: sb }, up({ error: { description: 'Rate no longer available' } }, 400));
+  assert.equal(r.status, 409); assert.equal((await r.json()).error, 'Rate no longer available');
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x', HOTEL_BOOKING_LIVE: 'true' } }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
+  assert.match(app, /payment-wrapper\.liteapi\.travel\/dist\/liteAPIPayment\.js/); assert.match(html, /id="asBookings"/);
+}
 console.log('AIVA SEARCH CHECKS PASSED');
