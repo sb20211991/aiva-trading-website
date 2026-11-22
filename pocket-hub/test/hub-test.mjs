@@ -248,6 +248,17 @@ console.log('POCKET HUB CHECKS PASSED');
     return new Response(JSON.stringify({ elements: [] })); });
   d = await r.json();
   assert.equal(d.schedules, true); assert.equal(d.modes.train.routes[0].steps[0].line, '3'); assert.equal(d.modes.train.routes[0].minutes, 50); assert.equal(d.modes.taxi.minutes, 40);
+  r = await transfers({ request: rq('transfers?from=60.1976,11.1004&to=59.9127,10.7461'), env: {} }, fk([[/entur/, { data: { trip: { tripPatterns: [{ duration: 3592, distance: 46343, legs: [
+    { mode: 'foot', line: null, fromPlace: { name: 'Origin' }, toPlace: { name: 'Oslo lufthavn stasjon' } },
+    { mode: 'rail', expectedStartTime: '2026-11-22T23:30:00+01:00', expectedEndTime: '2026-11-22T23:52:00+01:00', fromPlace: { name: 'Oslo lufthavn stasjon' }, toPlace: { name: 'Oslo S' }, line: { publicCode: 'FLY1', authority: { name: 'Flytoget' } }, fromEstimatedCall: { destinationDisplay: { frontText: 'Drammen' } }, intermediateQuays: [{ id: 'q' }] }] }] } } }],
+    [/routed-car/, { routes: [{ duration: 2700, distance: 48000 }] }], [/routed-foot/, { routes: [{ duration: 36000, distance: 46000 }] }], [/overpass/, { elements: [] }]]));
+  d = await r.json();
+  assert.equal(d.schedules, true); assert.equal(d.modes.train.routes[0].steps[0].line, 'FLY1'); assert.equal(d.modes.train.routes[0].steps[0].departs, '23:30'); assert.equal(d.modes.train.routes[0].steps[0].stops, 2); assert.match(d.source, /Entur/);
+  r = await transfers({ request: rq('transfers?from=47.4581,8.5555&to=47.3769,8.5417'), env: {} }, fk([[/opendata\.ch\/v1\/connections/, { connections: [{ duration: '00d00:36:00', sections: [{ walk: { duration: 1080 }, journey: null, departure: { station: { name: 'x' } }, arrival: { station: { name: 'y' } } },
+    { journey: { category: 'B', number: '510', operator: 'PAG', to: 'Kaiserstuhl', passList: [1, 2, 3] }, departure: { station: { name: 'Zürich Flughafen, Bahnhof' }, departure: '2026-11-22T23:18:00+0100', prognosis: {} }, arrival: { station: { name: 'Kloten Balsberg' }, arrival: '2026-11-22T23:20:00+0100', prognosis: {} } }] }] }],
+    [/routed-car/, { routes: [{ duration: 1200, distance: 12000 }] }], [/routed-foot/, { routes: [{ duration: 9000, distance: 11000 }] }], [/overpass/, { elements: [] }]]));
+  d = await r.json();
+  assert.equal(d.modes.bus.routes[0].minutes, 36); assert.equal(d.modes.bus.routes[0].steps[0].line, 'B 510'); assert.equal(d.modes.bus.routes[0].steps[0].departs, '23:18'); assert.equal(d.modes.train.available, false);
   assert.match((await tmap({ request: rq('map?lat=23.13&lon=113.26'), env: {} })).headers.get('Location'), /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html/);
   assert.match((await tmap({ request: rq('map?from=1,2&to=3,4'), env: { GOOGLE_MAPS_EMBED_KEY: 'e' } })).headers.get('Location'), /^https:\/\/www\.google\.com\/maps\/embed\/v1\/directions\?key=e&origin=1,2&destination=3,4/);
   const { localToUTC, localClock } = await import('../functions/_lib/travel.js');
