@@ -119,10 +119,10 @@ export function parseOpeningHours(raw) {
       }
     }
     for (const d of days) {
-      if (!rule.additional) week[d] = week[d].filter(iv => iv.carry);
+      if (!rule.additional) { week[d] = week[d].filter(iv => iv.carry); const n = (d + 1) % 7; week[n] = week[n].filter(iv => !(iv.carry && iv.from === d)); }
       for (const [s, e] of spans) {
         if (e > s && e <= 1440) week[d].push([s, e]);
-        else { week[d].push([s, 1440]); const over = e > 1440 ? e - 1440 : e; if (over > 0) week[(d + 1) % 7].push(Object.assign([0, over], { carry: true })); }
+        else { week[d].push([s, 1440]); const over = e > 1440 ? e - 1440 : e; if (over > 0) week[(d + 1) % 7].push(Object.assign([0, over], { carry: true, from: d })); }
       }
     }
   }
