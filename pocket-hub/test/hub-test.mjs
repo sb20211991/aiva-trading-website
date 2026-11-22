@@ -286,6 +286,11 @@ console.log('POCKET HUB CHECKS PASSED');
   r = await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: sb }, up({ error: { description: 'Rate no longer available' } }, 400));
   assert.equal(r.status, 409); assert.equal((await r.json()).error, 'Rate no longer available');
   assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x', HOTEL_BOOKING_LIVE: 'true' } }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
+  // A confirmed booking whose reply was lost is recovered by clientReference instead of failing the retry.
+  r = await hb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345', holder: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' } }), env: sb },
+    async (url) => String(url).includes('/bookings?clientReference=aiva-PB12345') ? new Response(JSON.stringify({ data: [{ bookingId: 'BK9', status: 'CONFIRMED', hotel: { name: 'Hotel Paris' } }] })) : new Response(JSON.stringify({ error: { description: 'duplicate clientReference' } }), { status: 400 }));
+  assert.equal(r.status, 200); assert.equal((await r.json()).bookingId, 'BK9');
+  assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'o'.repeat(1600) }), env: sb }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
   assert.match(app, /payment-wrapper\.liteapi\.travel\/dist\/liteAPIPayment\.js/); assert.match(html, /id="asBookings"/);
 }
 console.log('AIVA SEARCH CHECKS PASSED');

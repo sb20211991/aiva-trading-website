@@ -17,7 +17,7 @@ const allowedOrigin = (request) => {
   } catch { return false; }
 };
 const clean = (s, n = 60) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
-const id = (s) => /^[A-Za-z0-9_\-=.]{4,600}$/.test(s || '') ? s : '';
+const id = (s) => /^[A-Za-z0-9_\-=.]{4,4000}$/.test(s || '') ? s : '';
 const email = (s) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s || '') ? s : '';
 
 async function call(path, body, env, fetcher, timeout) {
@@ -27,6 +27,11 @@ async function call(path, body, env, fetcher, timeout) {
   try { data = await res.json(); } catch { /* non-JSON upstream reply */ }
   if (!res.ok || data?.error) throw Object.assign(new Error(clean(data?.error?.description || data?.error?.message || data?.message || `HTTP ${res.status}`, 200)), { status: res.status });
   return data?.data ?? data;
+}
+async function existing(clientReference, env, fetcher) {
+  const res = await fetcher(`${BOOK}/bookings?clientReference=${encodeURIComponent(clientReference)}`, { signal: AbortSignal.timeout(20000), headers: { 'X-API-Key': env.LITEAPI_KEY, Accept: 'application/json' } });
+  const data = res.ok ? await res.json() : null;
+  return (data?.data || []).find((b) => b?.bookingId && b.status !== 'FAILED') || null;
 }
 export const shapePrebook = (p) => {
   const r = p.roomTypes?.[0]?.rates?.[0] || {}, cp = r.cancellationPolicies || {};
@@ -62,8 +67,15 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       const holder = { firstName: clean(h.firstName), lastName: clean(h.lastName), email: email(clean(h.email, 254)) };
       if (!prebookId || !transactionId) return json({ error: 'Booking reference missing. Please start again.' }, 400);
       if (!holder.firstName || !holder.lastName || !holder.email) return json({ error: 'Enter the guest\'s first name, last name and email.' }, 400);
-      const b = await call('/rates/book', { prebookId, clientReference: `aiva-${prebookId}`, holder, payment: { method: 'TRANSACTION_ID', transactionId },
-        guests: [{ occupancyNumber: 1, ...holder }] }, env, fetcher, 60000);
+      const clientReference = `aiva-${prebookId}`;
+      let b;
+      try {
+        b = await call('/rates/book', { prebookId, clientReference, holder, payment: { method: 'TRANSACTION_ID', transactionId },
+          guests: [{ occupancyNumber: 1, ...holder }] }, env, fetcher, 60000);
+      } catch (e) {
+        b = await existing(clientReference, env, fetcher).catch(() => null);
+        if (!b) throw e;
+      }
       if (!b?.bookingId) return json({ error: 'The hotel did not confirm the booking. If you were charged, the hold is released within 1-2 business days.' }, 503);
       return json({ ...shapeBooking(b), testMode });
     }
