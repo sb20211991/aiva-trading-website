@@ -53,6 +53,35 @@ export async function duffelFlights({ from, to, depart, ret, adults, currency },
   return { offers: offers.slice(0, 10), currency: offers[0]?.currency || currency, live: !!data?.data?.live_mode };
 }
 
+/* Nuitee (LiteAPI) flights: same X-API-Key as hotels; journeys are shaped like Duffel offers. */
+export const isSandboxKey = (k) => /^sand_/.test(k || '');
+export function shapeJourney(j) {
+  const o = j.cheapestOffer || j.offers?.[0] || {}, segs = j.segments || [], c = segs[0]?.carrier || {};
+  const dirs = [...new Set(segs.map((g) => g.direction || 'OUTBOUND'))];
+  const slices = dirs.map((d) => {
+    const ss = segs.filter((g) => (g.direction || 'OUTBOUND') === d), first = ss[0] || {}, last = ss.at(-1) || {};
+    return { from: first.originCode || '', to: last.destinationCode || '', departing: first.departureTime || '', arriving: last.arrivalTime || '', arrivingTz: '',
+      minutes: j.legDurations?.find((l) => l.direction === d)?.duration?.minutes || 0, stops: Math.max(0, ss.length - 1),
+      flights: ss.map((g) => `${g.carrier?.marketingCode || ''}${g.flight?.marketingNumber || ''}`).filter(Boolean) };
+  });
+  const bags = (o.baggage?.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}`).join(', ');
+  return { id: o.offerId || j.journeyKey, airline: c.marketingName || '', airlineCode: c.marketingCode || '', logo: c.marketingLogo || '',
+    price: Number(o.pricing?.display?.total), currency: o.pricing?.display?.currency || '', expires: o.expiration || '', slices,
+    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || 'No checked bag included',
+    refundable: !!o.terms?.refundable, changeable: !!o.terms?.changeable };
+}
+export async function nuiteeFlights({ from, to, depart, ret, adults, currency }, env, fetcher = fetch) {
+  const legs = [{ origin: from, destination: to, date: depart, direction: 'OUTBOUND' }];
+  if (ret) legs.push({ origin: to, destination: from, date: ret, direction: 'INBOUND' });
+  const data = await fetchJSON(`${LITEAPI}/flights/rates`, {
+    method: 'POST', headers: { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ legs, adults, currency, country: 'GB', sort: { sortBy: 'price', sortOrder: 'asc' } })
+  }, fetcher, 28000);
+  const offers = (data?.data?.[0]?.journeys || []).map(shapeJourney).filter((o) => Number.isFinite(o.price) && o.slices.length);
+  offers.sort((a, b) => a.price - b.price);
+  return { offers: offers.slice(0, 10), currency: offers[0]?.currency || currency, live: !isSandboxKey(env.LITEAPI_KEY) };
+}
+
 /* ---------- Hotels ---------- */
 const commons = (f) => f ? 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(String(f).replace(/^File:/i, '')) + '?width=480' : '';
 export async function liteHotels({ lat, lon, checkin, checkout, adults, currency }, env, fetcher = fetch) {
@@ -70,7 +99,9 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, currency
       const a = Number(rt.offerRetailRate?.amount ?? rt.rates?.[0]?.retailRate?.total?.[0]?.amount);
       if (Number.isFinite(a) && (!price[r.hotelId] || a < price[r.hotelId].total))
         price[r.hotelId] = { total: a, currency: rt.offerRetailRate?.currency || rt.rates?.[0]?.retailRate?.total?.[0]?.currency || currency, room: rt.rates?.[0]?.name || '', offerId: rt.offerId || '',
-          refundable: rt.rates?.[0]?.cancellationPolicies?.refundableTag === 'RFN' };
+          refundable: rt.rates?.[0]?.cancellationPolicies?.refundableTag === 'RFN', board: rt.rates?.[0]?.boardName || '',
+          cancelBy: rt.rates?.[0]?.cancellationPolicies?.cancelPolicyInfos?.[0]?.cancelTime || '',
+          taxesDue: (rt.rates?.[0]?.retailRate?.taxesAndFees || []).filter((t) => t.included === false).reduce((n, t) => n + (Number(t.amount) || 0), 0) };
     }
   }
   return hotels.map((h) => ({

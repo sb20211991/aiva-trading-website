@@ -1,6 +1,6 @@
 /* GET /api/travel/hotels?lat=&lon=&checkin=&checkout=&adults=&currency=
    LiteAPI live rates and photos when LITEAPI_KEY is set; otherwise real hotels from OpenStreetMap without prices. */
-import { json, point, isDate, clampInt, liteHotels, osmHotels } from '../../_lib/travel.js';
+import { json, point, isDate, clampInt, liteHotels, osmHotels, isSandboxKey } from '../../_lib/travel.js';
 
 export async function onRequestGet({ request, env }, fetcher = fetch) {
   const u = new URL(request.url).searchParams, p = point(`${u.get('lat')},${u.get('lon')}`);
@@ -12,7 +12,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   if (env?.LITEAPI_KEY && dated) {
     try {
       const hotels = await liteHotels(q, env, fetcher);
-      if (hotels.length) return json({ priced: true, hotels, provider: 'LiteAPI', source: 'Hotel rates and photos by LiteAPI (Nuitee)', retrieved: new Date().toISOString() });
+      if (hotels.length) return json({ priced: true, hotels, provider: 'LiteAPI', testMode: isSandboxKey(env.LITEAPI_KEY), source: 'Hotel rates and photos by LiteAPI (Nuitee)', retrieved: new Date().toISOString() });
     } catch (e) { errors.push('liteapi-' + (e.status || 'error')); }
   }
   try {
