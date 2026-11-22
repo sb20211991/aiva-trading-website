@@ -7,6 +7,7 @@ import { openTransit, transitZone, lateSummary } from '../../_lib/transit.js';
 import { rideHailing } from '../../_lib/rides.js';
 
 const PUBLIC = ['train', 'metro', 'tram', 'bus'];
+const AIRPORT_STATION = /airport|flughafen|a[ée]roport|aeroporto|aeropuerto|lufthavn|flygplats|lentoasema|lotnisko|luchthaven|havaliman/i;
 const dayAt = (day, hm, tz, lon) => localToUTC(`${day}T${hm}:00`, tz, lon);
 
 export async function onRequestGet({ request, env }, fetcher = fetch) {
@@ -19,16 +20,19 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   let lateDay = day, lateAt = dayAt(day, '22:00', tz, from.lon);
   if (lateAt && Date.parse(lateAt) <= Date.now()) { lateDay = new Date(Date.parse(day) + 864e5).toISOString().slice(0, 10); lateAt = dayAt(lateDay, '22:00', tz, from.lon); }
   const lateTime = lateAt || undefined;
-  const [transit, late, drive, walk, services] = await Promise.all([
-    google ? googleRoutes(from, to, 'TRANSIT', env, fetcher, time).catch(soft('google-transit')) : openTransit(from, to, fetcher, time).catch(soft('open-transit')),
-    google ? (lateTime ? googleRoutes(from, to, 'TRANSIT', env, fetcher, lateTime).catch(soft('google-late')) : null) : openTransit(from, to, fetcher, lateTime, true).catch(soft('open-late')),
+  const services = await cached(`airport-services-v1/${from.lat.toFixed(3)},${from.lon.toFixed(3)}`, 86400, async () => {
+    const r = await airportServices(from, fetcher);
+    if (!Object.values(r).some((x) => x.length)) throw Object.assign(new Error('No airport services found'), { status: 'empty' });
+    return r;
+  }).catch(soft('osm'));
+  /* Plan public transport from the airport's own station when OpenStreetMap has one: airport centroids can sit nearer another town's stop. */
+  const hub = (services?.stations || []).find((x) => AIRPORT_STATION.test(x.name) && x.distance <= 2500 && Number.isFinite(x.lat));
+  const start = hub ? { lat: hub.lat, lon: hub.lon } : from;
+  const [transit, late, drive, walk] = await Promise.all([
+    google ? googleRoutes(start, to, 'TRANSIT', env, fetcher, time).catch(soft('google-transit')) : openTransit(start, to, fetcher, time).catch(soft('open-transit')),
+    google ? (lateTime ? googleRoutes(start, to, 'TRANSIT', env, fetcher, lateTime).catch(soft('google-late')) : null) : openTransit(start, to, fetcher, lateTime, true).catch(soft('open-late')),
     (google ? googleRoutes(from, to, 'DRIVE', env, fetcher).then((r) => r[0] || null) : osrm(from, to, 'car', fetcher)).catch(soft('drive')),
-    osrm(from, to, 'foot', fetcher, true).catch(soft('walk')),
-    cached(`airport-services-v1/${from.lat.toFixed(3)},${from.lon.toFixed(3)}`, 86400, async () => {
-      const r = await airportServices(from, fetcher);
-      if (!Object.values(r).some((x) => x.length)) throw Object.assign(new Error('No airport services found'), { status: 'empty' });
-      return r;
-    }).catch(soft('osm'))
+    osrm(from, to, 'foot', fetcher, true).catch(soft('walk'))
   ]);
   const list = (x) => ((google ? x : x?.routes) || []).filter((r) => r.steps.length);
   const routes = list(transit).slice(0, 5), lateBy = lateSummary(list(late));
@@ -49,7 +53,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const sources = [google ? 'Routes and schedules: Google Maps Platform' : 'Road and walking routes: FOSSGIS OSRM (routing.openstreetmap.de)',
     ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : 'transport.opendata.ch (Switzerland)'}`] : []),
     'Stations, taxi ranks and car hire: © OpenStreetMap contributors'];
-  return json({ modes, schedules: timetabled, lateChecked: !!(late && lateTime), lateDay, upstreamErrors: errors, source: sources.join(' · '), retrieved: new Date().toISOString(),
+  return json({ modes, schedules: timetabled, lateChecked: !!(late && lateTime), lateDay, transitFrom: hub?.name || '', upstreamErrors: errors, source: sources.join(' · '), retrieved: new Date().toISOString(),
     note: timetabled ? '' : 'Live train, metro, tram and bus timetables for this airport need the Google Routes connection; stations at the airport are listed below.' });
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);

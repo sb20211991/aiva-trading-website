@@ -258,7 +258,7 @@ console.log('POCKET HUB CHECKS PASSED');
     { journey: { category: 'B', number: '510', operator: 'PAG', to: 'Kaiserstuhl', passList: [1, 2, 3] }, departure: { station: { name: 'Zürich Flughafen, Bahnhof' }, departure: '2026-11-22T23:18:00+0100', prognosis: {} }, arrival: { station: { name: 'Kloten Balsberg' }, arrival: '2026-11-22T23:20:00+0100', prognosis: {} } }] }] }],
     [/routed-car/, { routes: [{ duration: 1200, distance: 12000 }] }], [/routed-foot/, { routes: [{ duration: 9000, distance: 11000 }] }], [/overpass/, { elements: [] }]]));
   d = await r.json();
-  assert.equal(d.modes.bus.routes[0].minutes, 36); assert.equal(d.modes.bus.routes[0].steps[0].line, 'B 510'); assert.equal(d.modes.bus.routes[0].steps[0].departs, '23:18'); assert.equal(d.modes.train.available, false);
+  assert.equal(d.modes.bus.routes[0].minutes, 36); assert.equal(d.modes.bus.routes[0].steps[0].kind, 'walk'); assert.equal(d.modes.bus.routes[0].steps[0].line, 'Walk 18 min'); assert.equal(d.modes.bus.routes[0].steps[1].line, 'B 510'); assert.equal(d.modes.bus.routes[0].steps[1].departs, '23:18'); assert.equal(d.modes.train.available, false);
   assert.match((await tmap({ request: rq('map?lat=23.13&lon=113.26'), env: {} })).headers.get('Location'), /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html/);
   assert.match((await tmap({ request: rq('map?from=1,2&to=3,4'), env: { GOOGLE_MAPS_EMBED_KEY: 'e' } })).headers.get('Location'), /^https:\/\/www\.google\.com\/maps\/embed\/v1\/directions\?key=e&origin=1,2&destination=3,4/);
   { // Nuitee flights: one way, multi-city legs, cabin and children/infants

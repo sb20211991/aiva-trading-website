@@ -117,6 +117,9 @@ const inBox = (p, [s, w, n, e]) => p.lat >= s && p.lat <= n && p.lon >= w && p.l
 const NO_BOX = [57.9, 4.4, 71.3, 31.2], CH_BOX = [45.8, 5.9, 47.9, 10.6];
 const clock = (s) => (/T(\d{2}:\d{2})/.exec(s || '') || [])[1] || '';
 const SWISS_CAT = (c) => /^(B|BUS|NFB|KB|EXB|NB|BN|BP)$/i.test(c) ? 'bus' : /^(T|TRAM|NFT)$/i.test(c) ? 'tram' : /^(BAT|FAE|KAT)$/i.test(c) ? 'ferry' : /^M$/i.test(c) ? 'metro' : 'train';
+const place = (n) => !n || n === 'Origin' || /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(n) ? 'Start' : n === 'Destination' ? 'Destination' : n;
+const walkStep = (from, to, departs, arrives, minutes) => ({ kind: 'walk', line: `Walk ${Math.max(1, Math.round(minutes || 0))} min`, operator: '', headsign: '',
+  from: place(from), to: place(to), departs, arrives, stops: 0 });
 export function openTransitProvider(from, to) {
   if (inBox(from, NO_BOX) && inBox(to, NO_BOX)) return 'entur';
   if (inBox(from, CH_BOX) && inBox(to, CH_BOX)) return 'swiss';
@@ -132,7 +135,7 @@ export async function openTransit(from, to, fetcher, departure, late = false) {
     if (data?.errors?.length) throw Object.assign(new Error('Entur error'), { status: 'entur-error' });
     return { provider: 'Entur', routes: (data?.data?.trip?.tripPatterns || []).map((p) => ({
       minutes: Math.round((p.duration || 0) / 60), distance: Math.round(p.distance || 0), fare: null,
-      steps: (p.legs || []).filter((l) => l.line && ENTUR_MODE[l.mode]).map((l) => ({
+      steps: (p.legs || []).filter((l) => (l.line && ENTUR_MODE[l.mode]) || (l.mode === 'foot' && l.distance > 150)).map((l) => l.mode === 'foot' ? walkStep(l.fromPlace?.name, l.toPlace?.name, clock(l.expectedStartTime), clock(l.expectedEndTime), (Date.parse(l.expectedEndTime) - Date.parse(l.expectedStartTime)) / 60000) : ({
         kind: ENTUR_MODE[l.mode] === 'tube' ? 'metro' : ENTUR_MODE[l.mode], line: l.line.publicCode || l.line.name || '', operator: l.line.authority?.name || '',
         headsign: l.fromEstimatedCall?.destinationDisplay?.frontText || '', from: l.fromPlace?.name || '', to: l.toPlace?.name || '',
         departs: clock(l.expectedStartTime), arrives: clock(l.expectedEndTime), stops: (l.intermediateQuays || []).length + 1 }))
@@ -148,7 +151,7 @@ export async function openTransit(from, to, fetcher, departure, late = false) {
     return { provider: 'opendata.ch', routes: (data?.connections || []).map((c) => {
       const [, d = 0, h = 0, m = 0] = /(\d+)d(\d+):(\d+)/.exec(c.duration || '') || [];
       return { minutes: (+d) * 1440 + (+h) * 60 + (+m), distance: 0, fare: null,
-        steps: (c.sections || []).filter((s) => s.journey).map((s) => ({
+        steps: (c.sections || []).filter((s) => s.journey || (s.walk && s.walk.duration >= 120)).map((s) => !s.journey ? walkStep(s.departure?.station?.name, s.arrival?.station?.name, clock(s.departure?.departure), clock(s.arrival?.arrival), s.walk.duration / 60) : ({
           kind: SWISS_CAT(s.journey.category || ''), line: `${s.journey.category || ''} ${s.journey.number || ''}`.trim(), operator: s.journey.operator || '',
           headsign: s.journey.to || '', from: s.departure?.station?.name || '', to: s.arrival?.station?.name || '',
           departs: clock(s.departure?.prognosis?.departure || s.departure?.departure), arrives: clock(s.arrival?.prognosis?.arrival || s.arrival?.arrival),
@@ -165,7 +168,7 @@ export const transitZone = (from, to) => ({ entur: 'Europe/Oslo', swiss: 'Europe
 export function lateSummary(routes) {
   const out = {};
   for (const r of routes) for (const st of r.steps) {
-    if (!st.departs) continue;
+    if (!st.departs || st.kind === 'walk') continue;
     const [h, m] = st.departs.split(':').map(Number), mins = (h < 12 ? h + 24 : h) * 60 + m;
     const o = out[st.kind] ||= { last: '', at: -1, night: false };
     if (mins >= 21 * 60 && mins <= 27 * 60 && mins > o.at) Object.assign(o, { last: st.departs, at: mins });
