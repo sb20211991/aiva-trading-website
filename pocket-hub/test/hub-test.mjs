@@ -388,6 +388,11 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.match(app, /flightPaid=1/); assert.doesNotMatch(app, /airline ticketing inside Aiva is not switched on yet/);
   for (const id of ['asSosCountry', 'asSosNums', 'asHotelFilters', 'asHfBreakfast', 'asHfFree', 'asHfPrice', 'asHfDist', 'emCountry', 'emCountryNums']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, /data-as-tab="sos"/);
+  // Flight filters (price, stops, airline, departure time) and hotel star / facility filters.
+  for (const id of ['asFlightFilters', 'asFfPrice', 'asFfStops', 'asFfAir', 'asFfTime', 'asFfSort', 'asHfStars', 'asHfFac', 'emCountryFind']) assert.match(html, new RegExp(`id="${id}"`));
+  const { hotelFacilities } = await import('../functions/_lib/travel.js');
+  assert.deepEqual(hotelFacilities([107, 2, 104, 999999]), ['wifi', 'parking', 'pool']);
+  assert.deepEqual(hotelFacilities(), []);
 }
 // Worldwide emergency numbers: generated from a cited source, never guessed.
 {

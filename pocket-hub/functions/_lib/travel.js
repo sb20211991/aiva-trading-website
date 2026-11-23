@@ -124,6 +124,10 @@ export async function nuiteeFlights({ legs, adults, children = 0, infants = 0, c
 
 /* ---------- Hotels ---------- */
 const commons = (f) => f ? 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(String(f).replace(/^File:/i, '')) + '?width=480' : '';
+/* LiteAPI facility ids (GET /data/facilities) grouped into the filters shown in Aiva Search. */
+export const FACILITIES = { wifi: [47, 107], parking: [2, 161, 674], pool: [103, 104, 120, 122, 192, 193, 195, 301], gym: [11, 492], spa: [54],
+  restaurant: [3, 115, 116], shuttle: [17], ac: [109], pets: [4], accessible: [25, 185], family: [28], ev: [182] };
+export const hotelFacilities = (ids = []) => { const set = new Set(ids.map(Number)); return Object.keys(FACILITIES).filter((k) => FACILITIES[k].some((i) => set.has(i))); };
 export async function liteHotels({ lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
   const headers = { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' };
   const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25`, { headers }, fetcher, 15000);
@@ -152,7 +156,7 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
   };
   return hotels.map((h) => ({
     id: h.id, name: h.name, stars: Number(h.stars) || null, rating: Number(h.rating) || null, address: h.address || '',
-    lat: Number(h.latitude), lon: Number(h.longitude), image: h.main_photo || h.thumbnail || '', distance: distanceM({ lat, lon }, { lat: Number(h.latitude), lon: Number(h.longitude) }),
+    lat: Number(h.latitude), lon: Number(h.longitude), image: h.main_photo || h.thumbnail || '', facilities: hotelFacilities(h.facilityIds || []), distance: distanceM({ lat, lon }, { lat: Number(h.latitude), lon: Number(h.longitude) }),
     available: !!price[h.id], price: price[h.id] || null, rooms: roomOptions(rooms[h.id])
   })).sort((a, b) => (b.available - a.available) || ((a.price?.total ?? 1e12) - (b.price?.total ?? 1e12)) || a.distance - b.distance).slice(0, 15);
 }
