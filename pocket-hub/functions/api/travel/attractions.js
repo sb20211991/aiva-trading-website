@@ -3,7 +3,7 @@
 import { json, fetchJSON, distanceM, cached, point } from '../../_lib/travel.js';
 
 const WIKI = 'https://en.wikipedia.org/w/api.php';
-const SIGHT = /\b(museum|gallery|monument|memorial|square|park|palace|cathedral|abbey|basilica|mosque|temple|shrine|tower|bridge|castle|fort(ress)?|zoo|aquarium|gardens?|landmark|viewpoint|theme park|stadium|opera|theatre|market|beach|lighthouse|statue|column|arch|fountain)\b/i;
+const SIGHT = /\b(museum|gallery|monument|memorial|square|park|palace|cathedral|abbey|basilica|mosque|temple|shrine|tower|bridge|castle|fort(ress)?|zoo|aquarium|gardens?|landmark|viewpoint|theme park|stadium|opera|theatre|market|beach|lighthouse|statue|column|arch|fountain|wheel|observation deck|skyscraper|pier|harbour|observatory|cemetery|ruins?)\b/i;
 export const shapeAttractions = (pages, p) => {
   const seen = new Set();
   return (pages || []).map((x) => ({ name: String(x.title || '').slice(0, 80), kind: (SIGHT.exec(x.description || '')?.[0] || 'attraction').toLowerCase(),
