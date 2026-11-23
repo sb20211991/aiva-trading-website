@@ -418,4 +418,30 @@ console.log('POCKET HUB CHECKS PASSED');
   d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=59.65,17.93&to=59.33,18.06'), env: {} }, enturReply([]))).json();
   assert.equal(d.schedules, false); assert.equal(d.modes.train.available, null);
 }
+// Aiva Search: flights and hotels book independently (separate checkouts), hotel-only search and attraction distances.
+{
+  const { onRequestGet: attractions } = await import('../functions/api/travel/attractions.js');
+  const rq = (p) => ({ request: new Request('https://app.aivatrading.uk/api/travel/attractions' + p) });
+  assert.equal((await attractions(rq('?lat=x&lon=1'))).status, 400);
+  let sentQuery = '';
+  const els = [{ type: 'way', center: { lat: 51.5194, lon: -0.127 }, tags: { name: 'British Museum', tourism: 'museum', wikidata: 'Q6373' } },
+    { type: 'node', lat: 51.5007, lon: -0.1246, tags: { name: 'Big Ben', tourism: 'attraction', wikidata: 'Q41225', wikipedia: 'en:Big Ben' } },
+    { type: 'node', lat: 51.5, lon: -0.12, tags: { tourism: 'attraction' } }, { type: 'node', lat: 51.5007, lon: -0.1246, tags: { name: 'Big Ben', tourism: 'attraction' } }];
+  let r = await attractions(rq('?lat=51.5074&lon=-0.1278'), async (url, init) => { sentQuery = String(init.body); return new Response(JSON.stringify({ elements: els })); });
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.deepEqual(d.attractions.map((a) => a.name), ['Big Ben', 'British Museum']);
+  assert.ok(d.attractions.every((a) => Number.isFinite(a.distance) && a.distance > 0 && a.distance < 10000));
+  assert.match(decodeURIComponent(sentQuery), /\["wikidata"\]\(around:10000,51\.507,-0\.128\)/);
+  r = await attractions(rq('?lat=51.5074&lon=-0.1278'), async () => { throw new TypeError('down'); });
+  assert.equal(r.status, 503); assert.deepEqual((await r.json()).attractions, []);
+
+  for (const id of ['asKind', 'asFReview', 'asReview']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /data-as-kind="flights"/); assert.match(html, /data-as-kind="hotels"/);
+  assert.match(app, /✈️ Flight checkout/); assert.match(app, /🏨 Hotel checkout/);
+  assert.match(app, /async function asSearchHotels\(\)/); assert.match(app, /\/api\/travel\/attractions\?/);
+  assert.match(app, /if\(AS\.kind==='hotels'\)return asSearchHotels\(\)/);
+  assert.doesNotMatch(app, /are ready below/); assert.doesNotMatch(app, /Your Aiva trip/);
+  assert.match(app, /from \$\{escapeHTML\(a\.iata\)\} airport/);
+}
 console.log('AIVA SEARCH CHECKS PASSED');
