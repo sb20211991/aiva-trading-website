@@ -53,10 +53,10 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     walk: { available: walk ? walk.distance <= 6000 : null, minutes: walk?.minutes ?? null, distance: walk?.distance ?? null, steps: walk && walk.distance <= 6000 ? walk.steps || [] : [] },
     ride: { available: drive ? (rideHailing(cc).length ? true : null) : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, services: rideHailing(cc) }
   });
-  const sources = [google ? 'Routes and schedules: Google Maps Platform' : 'Road and walking routes: FOSSGIS OSRM (routing.openstreetmap.de)',
+  const sources = [google ? 'Google Maps · Walking routes: FOSSGIS OSRM' : 'Road and walking routes: FOSSGIS OSRM (routing.openstreetmap.de)',
     ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : 'transport.opendata.ch (Switzerland)'}`] : []),
     'Stations, taxi ranks and car hire: © OpenStreetMap contributors'];
   return json({ modes, schedules: timetabled, lateChecked: !!(late && lateTime), lateDay, transitFrom: hub?.name || '', upstreamErrors: errors, source: sources.join(' · '), retrieved: new Date().toISOString(),
-    note: timetabled ? '' : 'Live train, metro, tram and bus timetables for this airport need the Google Routes connection; stations at the airport are listed below.' });
+    note: timetabled ? '' : 'Live public transport timetables are unavailable for this route.' });
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);
