@@ -133,21 +133,27 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
     method: 'POST', headers,
     body: JSON.stringify({ hotelIds: hotels.map((h) => h.id), occupancies: [{ adults, ...(children.length ? { children } : {}) }], currency, guestNationality: 'GB', checkin, checkout, timeout: 12 })
   }, fetcher, 20000);
-  const price = {};
+  const price = {}, rooms = {};
   for (const r of rates?.data || []) {
     for (const rt of r.roomTypes || []) {
       const a = Number(rt.offerRetailRate?.amount ?? rt.rates?.[0]?.retailRate?.total?.[0]?.amount);
-      if (Number.isFinite(a) && (!price[r.hotelId] || a < price[r.hotelId].total))
-        price[r.hotelId] = { total: a, currency: rt.offerRetailRate?.currency || rt.rates?.[0]?.retailRate?.total?.[0]?.currency || currency, room: rt.rates?.[0]?.name || '', offerId: rt.offerId || '',
-          refundable: rt.rates?.[0]?.cancellationPolicies?.refundableTag === 'RFN', board: rt.rates?.[0]?.boardName || '',
-          cancelBy: rt.rates?.[0]?.cancellationPolicies?.cancelPolicyInfos?.[0]?.cancelTime || '',
-          taxesDue: (rt.rates?.[0]?.retailRate?.taxesAndFees || []).filter((t) => t.included === false).reduce((n, t) => n + (Number(t.amount) || 0), 0) };
+      if (!Number.isFinite(a)) continue;
+      const room = { total: a, currency: rt.offerRetailRate?.currency || rt.rates?.[0]?.retailRate?.total?.[0]?.currency || currency, room: rt.rates?.[0]?.name || '', offerId: rt.offerId || '',
+        refundable: rt.rates?.[0]?.cancellationPolicies?.refundableTag === 'RFN', board: rt.rates?.[0]?.boardName || '',
+        cancelBy: rt.rates?.[0]?.cancellationPolicies?.cancelPolicyInfos?.[0]?.cancelTime || '',
+        taxesDue: (rt.rates?.[0]?.retailRate?.taxesAndFees || []).filter((t) => t.included === false).reduce((n, t) => n + (Number(t.amount) || 0), 0) };
+      (rooms[r.hotelId] ||= []).push(room);
+      if (!price[r.hotelId] || a < price[r.hotelId].total) price[r.hotelId] = room;
     }
   }
+  const roomOptions = (list = []) => {
+    const seen = new Set();
+    return list.sort((a, b) => a.total - b.total).filter((x) => { const k = `${x.room}|${x.board}|${x.refundable}`; return x.offerId && !seen.has(k) && seen.add(k); }).slice(0, 8);
+  };
   return hotels.map((h) => ({
     id: h.id, name: h.name, stars: Number(h.stars) || null, rating: Number(h.rating) || null, address: h.address || '',
     lat: Number(h.latitude), lon: Number(h.longitude), image: h.main_photo || h.thumbnail || '', distance: distanceM({ lat, lon }, { lat: Number(h.latitude), lon: Number(h.longitude) }),
-    available: !!price[h.id], price: price[h.id] || null
+    available: !!price[h.id], price: price[h.id] || null, rooms: roomOptions(rooms[h.id])
   })).sort((a, b) => (b.available - a.available) || ((a.price?.total ?? 1e12) - (b.price?.total ?? 1e12)) || a.distance - b.distance).slice(0, 15);
 }
 /* Nominatim fallback when Overpass is overloaded: bounded phrase search around a point, shaped like Overpass elements. */
