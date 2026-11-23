@@ -2,7 +2,7 @@
    {action:'verify', offerId} -> live fare, changes and expiry.
    {action:'prebook', offerId, contact, passengers} -> prebookId, transactionId and the payment-form secret, plus the final price.
    {action:'book', prebookId, transactionId} -> booking reference and airline status (after the SDK payment; idempotent per prebook).
-   {action:'status', bookingId} -> latest airline status and PNR.
+   {action:'status', bookingId, email} -> latest airline status and PNR (the booking's contact email must match).
    Sandbox keys make test bookings only. A production key books for real only when FLIGHT_BOOKING_LIVE is "true". */
 import { isSandboxKey } from '../../_lib/travel.js';
 import { json, allowedOrigin, clean, id, email } from './hotel-book.js';
@@ -93,9 +93,11 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       return json({ ...s, testMode });
     }
     if (body?.action === 'status') {
-      const bookingId = id(body.bookingId);
-      if (!bookingId) return json({ error: 'Booking reference missing.' }, 400);
-      return json({ ...shapeFlightBooking(await call('GET', `/flights/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 20000)), testMode });
+      const bookingId = id(body.bookingId), mail = email(clean(body.email, 254));
+      if (!bookingId || !mail) return json({ error: 'Booking reference and email are needed.' }, 400);
+      const raw = await call('GET', `/flights/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 20000);
+      if (findKey(raw, 'email').toLowerCase() !== mail.toLowerCase()) return json({ error: 'No booking found for this reference and email.' }, 404);
+      return json({ ...shapeFlightBooking(raw), testMode });
     }
     return json({ error: 'Unknown action' }, 400);
   } catch (e) {

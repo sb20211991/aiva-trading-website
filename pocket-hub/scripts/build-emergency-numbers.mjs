@@ -28,8 +28,11 @@ const ALIAS = { unitedstatesofamerica: 'US', peoplesrepublicofchina: 'CN', repub
 const code = (n) => ALIAS[norm(n)] || byName[norm(n)] || '';
 
 const plain = (s) => s.replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, '$1').replace(/\{\{[^{}]*\}\}/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/'''?/g, '');
-const numbers = (s) => [...new Set([...String(s).matchAll(/'''([^']+)'''/g)].flatMap((m) => plain(m[1]).split(/\s*(?:or|,|\/|;)\s*/))
-  .map((x) => x.replace(/\s+/g, ' ').trim()).filter((x) => /^[#*]?\d[\d ]{1,9}\d$|^\d{2,3}$/.test(x)))].slice(0, 4);
+const split = (x) => plain(x).split(/\s*(?:\bor\b|\band\b|,|\/|;|\n)\s*/i).map((v) => v.replace(/\s+/g, ' ').trim());
+const isNum = (x) => /^[#*]?\d[\d ]{1,9}\d$|^\d{2,3}$/.test(x);
+// Bold numbers first; a cell with no bold counts only when a whole token is a number (notes like "since 2010" are ignored).
+const numbers = (s) => { const bold = [...String(s).matchAll(/'''([^']+)'''/g)].map((m) => m[1]);
+  return [...new Set((bold.length ? bold : [String(s)]).flatMap(split).filter(isNum))].slice(0, 4); };
 
 const out = {}, skipped = [];
 for (const row of t.split('\n|-')) {
