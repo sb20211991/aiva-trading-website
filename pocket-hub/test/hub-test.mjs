@@ -347,6 +347,19 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.equal(r.status, 200); assert.equal((await r.json()).bookingId, 'BK9');
   assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'o'.repeat(1600) }), env: sb }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
   assert.match(app, /payment-wrapper\.liteapi\.travel\/dist\/liteAPIPayment\.js/); assert.match(html, /id="asBookings"/);
+  // Cancellation: holder email must match; then PUT /bookings/{id}. Works even when live booking is switched off.
+  const calls = [];
+  const cf = async (url, init) => { calls.push([init.method, String(url)]); return new Response(JSON.stringify({ data: init.method === 'GET' ? { bookingId: 'BK9001', status: 'CONFIRMED', currency: 'GBP', holder: { email: 'Ada@Example.com' } } : { status: 'CANCELLED', refund_amount: 329.6, cancellation_fee: 0, currency: 'GBP' } })); };
+  r = await hb({ request: req({ action: 'cancel', bookingId: 'BK9001', email: 'ada@example.com' }), env: { LITEAPI_KEY: 'prod_x' } }, cf);
+  d = await r.json();
+  assert.equal(r.status, 200); assert.deepEqual(calls, [['GET', 'https://book.liteapi.travel/v3.0/bookings/BK9001'], ['PUT', 'https://book.liteapi.travel/v3.0/bookings/BK9001']]);
+  assert.deepEqual([d.status, d.refund, d.fee, d.currency], ['CANCELLED', 329.6, 0, 'GBP']);
+  calls.length = 0;
+  assert.equal((await hb({ request: req({ action: 'cancel', bookingId: 'BK9001', email: 'eve@example.com' }), env: sb }, cf)).status, 404);
+  assert.deepEqual(calls.map((c) => c[0]), ['GET']);
+  assert.equal((await hb({ request: req({ action: 'cancel', bookingId: 'BK9001' }), env: sb }, cf)).status, 400);
+  assert.match(app, /data-as-cancel/); assert.match(app, /action:'cancel'/);
+  assert.match(readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8'), /\[env\.production\.vars\][^[]*HOTEL_BOOKING_LIVE = "true"[^[]*FLIGHT_BOOKING_LIVE = "true"/);
 }
 // In-app flight booking (Nuitee flights verify + prebook + payment SDK + book): sandbox only unless FLIGHT_BOOKING_LIVE.
 {

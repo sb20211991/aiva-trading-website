@@ -1,6 +1,7 @@
 /* POST /api/travel/hotel-book — in-app hotel booking through Nuitee (LiteAPI) with the Nuitee payment SDK.
    {action:'prebook', offerId} -> prebookId, transactionId and the payment-form secret, plus the final price and terms.
    {action:'book', prebookId, transactionId, holder:{firstName,lastName,email}} -> confirmed booking (after the SDK payment).
+   {action:'cancel', bookingId, email} -> cancels a booking whose holder email matches; Nuitee refunds per the cancellation policy.
    Sandbox keys make test bookings only. A production key books for real only when HOTEL_BOOKING_LIVE is "true". */
 import { isSandboxKey } from '../../_lib/travel.js';
 
@@ -20,14 +21,15 @@ export const clean = (s, n = 60) => String(s ?? '').replace(/[\u0000-\u001f<>]/g
 export const id = (s) => /^[A-Za-z0-9_\-=.]{4,4000}$/.test(s || '') ? s : '';
 export const email = (s) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s || '') ? s : '';
 
-async function call(path, body, env, fetcher, timeout) {
-  const res = await fetcher(`${BOOK}${path}`, { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(timeout),
+async function send(method, path, body, env, fetcher, timeout) {
+  const res = await fetcher(`${BOOK}${path}`, { method, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeout),
     headers: { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json', Accept: 'application/json' } });
   let data = null;
   try { data = await res.json(); } catch { /* non-JSON upstream reply */ }
   if (!res.ok || data?.error) throw Object.assign(new Error(clean(data?.error?.description || data?.error?.message || data?.message || `HTTP ${res.status}`, 200)), { status: res.status });
   return data?.data ?? data;
 }
+const call = (path, body, env, fetcher, timeout) => send('POST', path, body, env, fetcher, timeout);
 async function existing(clientReference, env, fetcher) {
   const res = await fetcher(`${BOOK}/bookings?clientReference=${encodeURIComponent(clientReference)}`, { signal: AbortSignal.timeout(20000), headers: { 'X-API-Key': env.LITEAPI_KEY, Accept: 'application/json' } });
   const data = res.ok ? await res.json() : null;
@@ -50,10 +52,11 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
   if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
   if (!env?.LITEAPI_KEY) return json({ error: 'Hotel booking is not connected yet (Nuitee key missing).' }, 503);
   const testMode = isSandboxKey(env.LITEAPI_KEY);
-  if (!testMode && env.HOTEL_BOOKING_LIVE !== 'true')
-    return json({ error: 'Real hotel bookings are waiting for the owner\'s approval to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
   let body;
   try { body = JSON.parse((await request.text()).slice(0, 8000)); } catch { return json({ error: 'Invalid request' }, 400); }
+  if (body?.action === 'cancel') return cancel(body, env, fetcher, testMode);
+  if (!testMode && env.HOTEL_BOOKING_LIVE !== 'true')
+    return json({ error: 'Real hotel bookings are waiting for the owner\'s approval to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
   try {
     if (body?.action === 'prebook') {
       const offerId = id(body.offerId);
@@ -83,6 +86,23 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
   } catch (e) {
     const timeout = e.name === 'TimeoutError';
     return json({ error: timeout ? 'The booking service took too long. Check "My bookings" before trying again.' : (e.message || 'Booking failed.'),
+      upstream: e.status || (timeout ? 'timeout' : 'error') }, e.status >= 400 && e.status < 500 ? 409 : 503);
+  }
+}
+const num = (...v) => { const n = v.map(Number).find(Number.isFinite); return n ?? null; };
+async function cancel(body, env, fetcher, testMode) {
+  const bookingId = id(body.bookingId), em = email(clean(body.email, 254)).toLowerCase();
+  if (!bookingId || !em) return json({ error: 'Enter the booking number and the email used to book.' }, 400);
+  try {
+    const b = await send('GET', `/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 20000);
+    if (!b?.bookingId || String(b.holder?.email || '').toLowerCase() !== em) return json({ error: 'No booking matches that booking number and email.' }, 404);
+    if (/CANCEL/i.test(b.status || '')) return json({ bookingId, status: 'CANCELLED', already: true, testMode });
+    const c = await send('PUT', `/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 30000);
+    return json({ bookingId, status: c?.status || 'CANCELLED', refund: num(c?.refund_amount, c?.refundAmount), fee: num(c?.cancellation_fee, c?.cancellationFee),
+      currency: c?.currency || b.currency || '', testMode });
+  } catch (e) {
+    const timeout = e.name === 'TimeoutError';
+    return json({ error: timeout ? 'The booking service took too long. Check "My bookings" before trying again.' : (e.message || 'Cancellation failed.'),
       upstream: e.status || (timeout ? 'timeout' : 'error') }, e.status >= 400 && e.status < 500 ? 409 : 503);
   }
 }
