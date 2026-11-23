@@ -223,12 +223,12 @@ const turn = (st) => {
   if (m.type === 'roundabout' || m.type === 'rotary') return `At the roundabout take exit ${m.exit || 1}${road}`;
   return `${m.type === 'turn' || m.type === 'end of road' ? 'Turn' : m.type === 'continue' || m.type === 'new name' ? 'Continue' : 'Keep'}${mod}${road}`;
 };
-export async function osrm(from, to, profile, fetcher = fetch, steps = false) {
+export async function osrm(from, to, profile, fetcher = fetch, steps = false, stepLimit = 25) {
   const data = await fetchJSON(`${FOSSGIS}/routed-${profile}/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false${steps ? '&steps=true' : ''}`, {}, fetcher, 12000);
   const r = data?.routes?.[0];
   if (!r) return null;
   const out = { minutes: Math.round(r.duration / 60), distance: Math.round(r.distance) };
-  if (steps) out.steps = (r.legs?.[0]?.steps || []).filter((st) => st.distance > 15 || st.maneuver?.type === 'arrive').slice(0, 25).map((st) => ({ text: turn(st), distance: Math.round(st.distance || 0) }));
+  if (steps) out.steps = (r.legs?.[0]?.steps || []).filter((st) => stepLimit === Infinity || st.distance > 15 || st.maneuver?.type === 'arrive').slice(0, stepLimit).map((st) => ({ text: turn(st), distance: Math.round(st.distance || 0) }));
   return out;
 }
 export async function airportServices(p, fetcher = fetch) {
