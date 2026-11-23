@@ -432,7 +432,7 @@ console.log('POCKET HUB CHECKS PASSED');
   const d = await r.json();
   assert.deepEqual(d.attractions.map((a) => a.name), ['Big Ben', 'British Museum']);
   assert.ok(d.attractions.every((a) => Number.isFinite(a.distance) && a.distance > 0 && a.distance < 10000));
-  assert.match(decodeURIComponent(sentQuery), /\["wikidata"\]\(around:10000,51\.507,-0\.128\)/);
+  assert.match(decodeURIComponent(sentQuery), /\["wikipedia"\]\(around:5000,51\.507,-0\.128\)/);
   r = await attractions(rq('?lat=51.5074&lon=-0.1278'), async () => { throw new TypeError('down'); });
   assert.equal(r.status, 503); assert.deepEqual((await r.json()).attractions, []);
 

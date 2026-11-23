@@ -1,5 +1,5 @@
 /* GET /api/travel/attractions?lat=&lon= -> {attractions:[{name,kind,lat,lon,distance}]}
-   Notable sights (OpenStreetMap features with a Wikidata link) within 10 km of a destination, used for hotel distances. */
+   Notable sights (OpenStreetMap features with a Wikipedia article) within 5 km of a destination, used for hotel distances. */
 import { json, overpass, distanceM, cached, point } from '../../_lib/travel.js';
 
 const KINDS = 'attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium';
@@ -19,7 +19,7 @@ export async function onRequestGet({ request }, fetcher = fetch) {
   const c = { lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) };
   try {
     const attractions = await cached(`attractions-${c.lat},${c.lon}`, 86400, async () => shapeAttractions(await overpass(
-      `[out:json][timeout:20];nwr["tourism"~"^(${KINDS})$"]["name"]["wikidata"](around:10000,${c.lat},${c.lon});out center tags 200;`, fetcher), c));
+      `[out:json][timeout:10];nwr["tourism"~"^(${KINDS})$"]["wikipedia"](around:5000,${c.lat},${c.lon});out center tags 60;`, fetcher), c));
     return json({ attractions, source: 'Attractions © OpenStreetMap contributors' }, 200, 86400);
   } catch {
     return json({ attractions: [], error: 'Nearby attractions are temporarily unavailable.' }, 503);
