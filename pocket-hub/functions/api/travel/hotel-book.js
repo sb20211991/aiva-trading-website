@@ -5,8 +5,8 @@
 import { isSandboxKey } from '../../_lib/travel.js';
 
 const BOOK = 'https://book.liteapi.travel/v3.0';
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
-const allowedOrigin = (request) => {
+export const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+export const allowedOrigin = (request) => {
   const origin = request.headers.get('Origin');
   if (!origin) return true;
   try {
@@ -16,9 +16,9 @@ const allowedOrigin = (request) => {
     return protocol === 'http:' && (hostname === 'localhost' || hostname === '127.0.0.1');
   } catch { return false; }
 };
-const clean = (s, n = 60) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
-const id = (s) => /^[A-Za-z0-9_\-=.]{4,4000}$/.test(s || '') ? s : '';
-const email = (s) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s || '') ? s : '';
+export const clean = (s, n = 60) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
+export const id = (s) => /^[A-Za-z0-9_\-=.]{4,4000}$/.test(s || '') ? s : '';
+export const email = (s) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s || '') ? s : '';
 
 async function call(path, body, env, fetcher, timeout) {
   const res = await fetcher(`${BOOK}${path}`, { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(timeout),

@@ -348,6 +348,54 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.equal((await hb({ request: req({ action: 'prebook', offerId: 'o'.repeat(1600) }), env: sb }, up({ data: { prebookId: 'P1234', transactionId: 't1234', secretKey: 's' } }))).status, 200);
   assert.match(app, /payment-wrapper\.liteapi\.travel\/dist\/liteAPIPayment\.js/); assert.match(html, /id="asBookings"/);
 }
+// In-app flight booking (Nuitee flights verify + prebook + payment SDK + book): sandbox only unless FLIGHT_BOOKING_LIVE.
+{
+  const { onRequestPost: fb, passengers } = await import('../functions/api/travel/flight-book.js');
+  const req = (b, origin = 'https://app.aivatrading.uk') => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: origin, 'content-type': 'application/json' } });
+  let sent;
+  const up = (reply, status = 200) => async (url, init) => { sent = { url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null, key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
+  const sb = { LITEAPI_KEY: 'sand_x' };
+  const contact = { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', phoneCountryCode: '+44', phoneNumber: '07700 900123' };
+  const pax = [{ passengerType: 0, firstName: 'Ada', lastName: 'Lovelace', birthday: '1990-01-02', gender: 'F', nationality: 'gb', documentNumber: 'ab 123456', documentExpiry: '2031-01-01', documentIssueCountry: 'GB' }];
+  let r = await fb({ request: req({ action: 'verify', offerId: 'off_123' }), env: sb }, up({ data: [{ journey: { pricing: { display: { total: 39.6, currency: 'GBP' } }, expiration: '2026-12-01T10:00:00Z' }, changes: { priceChanged: false } }] }));
+  let d = await r.json();
+  assert.equal(r.status, 200); assert.equal(sent.url, 'https://api.liteapi.travel/v3.0/flights/verify'); assert.deepEqual([d.price, d.currency, d.testMode], [39.6, 'GBP', true]);
+  r = await fb({ request: req({ action: 'prebook', offerId: 'off_123', contact, passengers: pax }), env: sb }, up({ data: [{ prebookId: 'PB12345', transactionId: 'tr_12345', secretKey: 'pi_s', price: 39.6, currency: 'GBP', booking: { journey: { segments: [{ originCode: 'LHR', destinationCode: 'CDG', departureTime: '2026-12-23T11:40:00', carrier: { marketingCode: 'BA', marketingName: 'British Airways' }, flight: { marketingNumber: '304' } }] } } }] }));
+  d = await r.json();
+  assert.equal(r.status, 200); assert.equal(sent.url, 'https://api.liteapi.travel/v3.0/flights/prebooks');
+  assert.deepEqual(sent.body.contact, { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', phoneCountryCode: '44', phoneNumber: '07700900123' });
+  assert.equal(sent.body.usePaymentSdk, true); assert.equal(sent.body.passengers[0].nationality, 'GB'); assert.equal(sent.body.passengers[0].documentNumber, 'AB123456');
+  assert.deepEqual([d.prebookId, d.secretKey, d.paymentEnv, d.segments[0].flight], ['PB12345', 'pi_s', 'sandbox', 'BA304']);
+  r = await fb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345' }), env: sb }, up({ data: { booking: { bookingId: 'BK9', bookingRef: 'FH-1', status: 'PENDING_CONFIRMATION', journey: { pricing: { display: { total: 39.6, currency: 'GBP' } }, segments: [{ pnr: 'ABC123' }] } } } }, 201));
+  d = await r.json();
+  assert.equal(sent.url, 'https://api.liteapi.travel/v3.0/flights/bookings'); assert.deepEqual(sent.body.payment, { method: 'TRANSACTION_ID', transactionId: 'tr_12345' });
+  assert.deepEqual([d.bookingId, d.bookingRef, d.status, d.pnr, d.price], ['BK9', 'FH-1', 'PENDING_CONFIRMATION', 'ABC123', 39.6]);
+  r = await fb({ request: req({ action: 'status', bookingId: 'BK9999' }), env: sb }, up({ data: { bookingId: 'BK9999', status: 'CONFIRMED', pnr: 'XYZ789' } }));
+  d = await r.json(); assert.equal(sent.method, 'GET'); assert.deepEqual([d.status, d.pnr], ['CONFIRMED', 'XYZ789']);
+  assert.equal(passengers([{ ...pax[0], passengerType: 1 }]), null, 'a child cannot travel alone');
+  assert.equal(passengers([{ ...pax[0], birthday: 'soon' }]), null);
+  assert.equal((await fb({ request: req({ action: 'prebook', offerId: 'off_1', contact: { ...contact, email: 'bad' }, passengers: pax }), env: sb }, up({}))).status, 400);
+  assert.equal((await fb({ request: req({ action: 'prebook', offerId: 'off_1', contact, passengers: [] }), env: sb }, up({}))).status, 400);
+  assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x' } }, up({}))).status, 403);
+  assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x', HOTEL_BOOKING_LIVE: 'true' } }, up({}))).status, 403, 'hotel approval does not unlock flights');
+  assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }, 'https://evil.example'), env: sb }, up({}))).status, 403);
+  assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: {} }, up({}))).status, 503);
+  r = await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: sb }, up({ error: { description: 'this offer is sold out' } }, 400));
+  assert.equal(r.status, 409); assert.equal((await r.json()).error, 'this offer is sold out');
+  assert.match(app, /flightPaid=1/); assert.doesNotMatch(app, /airline ticketing inside Aiva is not switched on yet/);
+  for (const id of ['asSosCountry', 'asSosNums', 'asHotelFilters', 'asHfBreakfast', 'asHfFree', 'asHfPrice', 'asHfDist', 'emCountry', 'emCountryNums']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /data-as-tab="sos"/);
+}
+// Worldwide emergency numbers: generated from a cited source, never guessed.
+{
+  const em = JSON.parse(readFileSync(pub('emergency-numbers.json'), 'utf8'));
+  assert.ok(Object.keys(em.countries).length >= 200); assert.match(em.url, /oldid=\d+/);
+  const has = (c, f, n) => assert.ok(em.countries[c][f].includes(n), `${c} ${f} ${n}`);
+  has('GB', 'general', '999'); has('US', 'general', '911'); has('AU', 'general', '000'); has('JP', 'police', '110'); has('JP', 'ambulance', '119');
+  has('CN', 'ambulance', '120'); has('AE', 'ambulance', '998'); has('BR', 'fire', '193'); has('FR', 'police', '17'); has('DE', 'police', '110'); has('NZ', 'general', '111');
+  for (const [c, v] of Object.entries(em.countries)) for (const n of [...v.police, ...v.ambulance, ...v.fire]) assert.match(n, /^[#*]?\d[\d ]{0,10}\d$/, `${c} ${n}`);
+  assert.match(readFileSync(pub('service-worker.js'), 'utf8'), /emergency-numbers\.json/);
+}
 // Keyless open planners: tram-only connections count as local transport; an empty planner reply is not timetable coverage.
 {
   const { onRequestGet: tf } = await import('../functions/api/travel/transfers.js');
