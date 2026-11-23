@@ -55,6 +55,7 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
   let body;
   try { body = JSON.parse((await request.text()).slice(0, 8000)); } catch { return json({ error: 'Invalid request' }, 400); }
   if (body?.action === 'cancel') return cancel(body, env, fetcher, testMode);
+  if (body?.action === 'prebook' && readinessCheck(request, env)) return readiness(body, env, fetcher);
   if (!testMode && env.HOTEL_BOOKING_LIVE !== 'true')
     return json({ error: 'Real hotel bookings are waiting for the owner\'s approval to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
   try {
@@ -88,6 +89,16 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
     return json({ error: timeout ? 'The booking service took too long. Check "My bookings" before trying again.' : (e.message || 'Booking failed.'),
       upstream: e.status || (timeout ? 'timeout' : 'error') }, e.status >= 400 && e.status < 500 ? 409 : 503);
   }
+}
+// Owner-only production readiness check: a real prebook that returns no payment details, so nobody can pay or be charged.
+export const readinessCheck = (request, env) => !!env.BOOKING_CHECK_SECRET && request.headers.get('X-Aiva-Check') === env.BOOKING_CHECK_SECRET;
+async function readiness(body, env, fetcher) {
+  const offerId = id(body.offerId);
+  if (!offerId) return json({ error: 'offerId missing' }, 400);
+  try {
+    const p = await call('/rates/prebook', { offerId, usePaymentSdk: true }, env, fetcher, 30000);
+    return json({ readiness: true, prebooked: !!p?.prebookId, paymentForm: !!(p?.transactionId && p?.secretKey), live: !isSandboxKey(env.LITEAPI_KEY), price: Number(p?.price), currency: p?.currency || '' });
+  } catch (e) { return json({ readiness: true, prebooked: false, error: e.message, upstream: e.status || 'error' }, 503); }
 }
 const num = (...v) => { const n = v.map(Number).find(Number.isFinite); return n ?? null; };
 async function cancel(body, env, fetcher, testMode) {

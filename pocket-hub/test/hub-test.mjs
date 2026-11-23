@@ -359,7 +359,14 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.deepEqual(calls.map((c) => c[0]), ['GET']);
   assert.equal((await hb({ request: req({ action: 'cancel', bookingId: 'BK9001' }), env: sb }, cf)).status, 400);
   assert.match(app, /data-as-cancel/); assert.match(app, /action:'cancel'/);
-  assert.match(readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8'), /\[env\.production\.vars\][^[]*HOTEL_BOOKING_LIVE = "true"[^[]*FLIGHT_BOOKING_LIVE = "true"/);
+  // Owner readiness check: real prebook in production without payment details; wrong or missing secret stays blocked.
+  const ck = (h) => new Request('https://app.aivatrading.uk/api/travel/hotel-book', { method: 'POST', body: JSON.stringify({ action: 'prebook', offerId: 'off_123' }), headers: { 'content-type': 'application/json', ...h } });
+  const prodCk = { LITEAPI_KEY: 'prod_x', BOOKING_CHECK_SECRET: 'chk_secret_1' };
+  const pb = up({ data: { prebookId: 'PB12345', transactionId: 'tr_12345', secretKey: 'pi_s', price: 65.9, currency: 'GBP' } });
+  r = await hb({ request: ck({ 'X-Aiva-Check': 'chk_secret_1' }), env: prodCk }, pb); d = await r.json();
+  assert.equal(r.status, 200); assert.deepEqual([d.prebooked, d.paymentForm, d.live, d.secretKey, d.transactionId], [true, true, true, undefined, undefined]);
+  assert.equal((await hb({ request: ck({ 'X-Aiva-Check': 'wrong' }), env: prodCk }, pb)).status, 403);
+  assert.equal((await hb({ request: ck({}), env: { LITEAPI_KEY: 'prod_x' } }, pb)).status, 403);
 }
 // In-app flight booking (Nuitee flights verify + prebook + payment SDK + book): sandbox only unless FLIGHT_BOOKING_LIVE.
 {
@@ -393,6 +400,13 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.equal((await fb({ request: req({ action: 'prebook', offerId: 'off_1', contact: { ...contact, email: 'bad' }, passengers: pax }), env: sb }, up({}))).status, 400);
   assert.equal((await fb({ request: req({ action: 'prebook', offerId: 'off_1', contact, passengers: [] }), env: sb }, up({}))).status, 400);
   assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x' } }, up({}))).status, 403);
+  {
+    const ckReq = (a, k) => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify({ action: a, offerId: 'off_1', prebookId: 'pb_1234', transactionId: 'tr_1234' }), headers: { 'content-type': 'application/json', 'X-Aiva-Check': k } });
+    const e = { LITEAPI_KEY: 'prod_x', BOOKING_CHECK_SECRET: 'chk_secret_1' }, v = up({ data: [{ journey: { pricing: { display: { total: 39.6, currency: 'GBP' } } } }] });
+    assert.equal((await fb({ request: ckReq('verify', 'chk_secret_1'), env: e }, v)).status, 200);
+    assert.equal((await fb({ request: ckReq('verify', 'nope'), env: e }, v)).status, 403);
+    assert.equal((await fb({ request: ckReq('book', 'chk_secret_1'), env: e }, v)).status, 403);
+  }
   assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: { LITEAPI_KEY: 'prod_x', HOTEL_BOOKING_LIVE: 'true' } }, up({}))).status, 403, 'hotel approval does not unlock flights');
   assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }, 'https://evil.example'), env: sb }, up({}))).status, 403);
   assert.equal((await fb({ request: req({ action: 'verify', offerId: 'off_1' }), env: {} }, up({}))).status, 503);

@@ -5,7 +5,7 @@
    {action:'status', bookingId, email} -> latest airline status and PNR (the booking's contact email must match).
    Sandbox keys make test bookings only. A production key books for real only when FLIGHT_BOOKING_LIVE is "true". */
 import { isSandboxKey } from '../../_lib/travel.js';
-import { json, allowedOrigin, clean, id, email } from './hotel-book.js';
+import { json, allowedOrigin, clean, id, email, readinessCheck } from './hotel-book.js';
 
 const API = 'https://api.liteapi.travel/v3.0';
 const day = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && Number.isFinite(Date.parse(s)) ? s : '';
@@ -61,10 +61,10 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
   if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
   if (!env?.LITEAPI_KEY) return json({ error: 'Flight booking is not connected yet (Nuitee key missing).' }, 503);
   const testMode = isSandboxKey(env.LITEAPI_KEY);
-  if (!testMode && env.FLIGHT_BOOKING_LIVE !== 'true')
-    return json({ error: 'Real flight tickets are waiting for the owner\'s approval with Nuitee to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
   let body;
   try { body = JSON.parse((await request.text()).slice(0, 20000)); } catch { return json({ error: 'Invalid request' }, 400); }
+  if (!testMode && env.FLIGHT_BOOKING_LIVE !== 'true' && !(body?.action === 'verify' && readinessCheck(request, env)))
+    return json({ error: 'Real flight tickets are waiting for the owner\'s approval with Nuitee to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
   try {
     if (body?.action === 'verify') {
       const offerId = id(body.offerId);
