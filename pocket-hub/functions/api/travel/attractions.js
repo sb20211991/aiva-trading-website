@@ -4,10 +4,11 @@ import { json, fetchJSON, distanceM, cached, point } from '../../_lib/travel.js'
 
 const WIKI = 'https://en.wikipedia.org/w/api.php';
 const SIGHT = /\b(museum|gallery|monument|memorial|square|park|palace|cathedral|abbey|basilica|mosque|temple|shrine|tower|bridge|castle|fort(ress)?|zoo|aquarium|gardens?|landmark|viewpoint|theme park|stadium|opera|theatre|market|beach|lighthouse|statue|column|arch|fountain|wheel|observation deck|skyscraper|pier|harbour|observatory|cemetery|ruins?)\b/i;
+const GONE = /\b(demolished|destroyed|former|defunct|closed|proposed|planned|unbuilt|historic site of)\b/i;
 export const shapeAttractions = (pages, p) => {
   const seen = new Set();
   return (pages || []).map((x) => ({ name: String(x.title || '').slice(0, 80), kind: (SIGHT.exec(x.description || '')?.[0] || 'attraction').toLowerCase(),
-    lat: Number(x.coordinates?.[0]?.lat), lon: Number(x.coordinates?.[0]?.lon), sight: SIGHT.test(x.description || '') }))
+    lat: Number(x.coordinates?.[0]?.lat), lon: Number(x.coordinates?.[0]?.lon), sight: SIGHT.test(x.description || '') && !GONE.test(x.description || '') }))
     .filter((a) => a.name && a.sight && Number.isFinite(a.lat) && Number.isFinite(a.lon) && !seen.has(a.name) && seen.add(a.name))
     .map(({ sight, ...a }) => ({ ...a, distance: distanceM(p, a) }))
     .sort((a, b) => a.distance - b.distance).slice(0, 12);
