@@ -1,16 +1,16 @@
 /* GET /api/travel/attractions?lat=&lon= -> {attractions:[{name,kind,lat,lon,distance}]}
-   Notable sights (OpenStreetMap features with a Wikipedia article) within 5 km of a destination, used for hotel distances. */
-import { json, overpass, distanceM, cached, point } from '../../_lib/travel.js';
+   Notable sights near a destination (geotagged English Wikipedia articles about museums, monuments, parks…), used for hotel distances. */
+import { json, fetchJSON, distanceM, cached, point } from '../../_lib/travel.js';
 
-const KINDS = 'attraction|museum|gallery|viewpoint|zoo|theme_park|aquarium';
-export const shapeAttractions = (els, p) => {
+const WIKI = 'https://en.wikipedia.org/w/api.php';
+const SIGHT = /\b(museum|gallery|monument|memorial|square|park|palace|cathedral|abbey|basilica|mosque|temple|shrine|tower|bridge|castle|fort(ress)?|zoo|aquarium|gardens?|landmark|viewpoint|theme park|stadium|opera|theatre|market|beach|lighthouse|statue|column|arch|fountain)\b/i;
+export const shapeAttractions = (pages, p) => {
   const seen = new Set();
-  return (els || []).map((e) => ({ name: String(e.tags?.['name:en'] || e.tags?.name || '').slice(0, 80), kind: e.tags?.tourism || 'attraction', famous: !!e.tags?.wikipedia,
-    lat: Number(e.lat ?? e.center?.lat), lon: Number(e.lon ?? e.center?.lon) }))
-    .filter((a) => a.name && Number.isFinite(a.lat) && Number.isFinite(a.lon) && !seen.has(a.name) && seen.add(a.name))
-    .map((a) => ({ ...a, distance: distanceM(p, a) }))
-    .sort((a, b) => (b.famous - a.famous) || a.distance - b.distance).slice(0, 12)
-    .map(({ famous, ...a }) => a);
+  return (pages || []).map((x) => ({ name: String(x.title || '').slice(0, 80), kind: (SIGHT.exec(x.description || '')?.[0] || 'attraction').toLowerCase(),
+    lat: Number(x.coordinates?.[0]?.lat), lon: Number(x.coordinates?.[0]?.lon), sight: SIGHT.test(x.description || '') }))
+    .filter((a) => a.name && a.sight && Number.isFinite(a.lat) && Number.isFinite(a.lon) && !seen.has(a.name) && seen.add(a.name))
+    .map(({ sight, ...a }) => ({ ...a, distance: distanceM(p, a) }))
+    .sort((a, b) => a.distance - b.distance).slice(0, 12);
 };
 
 export async function onRequestGet({ request }, fetcher = fetch) {
@@ -18,9 +18,11 @@ export async function onRequestGet({ request }, fetcher = fetch) {
   if (!p) return json({ error: 'Destination is required' }, 400);
   const c = { lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) };
   try {
-    const attractions = await cached(`attractions-${c.lat},${c.lon}`, 86400, async () => shapeAttractions(await overpass(
-      `[out:json][timeout:10];nwr["tourism"~"^(${KINDS})$"]["wikipedia"](around:5000,${c.lat},${c.lon});out center tags 60;`, fetcher), c));
-    return json({ attractions, source: 'Attractions © OpenStreetMap contributors' }, 200, 86400);
+    const attractions = await cached(`attractions-wiki-${c.lat},${c.lon}`, 86400, async () => {
+      const d = await fetchJSON(`${WIKI}?action=query&format=json&generator=geosearch&ggscoord=${c.lat}%7C${c.lon}&ggsradius=10000&ggslimit=100&prop=coordinates%7Cdescription`, {}, fetcher, 10000);
+      return shapeAttractions(Object.values(d?.query?.pages || {}), c);
+    });
+    return json({ attractions, source: 'Attractions: Wikipedia (CC BY-SA)' }, 200, 86400);
   } catch {
     return json({ attractions: [], error: 'Nearby attractions are temporarily unavailable.' }, 503);
   }

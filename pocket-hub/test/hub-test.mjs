@@ -423,16 +423,17 @@ console.log('POCKET HUB CHECKS PASSED');
   const { onRequestGet: attractions } = await import('../functions/api/travel/attractions.js');
   const rq = (p) => ({ request: new Request('https://app.aivatrading.uk/api/travel/attractions' + p) });
   assert.equal((await attractions(rq('?lat=x&lon=1'))).status, 400);
-  let sentQuery = '';
-  const els = [{ type: 'way', center: { lat: 51.5194, lon: -0.127 }, tags: { name: 'British Museum', tourism: 'museum', wikidata: 'Q6373' } },
-    { type: 'node', lat: 51.5007, lon: -0.1246, tags: { name: 'Big Ben', tourism: 'attraction', wikidata: 'Q41225', wikipedia: 'en:Big Ben' } },
-    { type: 'node', lat: 51.5, lon: -0.12, tags: { tourism: 'attraction' } }, { type: 'node', lat: 51.5007, lon: -0.1246, tags: { name: 'Big Ben', tourism: 'attraction' } }];
-  let r = await attractions(rq('?lat=51.5074&lon=-0.1278'), async (url, init) => { sentQuery = String(init.body); return new Response(JSON.stringify({ elements: els })); });
+  let sentUrl = '';
+  const pages = { 1: { title: 'British Museum', description: 'Museum in London', coordinates: [{ lat: 51.5194, lon: -0.127 }] },
+    2: { title: 'Big Ben', description: 'Clock tower in London', coordinates: [{ lat: 51.5007, lon: -0.1246 }] },
+    3: { title: 'Embassy of Brazil, London', description: 'Diplomatic mission', coordinates: [{ lat: 51.507, lon: -0.128 }] },
+    4: { title: 'Big Ben', description: 'Clock tower in London', coordinates: [{ lat: 51.5007, lon: -0.1246 }] }, 5: { title: 'No coords', description: 'Museum' } };
+  let r = await attractions(rq('?lat=51.5074&lon=-0.1278'), async (url) => { sentUrl = String(url); return new Response(JSON.stringify({ query: { pages } })); });
   assert.equal(r.status, 200);
   const d = await r.json();
   assert.deepEqual(d.attractions.map((a) => a.name), ['Big Ben', 'British Museum']);
   assert.ok(d.attractions.every((a) => Number.isFinite(a.distance) && a.distance > 0 && a.distance < 10000));
-  assert.match(decodeURIComponent(sentQuery), /\["wikipedia"\]\(around:5000,51\.507,-0\.128\)/);
+  assert.match(decodeURIComponent(sentUrl), /generator=geosearch&ggscoord=51\.507\|-0\.128&ggsradius=10000/);
   r = await attractions(rq('?lat=51.5074&lon=-0.1278'), async () => { throw new TypeError('down'); });
   assert.equal(r.status, 503); assert.deepEqual((await r.json()).attractions, []);
 
