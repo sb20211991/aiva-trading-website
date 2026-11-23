@@ -19,7 +19,7 @@ export async function onRequestGet({ request }, fetcher = fetch) {
   const c = { lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) };
   try {
     const attractions = await cached(`attractions-wiki-${c.lat},${c.lon}`, 86400, async () => {
-      const d = await fetchJSON(`${WIKI}?action=query&format=json&generator=geosearch&ggscoord=${c.lat}%7C${c.lon}&ggsradius=10000&ggslimit=100&prop=coordinates%7Cdescription`, {}, fetcher, 10000);
+      const d = await fetchJSON(`${WIKI}?action=query&format=json&generator=geosearch&ggscoord=${c.lat}%7C${c.lon}&ggsradius=10000&ggslimit=100&prop=coordinates%7Cdescription&colimit=max`, {}, fetcher, 10000);
       return shapeAttractions(Object.values(d?.query?.pages || {}), c);
     });
     return json({ attractions, source: 'Attractions: Wikipedia (CC BY-SA)' }, 200, 86400);
