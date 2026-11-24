@@ -57,7 +57,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const links = transportLinks(cc, from, to, { from: (u.get('fromName') || '').slice(0, 80), to: (u.get('toName') || '').slice(0, 80) }, rideHailing(cc));
   for (const k of Object.keys(links)) if (modes[k]) Object.assign(modes[k], links[k]);
   const sources = [google ? 'Google Maps · Walking routes: FOSSGIS OSRM' : 'Road and walking routes: FOSSGIS OSRM (routing.openstreetmap.de)',
-    ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : 'transport.opendata.ch (Switzerland)'}`] : []),
+    ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : open === 'Transitous' ? 'Transitous (MOTIS) · open GTFS/GTFS-RT feeds' : 'transport.opendata.ch (Switzerland)'}`] : []),
     'Stations, taxi ranks and car hire: © OpenStreetMap contributors'];
   return json({ modes, schedules: timetabled, lateChecked: !!(late && lateTime), lateDay, transitFrom: hub?.name || '', upstreamErrors: errors, source: sources.join(' · '), retrieved: new Date().toISOString(),
     note: timetabled ? '' : 'Live public transport timetables are unavailable for this route.' });
