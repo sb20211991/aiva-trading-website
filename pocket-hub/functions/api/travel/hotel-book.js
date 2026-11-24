@@ -1,7 +1,7 @@
 /* POST /api/travel/hotel-book — in-app hotel booking through Nuitee (LiteAPI) with the Nuitee payment SDK.
    {action:'prebook', offerId} -> prebookId, transactionId and the payment-form secret, plus the final price and terms.
    {action:'book', prebookId, transactionId, holder:{firstName,lastName,email}} -> confirmed booking (after the SDK payment).
-   {action:'cancel', bookingId, email} -> cancels a booking whose holder email matches; Nuitee refunds per the cancellation policy.
+   {action:'cancel', bookingId, email, token} -> cancels a booking made on this device (token from the book reply) whose holder email matches; Nuitee refunds per the cancellation policy.
    Sandbox keys make test bookings only. A production key books for real only when HOTEL_BOOKING_LIVE is "true". */
 import { isSandboxKey } from '../../_lib/travel.js';
 
@@ -35,18 +35,19 @@ async function existing(clientReference, env, fetcher) {
   const data = res.ok ? await res.json() : null;
   return (data?.data || []).find((b) => b?.bookingId && !/FAIL|CANCEL/i.test(b.status || '')) || null;
 }
+export const freeUntil = (cp) => (cp?.cancelPolicyInfos || []).find((i) => !(Number(i?.amount) === 0))?.cancelTime || '';
 export const shapePrebook = (p) => {
   const r = p.roomTypes?.[0]?.rates?.[0] || {}, cp = r.cancellationPolicies || {};
   return { prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, hotelId: p.hotelId, price: Number(p.price), currency: p.currency,
     checkin: p.checkin, checkout: p.checkout, room: r.name || '', board: r.boardName || '', refundable: cp.refundableTag === 'RFN',
-    cancelBy: cp.cancelPolicyInfos?.[0]?.cancelTime || '', priceChanged: Number(p.priceDifferencePercent) !== 0, cancellationChanged: !!p.cancellationChanged,
+    cancelBy: freeUntil(cp), priceChanged: Number(p.priceDifferencePercent) !== 0, cancellationChanged: !!p.cancellationChanged,
     taxesDue: (r.retailRate?.taxesAndFees || []).filter((t) => t.included === false).reduce((n, t) => n + (Number(t.amount) || 0), 0),
     terms: clean(p.termsAndConditions, 2000) };
 };
 export const shapeBooking = (b) => ({ bookingId: b.bookingId, status: b.status, confirmation: b.hotelConfirmationCode || b.supplierBookingId || '',
   hotel: b.hotel?.name || '', checkin: b.checkin, checkout: b.checkout, price: Number(b.price), currency: b.currency,
   room: b.bookedRooms?.[0]?.roomType?.name || '', refundable: b.cancellationPolicies?.refundableTag === 'RFN',
-  cancelBy: b.cancellationPolicies?.cancelPolicyInfos?.[0]?.cancelTime || '' });
+  cancelBy: freeUntil(b.cancellationPolicies) });
 
 export async function onRequestPost({ request, env }, fetcher = fetch) {
   if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
@@ -81,7 +82,7 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
         if (!b) throw e;
       }
       if (!b?.bookingId) return json({ error: 'The hotel did not confirm the booking. If you were charged, the hold is released within 1-2 business days.' }, 503);
-      return json({ ...shapeBooking(b), testMode });
+      return json({ ...shapeBooking(b), cancelToken: await cancelToken(b.bookingId, env), testMode });
     }
     return json({ error: 'Unknown action' }, 400);
   } catch (e) {
@@ -100,10 +101,15 @@ async function readiness(body, env, fetcher) {
     return json({ readiness: true, prebooked: !!p?.prebookId, paymentForm: !!(p?.transactionId && p?.secretKey), live: !isSandboxKey(env.LITEAPI_KEY), price: Number(p?.price), currency: p?.currency || '' });
   } catch (e) { return json({ readiness: true, prebooked: false, error: e.message, upstream: e.status || 'error' }, 503); }
 }
+export async function cancelToken(bookingId, env) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(`cancel:${env.LITEAPI_KEY}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(bookingId)))].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
 const num = (...v) => { const n = v.map(Number).find(Number.isFinite); return n ?? null; };
 async function cancel(body, env, fetcher, testMode) {
   const bookingId = id(body.bookingId), em = email(clean(body.email, 254)).toLowerCase();
   if (!bookingId || !em) return json({ error: 'Enter the booking number and the email used to book.' }, 400);
+  if (typeof body.token !== 'string' || body.token !== await cancelToken(bookingId, env)) return json({ error: 'This booking can only be cancelled from the device it was booked on, or through support.' }, 403);
   try {
     const b = await send('GET', `/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 20000);
     if (!b?.bookingId || String(b.holder?.email || '').toLowerCase() !== em) return json({ error: 'No booking matches that booking number and email.' }, 404);
