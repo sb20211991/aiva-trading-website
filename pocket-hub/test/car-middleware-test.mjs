@@ -5,15 +5,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest } from '../functions/api/_middleware.js';
 
-const links = (mode) => ({ label: `${mode} link`, url: `https://example.com/${mode}`, kind: 'book' });
+const link = (mode) => ({ label: `${mode} link`, url: `https://example.com/${mode}`, kind: 'book' });
 const reply = () => ({
-  links: { car: { book: [links('car')], tip: 'bring a licence' }, taxi: { book: [links('taxi')], tip: 'metered' } },
+  links: { car: { book: [link('car')], tip: 'bring a licence' }, taxi: { book: [link('taxi')], tip: 'metered' } },
   modes: {
-    car: { book: [links('car')], tip: 'bring a licence', minutes: 40 },
-    train: { book: [links('train')], tip: '' },
-    metro: { book: [links('metro')], tip: '' },
-    tram: { book: [links('tram')], tip: '' },
-    bus: { book: [links('bus')], tip: 'pay on board' }
+    car: { book: [link('car')], tip: 'bring a licence', minutes: 40 },
+    train: { book: [link('train')], tip: '' },
+    metro: { book: [link('metro')], tip: '' },
+    tram: { book: [link('tram')], tip: '' },
+    bus: { book: [link('bus')], tip: 'pay on board' }
   }
 });
 
@@ -28,10 +28,11 @@ const run = async (path, body) => {
 test('car hire leaves no outbound booking link, taxi and bus keep theirs', async () => {
   for (const path of ['/api/travel/transfers', '/api/emergency/plan']) {
     const out = await run(path, reply());
+    assert.deepEqual(out.links.car.book, [], `${path} links.car`);
+    assert.equal(out.links.car.tip, '', `${path} links.car tip`);
     for (const mode of ['car', 'train', 'metro', 'tram']) {
-      assert.deepEqual(out.links[mode].book, [], `${path} links.${mode}`);
       assert.deepEqual(out.modes[mode].book, [], `${path} modes.${mode}`);
-      assert.equal(out.links[mode].tip, '');
+      assert.equal(out.modes[mode].tip, '', `${path} modes.${mode} tip`);
     }
     assert.equal(out.modes.car.minutes, 40, 'the driving estimate stays');
     assert.equal(out.links.taxi.book.length, 1);
