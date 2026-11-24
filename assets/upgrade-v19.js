@@ -16,7 +16,7 @@
     message.addEventListener('input', () => {
       const email=document.getElementById(prefix+'-email');
       const whatsapp=document.getElementById(prefix+'-whatsapp');
-      const e=new URL(email.href); const subject=e.searchParams.get('subject')||'Aiva Trading enquiry'; email.href=e.protocol+e.pathname+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(message.value);
+      const e=new URL(email.href); const subject=e.searchParams.get('subject')||'Aiva enquiry'; email.href=e.protocol+e.pathname+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(message.value);
       const w=new URL(whatsapp.href); w.searchParams.set('text',message.value); whatsapp.href=w.href;
       email.hidden=email.href.length>1800; whatsapp.hidden=whatsapp.href.length>1800;
       document.getElementById(prefix+'-link-note').hidden=!(email.hidden||whatsapp.hidden);
