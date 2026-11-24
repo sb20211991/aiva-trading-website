@@ -115,12 +115,15 @@
      Aiva Tram, which run the real search inside Aiva. Any carrier booking link the planner returns for
      those two modes is dropped here and never rendered. */
   const HANDOFF = ['train', 'tram'];
+  /* Train, tram and metro are shown entirely inside Aiva. The rail modes hand over to Aiva Train and Aiva
+     Tram; metro is planned here. None of the three ever offers an outbound carrier or map link. */
+  const NO_OUTBOUND = [...HANDOFF, 'metro'];
   let ends = { from: '', to: '' };
 
   function bookings(it, links) {
     const seen = new Set(), list = [];
     for (const mode of [...it.modes, 'walk']) {
-      if (HANDOFF.includes(mode)) continue;
+      if (NO_OUTBOUND.includes(mode)) continue;
       for (const l of (links[mode]?.book || [])) {
         if (l.kind !== 'book' || !l.url || seen.has(l.url)) continue;
         seen.add(l.url);
@@ -154,7 +157,7 @@
     ].filter(Boolean);
     const modes = it.modes.length ? it.modes.map((m) => ICON[m] || '').join(' ') + ' ' + it.modes.map((m) => NAME[m] || m).join(' + ') : 'walking';
     const books = bookings(it, links);
-    const dirs = (links.walk?.book || []).find((x) => x.kind === 'directions');
+    const dirs = NO_OUTBOUND.some((m) => (it.modes || []).includes(m)) ? null : (links.walk?.book || []).find((x) => x.kind === 'directions');
     return `<div class="as-plan-card"><div class="as-plan-head"><b>${esc(first.departure || '')} → ${esc(last.arrival || '')}</b>`
       + `<span>${dur(it.minutes)}</span>${badges.map((b) => `<span class="as-plan-badge">${esc(b)}</span>`).join('')}</div>`
       + `<div class="mini" style="margin:2px 0 4px">${esc(modes)}${first.tzFrom && last.tzTo && first.tzFrom !== last.tzTo ? ` · local time at each stop (${esc(first.tzFrom.split('/').pop())} → ${esc(last.tzTo.split('/').pop())})` : ''}</div>`
