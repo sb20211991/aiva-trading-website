@@ -87,24 +87,40 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then BRANCH="pr-${{ github.event.pull_request.number }}"; else BRANCH=main; fi
           npx --yes wrangler@4 pages deploy public --project-name="$PROJECT" --branch="$BRANCH" \
             --commit-hash="$GITHUB_SHA" --commit-message="Pocket Hub ${GITHUB_SHA::7}" --commit-dirty=true | tee "$RUNNER_TEMP/deploy.log"
-          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' "$RUNNER_TEMP/deploy.log" | tail -1)" >> "$GITHUB_OUTPUT"
+          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.pages\\.dev' "$RUNNER_TEMP/deploy.log" | tail -1)" >> "$GITHUB_OUTPUT"
+      # A freshly uploaded Pages deployment can answer 404 or serve the previous build for a few seconds while the
+      # project alias catches up, so every probe retries with a cap instead of failing a good deploy on the first try.
       - name: Verify deployment
         run: |
           set -euo pipefail
-          sleep 10
           U="${{ steps.deploy.outputs.url }}"; [ "${{ github.event_name }}" = "pull_request" ] || U="https://$PROJECT.pages.dev"
           echo "== $U"
-          curl -sf -m 30 -o "$RUNNER_TEMP/app.html" "$U/"; grep -qF '<meta name="application-name" content="Aiva">' "$RUNNER_TEMP/app.html"
-          for p in /app.js /aiva-rail.js /aiva-car.js /vendor/qrcode.js /service-worker.js /manifest.webmanifest /icon-192.png; do printf '%s %s\n' "$p" "$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")"; done
-          printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
+          retry() { # retry <description> <attempts> <command...>
+            local what="$1" n="$2"; shift 2
+            for i in $(seq 1 "$n"); do
+              if "$@"; then echo "$what: ok (attempt $i)"; return 0; fi
+              echo "$what: attempt $i failed, waiting"; sleep 8
+            done
+            echo "$what: FAILED after $n attempts"; return 1
+          }
+          home() { curl -sf -m 20 -o "$RUNNER_TEMP/app.html" "$U/" && grep -qF '<meta name="application-name" content="Aiva">' "$RUNNER_TEMP/app.html"; }
+          retry 'home page' 8 home
           grep -q 'id="asForm"' "$RUNNER_TEMP/app.html"
           grep -q 'id="asRailTrain"' "$RUNNER_TEMP/app.html"
           grep -q 'id="asCar"' "$RUNNER_TEMP/app.html"
+          grep -q 'src="aiva-car.js"' "$RUNNER_TEMP/app.html"
+          for p in /app.js /aiva-rail.js /aiva-car.js /vendor/qrcode.js /service-worker.js /manifest.webmanifest /icon-192.png; do
+            code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")
+            printf '%s %s\n' "$p" "$code"
+            [ "$code" = '200' ] || { echo "$p is $code"; exit 1; }
+          done
+          printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
           # The build steps above must actually reach the CDN: no checkout rewrite, no release.
           curl -sf -m 30 "$U/aiva-rail.js" | grep -q 'rail-checkout-head'
           curl -sf -m 30 "$U/aiva-car.js" | grep -q 'cr-form'
           # Car hire must answer with the honest no-supplier state: never an error, never invented cars or prices.
-          curl -sf -m 30 "$U/api/car?action=search&pickup=Heathrow&from=2026-12-01T10:00:00Z&to=2026-12-05T10:00:00Z&age=35" | grep -q '"available":false'
+          car_api() { curl -sf -m 30 "$U/api/car?action=search&pickup=Heathrow&from=2026-12-01T10:00:00Z&to=2026-12-05T10:00:00Z&age=35" | grep -q '"available":false'; }
+          retry 'car rental api' 4 car_api
           U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'
