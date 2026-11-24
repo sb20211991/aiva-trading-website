@@ -168,9 +168,8 @@
 
   /* Hand a planned journey to Aiva Train or Aiva Tram: fills both ends plus the planner's date and
      time, then runs Aiva's own search. Nothing opens outside Aiva.
-     A city name is not a station — “Lyon” matches Gare de Lyon in Paris — so both ends are resolved to
-     the station nearest the point the planner already geocoded, and the typed names are only used if
-     that lookup finds nothing. */
+     A city name is not a station — “Lyon” matches Gare de Lyon in Paris — so each end is matched to a
+     station by name and then by distance from the point the planner geocoded. */
   async function railGo(mode, from, to) {
     const key = mode === 'tram' ? 'Tram' : 'Train';
     const cardEl = document.getElementById('asRail' + key);
@@ -192,16 +191,27 @@
       cardEl.querySelector('[data-rail-geo]')?.click();
       return;
     }
-    const nearest = async (pt) => {
+    /* The closest stop is not always a station: in Lyon the nearest stop to the centre is a metro platform
+       with no trains. Ask for the stations whose name matches the place, keep the one closest to the point
+       the planner geocoded, and fall back to a radius search only when no name matches. */
+    const pick = async (pt, name) => {
       if (!pt || !Number.isFinite(pt.lat) || !Number.isFinite(pt.lon)) return '';
+      const km = (s) => Math.hypot((s.lat - pt.lat) * 111.32, (s.lon - pt.lon) * 111.32 * Math.cos((pt.lat * Math.PI) / 180));
       try {
+        if (name) {
+          const res = await fetch(`/api/rail/stations?q=${encodeURIComponent(name)}&mode=${mode}&limit=8`);
+          const d = await res.json().catch(() => ({}));
+          const near = (d.stations || []).filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon) && km(s) <= 40)
+            .sort((a, b) => km(a) - km(b) || (b.modes || []).length - (a.modes || []).length);
+          if (near.length) return near[0].name;
+        }
         const res = await fetch(`/api/rail/stations?lat=${pt.lat}&lon=${pt.lon}&radius=${mode === 'tram' ? 5000 : 6000}&mode=${mode}&limit=5`);
         const d = await res.json().catch(() => ({}));
         return res.ok && d.stations?.[0]?.name ? d.stations[0].name : '';
       } catch { return ''; }
     };
     status(`Finding the nearest ${key.toLowerCase()} stations for ${from} → ${to}…`);
-    const [boardAt, arriveAt] = await Promise.all([nearest(ends.fromPt), nearest(ends.toPt)]);
+    const [boardAt, arriveAt] = await Promise.all([pick(ends.fromPt, from), pick(ends.toPt, to)]);
     const a = boardAt || from, b = arriveAt || to;
     if (b) { toEl.value = b; toEl.dispatchEvent(new Event('input', { bubbles: true })); }
     if (a) { fromEl.value = a; fromEl.dispatchEvent(new Event('input', { bubbles: true })); }
