@@ -41,8 +41,22 @@ export async function findStations({ q, near, radius = 3000, mode = '', limit = 
     const text = String(q).trim().slice(0, 120);
     const data = await fetchJSON(`${TRANSITOUS}/geocode?text=${encodeURIComponent(text)}&type=STOP&limit=${Math.min(50, Math.max(12, max * 4))}`, {}, fetcher, 15000);
     const seen = new Set();
+    /* A city name matches a single bus shelter as readily as the main station, and the geocoder's own order
+       can put the shelter first. Rank by how many transport modes a stop serves, then by how closely its name
+       matches what was typed, so “Paris” leads with a railway station rather than a roadside stop. */
+    const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const needle = norm(text);
+    const rank = (s) => {
+      const name = norm(s.name);
+      return [-(s.modes || []).length, name === needle ? 0 : name.startsWith(needle) ? 1 : name.includes(needle) ? 2 : 3, name.length];
+    };
+    const byRank = (x, y) => {
+      const a = rank(x), b = rank(y);
+      for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return a[i] - b[i];
+      return 0;
+    };
     return (Array.isArray(data) ? data : []).map(stationShape).filter((s) => usable(s) && fitsMode(s, want))
-      .filter((s) => !seen.has(s.name) && seen.add(s.name)).slice(0, max);
+      .filter((s) => !seen.has(s.name) && seen.add(s.name)).sort(byRank).slice(0, max);
   }
   if (!near || !Number.isFinite(near.lat) || !Number.isFinite(near.lon)) return [];
   const r = Math.min(10000, Math.max(400, Math.round(Number(radius) || 3000)));
