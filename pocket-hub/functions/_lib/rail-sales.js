@@ -14,7 +14,10 @@
      RAIL_SALES_GATEWAY_KEY  secret sent as the X-API-Key header (Cloudflare Pages secret)
    Contract used by this client:
      POST /fares   {mode, from, to, depart, passengers, itineraries:[ids]} -> {fares:[{itineraryId, quoteId,
-                   amount, currency, description, refundable, conditions, payment:{provider, sessionId, sdkUrl}}]}
+                   amount, currency, description, refundable, conditions,
+                   payment:{provider, sessionId, sdkUrl, methods:['card','apple_pay','google_pay']}}]}
+                   methods lists what the payment session can actually take (card = Visa/Mastercard);
+                   omitting it offers card only.
      POST /orders  {quoteId, passengers:[{firstName,lastName,email}], paymentToken} -> {orderId, pnr, status,
                    operator, from, to, depart, arrive, fare, ticket:{barcode, qrPayload}, testMode}
    Card, Apple Pay and Google Pay are offered by the distributor's payment session (sdkUrl), mounted inside
@@ -64,6 +67,7 @@ async function post(env, path, body, fetcher, timeout = 25000) {
 }
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
+export const PAYMENT_METHODS = ['card', 'apple_pay', 'google_pay'];
 
 /* Fares for the itineraries the open feeds returned. Only real quotes are passed through; an itinerary with no
    quote simply has no price in the app. */
@@ -79,7 +83,12 @@ export async function quoteFares(env, { mode, from, to, depart, passengers, itin
       description: clean(f.description, 120), refundable: f.refundable === true, conditions: clean(f.conditions, 400),
       payment: f.payment && typeof f.payment === 'object' ? {
         provider: clean(f.payment.provider, 40), sessionId: clean(f.payment.sessionId, 300),
-        sdkUrl: /^https:\/\//.test(String(f.payment.sdkUrl || '')) ? String(f.payment.sdkUrl).slice(0, 500) : ''
+        sdkUrl: /^https:\/\//.test(String(f.payment.sdkUrl || '')) ? String(f.payment.sdkUrl).slice(0, 500) : '',
+        /* Exactly the methods the distributor says this session can take. An unknown or invented method is
+           dropped, so the checkout can never advertise a wallet the payment session cannot process. */
+        methods: (Array.isArray(f.payment.methods) ? f.payment.methods : [])
+          .map((m) => String(m || '').toLowerCase()).filter((m) => PAYMENT_METHODS.includes(m))
+          .filter((m, i, a) => a.indexOf(m) === i)
       } : null
     };
   }).filter(Boolean);

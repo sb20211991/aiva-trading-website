@@ -7,6 +7,7 @@
    distributor connected through /api/rail/order, never invented here. */
 (() => {
   const SVG = {
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     train: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.8" width="14" height="14.2" rx="3.2"/><path d="M5 10.2h14"/><circle cx="9" cy="13.6" r="1.15" fill="currentColor" stroke="none"/><circle cx="15" cy="13.6" r="1.15" fill="currentColor" stroke="none"/><path d="M8.6 20.8l1.9-3.8M15.4 20.8l-1.9-3.8M7.4 20.8h9.2"/></svg>',
     tram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16.6V9.4A3.4 3.4 0 0 1 7.4 6h9.2A3.4 3.4 0 0 1 20 9.4v7.2"/><path d="M4 12.6h16"/><path d="M9 6V3.6h6V6M12 3.6V1.8"/><circle cx="8" cy="17.8" r="1.5"/><circle cx="16" cy="17.8" r="1.5"/><path d="M4 16.6h16M9.4 9.4h1.8M12.8 9.4H14.6"/></svg>',
     walk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="1.8"/><path d="M11.5 21l1.6-5.2-2.4-2.1.7-4.3 3 2.1 2.2 1.3M9.4 10.4L8 14l2.3 1.6"/><path d="M13.1 15.8l1.9 5.2"/></svg>',
@@ -33,9 +34,9 @@
   .rail-card{margin-top:18px;border:1px solid #e3e6f3;box-shadow:0 3px 14px #1d29400f}
   .rail-card .as-card-head{align-items:flex-start;border-bottom:0;padding-bottom:0}
   .rail-brand{display:flex;gap:12px;align-items:center;min-width:0}
-  .rail-mark{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;flex:none;color:#fff;background:linear-gradient(140deg,#2f4b7c,#12224a)}
+  .rail-mark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;color:#fff;background:linear-gradient(140deg,#2f4b7c,#12224a)}
   .rail-card[data-rail-section="tram"] .rail-mark{background:linear-gradient(140deg,#1d7a6c,#0d3f47)}
-  .rail-mark svg{width:26px;height:26px}
+  .rail-mark svg{width:19px;height:19px}
   .rail-brand h3{margin:0;font-size:19px;color:#1c2554;display:flex;align-items:center;gap:8px}
   .rail-brand p{margin:2px 0 0;color:#64708a;font-size:12.5px;line-height:1.4}
   .rail-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#0f6b52;background:#e8f6ef;border-radius:999px;padding:5px 10px;white-space:nowrap}
@@ -100,16 +101,39 @@
   .rail-nofare{font-size:12px;font-weight:700;color:#6b7791;text-align:right;max-width:132px;line-height:1.35}
   .rail-select{border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:800;font-size:13px;background:#2f4b7c;color:#fff;cursor:pointer;white-space:nowrap}
   .rail-card[data-rail-section="tram"] .rail-select,.rail-card[data-rail-section="tram"] .rail-checkout .pay{background:#1d7a6c}
-  .rail-checkout{border:2px solid #2f4b7c;border-radius:15px;padding:14px;margin:14px 0}
-  .rail-card[data-rail-section="tram"] .rail-checkout{border-color:#1d7a6c}
-  .rail-checkout h4{margin:0 0 4px;font-size:16px;color:#1c2554}
-  .rail-checkout .close{float:right;border:0;background:#eef1f8;border-radius:9px;padding:7px 11px;font:inherit;font-size:12px;font-weight:800;color:#22304d;cursor:pointer}
+  .rail-checkout{border:1px solid #d9e1f1;border-radius:18px;padding:0;margin:14px 0;background:#fff;overflow:hidden;box-shadow:0 10px 30px #16213c14}
+  .rail-card[data-rail-section="tram"] .rail-checkout{border-color:#cfe3de}
+  .rail-checkout-head{display:flex;align-items:center;gap:10px;padding:13px 14px;background:linear-gradient(180deg,#f7f9fe,#fff);border-bottom:1px solid #eef1f7}
+  .rail-checkout-head .rail-mark{width:30px;height:30px;border-radius:9px}
+  .rail-checkout-head .rail-mark svg{width:17px;height:17px}
+  .rail-checkout-head h4{margin:0;font-size:15px;line-height:1.25;color:#1c2554}
+  .rail-checkout-head p{margin:1px 0 0;color:#6b7791;font-size:11.5px}
+  .rail-close{margin-left:auto;flex:none;width:38px;height:38px;display:grid;place-items:center;border:1px solid #e0e6f2;background:#fff;border-radius:11px;color:#33415c;cursor:pointer}
+  .rail-close svg{width:17px;height:17px}
+  .rail-close:hover{background:#f1f5fd}
+  .rail-trip-summary{display:grid;gap:2px;padding:12px 14px;border-bottom:1px solid #eef1f7;background:#fbfcff}
+  .rail-route{display:flex;align-items:center;gap:7px;font-size:14.5px;color:#111d3a;flex-wrap:wrap}
+  .rail-route b{font-weight:800}
+  .rail-route span{color:#8a95ac}
+  .rail-trip-summary .mini{margin:0;color:#6b7791;font-size:11.5px}
+  .rail-checkout-body{padding:12px 14px 14px}
+  .rail-checkout-section{margin:13px 0 14px}
+  .rail-checkout-section h5{margin:0 0 7px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#6b7791}
   .rail-note{background:#f1f5fd;border-radius:11px;padding:11px 12px;font-size:12.5px;line-height:1.5;color:#33507a;margin:10px 0}
   .rail-note.warn{background:#fff6e8;color:#7a5316}
-  .rail-pax{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
-  .rail-pax label{display:grid;gap:3px;font-size:11.5px;font-weight:700;color:#5b6884}
-  .rail-pax input{padding:9px 10px;border:1px solid #dbe1ee;border-radius:9px;font:inherit;font-size:13px;font-weight:600;color:#12203c;width:100%;box-sizing:border-box}
-  .rail-pay{border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:800;color:#fff;background:#2f4b7c;cursor:pointer;width:100%}
+  .rail-pax{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .rail-pax label{display:grid;gap:4px;font-size:11.5px;font-weight:700;color:#5b6884}
+  .rail-pax input{padding:10px 11px;border:1px solid #dbe1ee;border-radius:10px;font:inherit;font-size:13px;font-weight:600;color:#12203c;width:100%;box-sizing:border-box;min-height:44px}
+  .rail-pax input:focus{outline:none;border-color:#2f4b7c;box-shadow:0 0 0 3px #2f4b7c22}
+  .rail-pm-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .rail-pm{font-size:10.5px;font-weight:800;letter-spacing:.01em;color:#33415c;background:#f2f5fc;border:1px solid #e3e8f4;border-radius:6px;padding:4px 7px;white-space:nowrap}
+  .rail-pm.wallet{background:#0d1730;border-color:#0d1730;color:#fff}
+  .rail-secure{margin:8px 0 0;color:#6b7791;font-size:11.5px;line-height:1.45}
+  .rail-paybar{display:grid;gap:9px;padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid #eef1f7;background:#fff;position:sticky;bottom:0}
+  .rail-total-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px;font-weight:700;color:#6b7791}
+  .rail-total{font-size:20px;font-weight:900;color:#111d3a;letter-spacing:-.3px}
+  .rail-pay{border:0;border-radius:12px;padding:14px 16px;font:inherit;font-weight:800;font-size:15px;color:#fff;background:#2f4b7c;cursor:pointer;width:100%;min-height:50px}
+  .rail-card[data-rail-section="tram"] .rail-pay{background:#1d7a6c}
   .rail-pay:disabled{opacity:.55;cursor:default}
   .rail-tickets{margin:14px 0 4px}
   .rail-tickets h4{margin:0 0 8px;font-size:14px;color:#1c2554;display:flex;gap:7px;align-items:center}
@@ -121,7 +145,12 @@
   .rail-ticket small{display:block;color:#64708a;font-size:11.5px;margin-top:2px;line-height:1.4}
   .rail-ticket .pnr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:.06em;color:#1c2554}
   .rail-attrib{margin:14px 0 0;padding-top:10px;border-top:1px solid #eef1f7;color:#6b7791;line-height:1.5}
-  @media(max-width:760px){.rail-row,.rail-row.second{grid-template-columns:1fr}.rail-swap{justify-self:start;width:100%}.rail-trip{grid-template-columns:1fr}.rail-side{flex-direction:row;align-items:center;justify-content:space-between;width:100%}.rail-nofare{text-align:left;max-width:none}.rail-pax{grid-template-columns:1fr}}`;
+  @media(max-width:760px){.rail-row,.rail-row.second{grid-template-columns:1fr}.rail-swap{justify-self:start;width:100%}.rail-trip{grid-template-columns:1fr}.rail-side{flex-direction:row;align-items:center;justify-content:space-between;width:100%}.rail-nofare{text-align:left;max-width:none}
+    .rail-pax{grid-template-columns:1fr;gap:10px}.rail-pax input{font-size:16px;padding:12px 13px;min-height:48px}
+    .rail-checkout{margin:12px 0;border-radius:16px}.rail-checkout-head{padding:12px}.rail-close{width:40px;height:40px}
+    .rail-checkout-body{padding:12px 12px 0}.rail-trip-summary{padding:11px 12px}
+    .rail-paybar{padding:11px 12px calc(11px + env(safe-area-inset-bottom));box-shadow:0 -6px 18px #16213c0f}
+    .rail-total{font-size:19px}.rail-pay{min-height:52px;font-size:16px}}`;
 
   function style() {
     if (document.getElementById('aivaRailStyles')) return;
@@ -402,28 +431,65 @@
       if (b) openCheckout(Number(b.dataset.railTrip));
     });
 
+    /* The methods shown are the ones the distributor reports for this fare, so the checkout never advertises a
+       wallet the payment session cannot take. Without a card-capable session there is no payment block at all. */
+    function payBadges(fare) {
+      const methods = Array.isArray(fare?.payment?.methods) && fare.payment.methods.length ? fare.payment.methods : ['card'];
+      const out = [];
+      if (methods.includes('card')) out.push({ label: 'Visa', wallet: false }, { label: 'Mastercard', wallet: false });
+      if (methods.includes('apple_pay')) out.push({ label: 'Apple Pay', wallet: true });
+      if (methods.includes('google_pay')) out.push({ label: 'Google Pay', wallet: true });
+      return out;
+    }
+
     function openCheckout(i) {
       const it = st.data?.itineraries?.[i];
       if (!it) return;
       const fare = fareFor(it);
       const ride = it.legs.filter((l) => l.kind !== 'walk');
       const sales = st.data.sales || {};
+      const from = ride[0]?.from || st.from?.name || '';
+      const to = ride[ride.length - 1]?.to || st.to?.name || '';
+      const changes = it.transfers === 0 ? 'Direct' : it.transfers + ' change' + (it.transfers > 1 ? 's' : '');
+      /* Badges describe what can actually be paid with, so they appear only when this fare has a live payment
+         session. A fare without one shows the disabled button and no method claims. */
+      const methods = fare?.payment?.sessionId ? payBadges(fare) : [];
       st.selected = i;
       el.checkout.hidden = false;
-      el.checkout.innerHTML = `<button type="button" class="close" data-rail-close>Close</button>
-        <h4>${SVG[mode]}${mode === 'tram' ? 'Aiva Tram' : 'Aiva Train'} checkout</h4>
-        <div class="mini">${esc(ride[0]?.from || '')} → ${esc(ride[ride.length - 1]?.to || '')} · ${esc(dayLabel(it.departs))} · ${esc(ride[0]?.departure || '')}–${esc(ride[ride.length - 1]?.arrival || '')} · ${dur(it.minutes)} · ${it.transfers === 0 ? 'direct' : it.transfers + ' change' + (it.transfers > 1 ? 's' : '')}</div>
-        ${it.legs.filter((l) => l.kind !== 'walk').map(legRow).join('')}
-        ${fare ? `<div class="rail-note"><b>${money(fare.amount, fare.currency)}</b> ${esc(fare.description || '')}${fare.refundable ? ' · refundable' : ' · non-refundable'}${fare.conditions ? '<br>' + esc(fare.conditions) : ''}</div>
-          <div class="rail-pax">
-            <label>First name<input id="railPaxFirst" autocomplete="given-name" maxlength="40"></label>
-            <label>Last name<input id="railPaxLast" autocomplete="family-name" maxlength="40"></label>
-            <label>Email<input id="railPaxEmail" type="email" autocomplete="email" maxlength="190"></label>
-          </div>
-          <p class="mini">Payment: Visa and Mastercard, plus Apple Pay or Google Pay where the distributor's session supports them. Card details are entered in the distributor's secure session inside Aiva; Aiva never stores them.</p>
-          <button type="button" class="rail-pay" data-rail-pay ${fare.payment?.sessionId ? '' : 'disabled'}>${fare.payment?.sessionId ? 'Pay ' + money(fare.amount, fare.currency) : 'Payment session unavailable'}</button>
-          ${fare.payment?.sessionId ? '' : '<p class="mini">The distributor did not return a payment session for this fare, so no payment can be taken. Nothing has been charged.</p>'}`
-        : `<div class="rail-note warn"><b>No fare to sell on this journey.</b> ${esc(sales.reason || 'Aiva needs an authorised rail distributor before it can quote or sell this ticket.')} Nothing has been charged and no seat is held.</div>`}`;
+      el.checkout.innerHTML = `<div class="rail-checkout-head">
+          <span class="rail-mark" aria-hidden="true">${SVG[mode]}</span>
+          <div><h4>${mode === 'tram' ? 'Aiva Tram' : 'Aiva Train'} checkout</h4><p>${esc(changes)} · ${dur(it.minutes)}</p></div>
+          <button type="button" class="rail-close" data-rail-close aria-label="Close checkout">${SVG.close}</button>
+        </div>
+        <div class="rail-trip-summary">
+          <div class="rail-route"><b>${esc(from)}</b><span aria-hidden="true">→</span><b>${esc(to)}</b></div>
+          <p class="mini">${esc(dayLabel(it.departs))} · ${esc(ride[0]?.departure || '')}–${esc(ride[ride.length - 1]?.arrival || '')} · ${esc(changes)}</p>
+        </div>
+        <div class="rail-checkout-body">
+          ${it.legs.filter((l) => l.kind !== 'walk').map(legRow).join('')}
+          ${fare ? `
+            <section class="rail-checkout-section">
+              <h5>Traveller</h5>
+              <div class="rail-pax">
+                <label>First name<input id="railPaxFirst" autocomplete="given-name" maxlength="40"></label>
+                <label>Last name<input id="railPaxLast" autocomplete="family-name" maxlength="40"></label>
+                <label>Email for the ticket<input id="railPaxEmail" type="email" inputmode="email" autocomplete="email" maxlength="190"></label>
+              </div>
+            </section>
+            <section class="rail-checkout-section">
+              <h5>Fare</h5>
+              <div class="rail-note"><b>${money(fare.amount, fare.currency)}</b> ${esc(fare.description || '')}${fare.refundable ? ' · refundable' : ' · non-refundable'}${fare.conditions ? '<br>' + esc(fare.conditions) : ''}</div>
+              ${methods.length ? `<div class="rail-pm-row">${methods.map((m) => `<span class="rail-pm${m.wallet ? ' wallet' : ''}">${esc(m.label)}</span>`).join('')}</div>` : ''}
+              <p class="rail-secure">Card and wallet details are entered in the distributor’s secure payment session inside Aiva. Aiva never sees or stores card details.</p>
+            </section>`
+          : `<div class="rail-note warn"><b>No fare to sell on this journey.</b> ${esc(sales.reason || 'Aiva needs an authorised rail distributor before it can quote or sell this ticket.')} Nothing has been charged and no seat is held.</div>`}
+        </div>
+        <div class="rail-paybar">
+          ${fare ? `<div class="rail-total-row"><span>Total</span><b class="rail-total">${money(fare.amount, fare.currency)}</b></div>
+            <button type="button" class="rail-pay" data-rail-pay ${fare.payment?.sessionId ? '' : 'disabled'}>${fare.payment?.sessionId ? 'Pay ' + money(fare.amount, fare.currency) : 'Payment session unavailable'}</button>
+            ${fare.payment?.sessionId ? '' : '<p class="mini" style="margin:0">The distributor did not return a payment session for this fare, so no payment can be taken. Nothing has been charged.</p>'}`
+          : '<button type="button" class="rail-pay" disabled>Ticket sales not enabled</button>'}
+        </div>`;
       el.checkout.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
