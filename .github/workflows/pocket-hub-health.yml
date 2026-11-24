@@ -1,0 +1,18 @@
+name: Aiva Search health check (app.aivatrading.uk)
+# Calls the live travel endpoints every 30 minutes. A failed run emails the repository owner (GitHub Actions notifications).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: App responds
+        run: curl -sf -m 30 https://app.aivatrading.uk/ | grep -q 'id="asForm"'
+      - name: Travel endpoints
+        run: U=https://app.aivatrading.uk python3 scripts/pocket-hub-health.py

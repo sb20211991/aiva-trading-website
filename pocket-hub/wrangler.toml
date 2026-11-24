@@ -8,3 +8,11 @@ pages_build_output_dir = "public"
 [vars]
 # Website API paths that still arrive on app.aivatrading.uk (e.g. the Square webhook) are forwarded here.
 WEBSITE_ORIGIN = "https://aiva-trading.pages.dev"
+
+
+# Production only: real Nuitee bookings and card payments. Previews keep the sandbox key, which never charges.
+# Pages does not inherit top-level [vars] into env sections, so WEBSITE_ORIGIN is repeated.
+[env.production.vars]
+WEBSITE_ORIGIN = "https://aiva-trading.pages.dev"
+HOTEL_BOOKING_LIVE = "true"
+FLIGHT_BOOKING_LIVE = "true"

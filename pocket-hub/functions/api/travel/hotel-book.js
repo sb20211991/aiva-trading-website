@@ -1,0 +1,126 @@
+/* POST /api/travel/hotel-book — in-app hotel booking through Nuitee (LiteAPI) with the Nuitee payment SDK.
+   {action:'prebook', offerId} -> prebookId, transactionId and the payment-form secret, plus the final price and terms.
+   {action:'book', prebookId, transactionId, holder:{firstName,lastName,email}} -> confirmed booking (after the SDK payment).
+   {action:'cancel', bookingId, email, token} -> cancels a booking made on this device (token from the book reply) whose holder email matches; Nuitee refunds per the cancellation policy.
+   Sandbox keys make test bookings only. A production key books for real only when HOTEL_BOOKING_LIVE is "true". */
+import { isSandboxKey } from '../../_lib/travel.js';
+
+const BOOK = 'https://book.liteapi.travel/v3.0';
+export const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+export const allowedOrigin = (request) => {
+  const origin = request.headers.get('Origin');
+  if (!origin) return true;
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (hostname === new URL(request.url).hostname) return true;
+    if (protocol === 'https:' && /^app\.aivatrading\.uk$|(^|\.)aiva-pocket-hub\.pages\.dev$/.test(hostname)) return true;
+    return protocol === 'http:' && (hostname === 'localhost' || hostname === '127.0.0.1');
+  } catch { return false; }
+};
+export const clean = (s, n = 60) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
+export const id = (s) => /^[A-Za-z0-9_\-=.]{4,4000}$/.test(s || '') ? s : '';
+export const email = (s) => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s || '') ? s : '';
+
+async function send(method, path, body, env, fetcher, timeout) {
+  const res = await fetcher(`${BOOK}${path}`, { method, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeout),
+    headers: { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json', Accept: 'application/json' } });
+  let data = null;
+  try { data = await res.json(); } catch { /* non-JSON upstream reply */ }
+  if (!res.ok || data?.error) throw Object.assign(new Error(clean(data?.error?.description || data?.error?.message || data?.message || `HTTP ${res.status}`, 200)), { status: res.status });
+  return data?.data ?? data;
+}
+const call = (path, body, env, fetcher, timeout) => send('POST', path, body, env, fetcher, timeout);
+async function existing(clientReference, env, fetcher) {
+  const res = await fetcher(`${BOOK}/bookings?clientReference=${encodeURIComponent(clientReference)}`, { signal: AbortSignal.timeout(20000), headers: { 'X-API-Key': env.LITEAPI_KEY, Accept: 'application/json' } });
+  const data = res.ok ? await res.json() : null;
+  return (data?.data || []).find((b) => b?.bookingId && !/FAIL|CANCEL/i.test(b.status || '')) || null;
+}
+export const freeUntil = (cp) => (cp?.cancelPolicyInfos || []).find((i) => !(Number(i?.amount) === 0))?.cancelTime || '';
+export const shapePrebook = (p) => {
+  const r = p.roomTypes?.[0]?.rates?.[0] || {}, cp = r.cancellationPolicies || {};
+  return { prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, hotelId: p.hotelId, price: Number(p.price), currency: p.currency,
+    checkin: p.checkin, checkout: p.checkout, room: r.name || '', board: r.boardName || '', refundable: cp.refundableTag === 'RFN',
+    cancelBy: freeUntil(cp), priceChanged: Number(p.priceDifferencePercent) !== 0, cancellationChanged: !!p.cancellationChanged,
+    taxesDue: (r.retailRate?.taxesAndFees || []).filter((t) => t.included === false).reduce((n, t) => n + (Number(t.amount) || 0), 0),
+    terms: clean(p.termsAndConditions, 2000) };
+};
+export const shapeBooking = (b) => ({ bookingId: b.bookingId, status: b.status, confirmation: b.hotelConfirmationCode || b.supplierBookingId || '',
+  hotel: b.hotel?.name || '', checkin: b.checkin, checkout: b.checkout, price: Number(b.price), currency: b.currency,
+  room: b.bookedRooms?.[0]?.roomType?.name || '', refundable: b.cancellationPolicies?.refundableTag === 'RFN',
+  cancelBy: freeUntil(b.cancellationPolicies) });
+
+export async function onRequestPost({ request, env }, fetcher = fetch) {
+  if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
+  if (!env?.LITEAPI_KEY) return json({ error: 'Hotel booking is not connected yet (Nuitee key missing).' }, 503);
+  const testMode = isSandboxKey(env.LITEAPI_KEY);
+  let body;
+  try { body = JSON.parse((await request.text()).slice(0, 8000)); } catch { return json({ error: 'Invalid request' }, 400); }
+  if (body?.action === 'cancel') return cancel(body, env, fetcher, testMode);
+  if (body?.action === 'prebook' && readinessCheck(request, env)) return readiness(body, env, fetcher);
+  if (!testMode && env.HOTEL_BOOKING_LIVE !== 'true')
+    return json({ error: 'Real hotel bookings are waiting for the owner\'s approval to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
+  try {
+    if (body?.action === 'prebook') {
+      const offerId = id(body.offerId);
+      if (!offerId) return json({ error: 'Choose a room first.' }, 400);
+      const p = await call('/rates/prebook', { offerId, usePaymentSdk: true }, env, fetcher, 30000);
+      if (!p?.prebookId || !p.transactionId || !p.secretKey) return json({ error: 'This room is no longer available. Please choose another.' }, 409);
+      return json({ ...shapePrebook(p), testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+    }
+    if (body?.action === 'book') {
+      const prebookId = id(body.prebookId), transactionId = id(body.transactionId), h = body.holder || {};
+      const holder = { firstName: clean(h.firstName), lastName: clean(h.lastName), email: email(clean(h.email, 254)) };
+      if (!prebookId || !transactionId) return json({ error: 'Booking reference missing. Please start again.' }, 400);
+      if (!holder.firstName || !holder.lastName || !holder.email) return json({ error: 'Enter the guest\'s first name, last name and email.' }, 400);
+      const clientReference = `aiva-${prebookId}`;
+      let b;
+      try {
+        b = await call('/rates/book', { prebookId, clientReference, holder, payment: { method: 'TRANSACTION_ID', transactionId },
+          guests: [{ occupancyNumber: 1, ...holder }] }, env, fetcher, 60000);
+      } catch (e) {
+        b = await existing(clientReference, env, fetcher).catch(() => null);
+        if (!b) throw e;
+      }
+      if (!b?.bookingId) return json({ error: 'The hotel did not confirm the booking. If you were charged, the hold is released within 1-2 business days.' }, 503);
+      return json({ ...shapeBooking(b), cancelToken: await cancelToken(b.bookingId, env), testMode });
+    }
+    return json({ error: 'Unknown action' }, 400);
+  } catch (e) {
+    const timeout = e.name === 'TimeoutError';
+    return json({ error: timeout ? 'The booking service took too long. Check "My bookings" before trying again.' : (e.message || 'Booking failed.'),
+      upstream: e.status || (timeout ? 'timeout' : 'error') }, e.status >= 400 && e.status < 500 ? 409 : 503);
+  }
+}
+// Owner-only production readiness check: a real prebook that returns no payment details, so nobody can pay or be charged.
+export const readinessCheck = (request, env) => !!env.BOOKING_CHECK_SECRET && request.headers.get('X-Aiva-Check') === env.BOOKING_CHECK_SECRET;
+async function readiness(body, env, fetcher) {
+  const offerId = id(body.offerId);
+  if (!offerId) return json({ error: 'offerId missing' }, 400);
+  try {
+    const p = await call('/rates/prebook', { offerId, usePaymentSdk: true }, env, fetcher, 30000);
+    return json({ readiness: true, prebooked: !!p?.prebookId, paymentForm: !!(p?.transactionId && p?.secretKey), live: !isSandboxKey(env.LITEAPI_KEY), price: Number(p?.price), currency: p?.currency || '' });
+  } catch (e) { return json({ readiness: true, prebooked: false, error: e.message, upstream: e.status || 'error' }, 503); }
+}
+export async function cancelToken(bookingId, env) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(`cancel:${env.LITEAPI_KEY}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(bookingId)))].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+const num = (...v) => { const n = v.map(Number).find(Number.isFinite); return n ?? null; };
+async function cancel(body, env, fetcher, testMode) {
+  const bookingId = id(body.bookingId), em = email(clean(body.email, 254)).toLowerCase();
+  if (!bookingId || !em) return json({ error: 'Enter the booking number and the email used to book.' }, 400);
+  if (typeof body.token !== 'string' || body.token !== await cancelToken(bookingId, env)) return json({ error: 'This booking can only be cancelled from the device it was booked on, or through support.' }, 403);
+  try {
+    const b = await send('GET', `/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 20000);
+    if (!b?.bookingId || String(b.holder?.email || '').toLowerCase() !== em) return json({ error: 'No booking matches that booking number and email.' }, 404);
+    if (/CANCEL/i.test(b.status || '')) return json({ bookingId, status: 'CANCELLED', already: true, testMode });
+    const c = await send('PUT', `/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 30000);
+    return json({ bookingId, status: c?.status || 'CANCELLED', refund: num(c?.refund_amount, c?.refundAmount), fee: num(c?.cancellation_fee, c?.cancellationFee),
+      currency: c?.currency || b.currency || '', testMode });
+  } catch (e) {
+    const timeout = e.name === 'TimeoutError';
+    return json({ error: timeout ? 'The booking service took too long. Check "My bookings" before trying again.' : (e.message || 'Cancellation failed.'),
+      upstream: e.status || (timeout ? 'timeout' : 'error') }, e.status >= 400 && e.status < 500 ? 409 : 503);
+  }
+}
+export const onRequest = () => json({ error: 'Method not allowed' }, 405);

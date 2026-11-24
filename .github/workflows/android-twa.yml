@@ -1,0 +1,96 @@
+name: Android TWA build
+# Builds the Aiva Android app (a Trusted Web Activity around app.aivatrading.uk) on a GitHub-hosted Ubuntu runner, so no
+# Android Studio, JDK or Mac is needed. Produces a Play-ready signed .aab, a signed .apk for a phone, and the
+# assetlinks.json that lets the app open the site full-screen without a browser bar.
+#
+# Signing: set ANDROID_KEYSTORE_BASE64 (base64 of your .keystore) and ANDROID_KEYSTORE_PASSWORD as repository secrets to
+# keep one stable upload key. Without them a key is generated and uploaded as the `aiva-android-upload-key` artifact,
+# which must then be saved into those two secrets before the first Play upload: Play ties an app to its first key.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['pocket-hub/android/**', '.github/workflows/android-twa.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Bubblewrap
+        run: npm install --global @bubblewrap/cli@latest
+      - name: Build the signed app bundle
+        id: build
+        working-directory: pocket-hub/android
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: bash build.sh
+      - name: Upload signed app bundle and assetlinks
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiva-android-${{ github.run_number }}
+          path: |
+            pocket-hub/android/app-release-bundle.aab
+            pocket-hub/android/app-release-signed.apk
+            pocket-hub/android/assetlinks/assetlinks.json
+          if-no-files-found: error
+      # The app can only open the site full screen once Android can match it to a certificate, and that file has to be
+      # served from the site itself. Publishing it here keeps the two in step without anyone copying fingerprints around.
+      - name: Publish assetlinks.json so Android can open the site full screen
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, os, pathlib, urllib.error, urllib.request
+
+          src = pathlib.Path('pocket-hub/android/assetlinks/assetlinks.json')
+          dst = pathlib.Path('pocket-hub/public/.well-known/assetlinks.json')
+          if dst.exists() and dst.read_bytes() == src.read_bytes():
+              print('assetlinks.json is already up to date')
+              raise SystemExit
+
+          api = 'https://api.github.com/repos/%s/contents/%s' % (os.environ['GITHUB_REPOSITORY'], dst.as_posix())
+
+          def call(method, payload=None):
+              req = urllib.request.Request(api, method=method,
+                  data=json.dumps(payload).encode() if payload else None,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'User-Agent': 'aiva-android-build',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              return json.load(urllib.request.urlopen(req))
+
+          sha = None
+          try:
+              sha = call('GET').get('sha')
+          except urllib.error.HTTPError as e:
+              if e.code != 404:
+                  raise
+          body = {'message': 'Android: publish the app certificate for assetlinks',
+                  'branch': os.environ['GITHUB_REF_NAME'],
+                  'content': base64.b64encode(src.read_bytes()).decode()}
+          if sha:
+              body['sha'] = sha
+          out = call('PUT', body)
+          print('committed assetlinks.json at', out['commit']['sha'][:7])
+          PY
+      # Only on a first, keyless run: keep this keystore, it is the app's upload identity.
+      - name: Upload the newly generated upload key
+        if: env.KEYSTORE_STATUS == 'generated'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiva-android-upload-key
+          path: pocket-hub/android/android.keystore

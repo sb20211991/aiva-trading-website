@@ -1,0 +1,14 @@
+# The Android project itself is generated from twa-manifest.json by the cloud build, so only the manifest and this
+# file are committed. Signing material must never be committed: the upload key lives in repository secrets.
+android.keystore
+*.jks
+*.keystore
+*.apk
+*.aab
+manifest-checksum.txt
+app/
+gradle/
+gradlew
+gradlew.bat
+build/
+assetlinks/
