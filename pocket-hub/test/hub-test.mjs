@@ -501,6 +501,6 @@ console.log('AIVA SEARCH CHECKS PASSED');
   const d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=23.39,113.30&to=23.13,113.27&cc=cn&toName=Hotel'), env: {} }, async () => new Response('{}', { status: 500 }))).json();
   assert.ok(d.modes.train.book.length && d.modes.taxi.book.length && d.modes.walk.book.length);
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(app, /function asBookHTML/); assert.match(app, /body\+=asBookHTML\(m\)/); assert.match(app, /asMapModes\(\)/); assert.match(html, /id="asMapModes"/);
+  assert.match(app, /function asBookHTML/); assert.match(app, /body\+=asBookHTML\(m\)/); assert.match(app, /asMapModes\(\)/); assert.match(app, /return;asTabs\(b\.dataset\.asMapmode\)/); assert.match(html, /id="asMapModes"/);
 }
 console.log('TRANSPORT BOOKING CHECKS PASSED');
