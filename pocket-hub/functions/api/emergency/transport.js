@@ -111,24 +111,33 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const key = `${radius}-${origin.lat},${origin.lon}`, now = () => new Date().toISOString();
   const live = stops => stops.some(s => s.state === 'live');
   const provider = inLondon(origin) ? 'tfl' : cc === 'no' ? 'entur' : cc === 'ch' || cc === 'li' ? 'swiss' : 'osm';
-  let upstreamErrors = [];
-  try {
-    if (provider === 'tfl') {
+  /* One failed source must never blank the section: a national feed that is unreachable, rate-limited or geo-blocked
+     degrades to OpenStreetMap stops for the same place. 503 only when every source fails. */
+  const upstreamErrors = [];
+  const fail = (e) => upstreamErrors.push(e?.status || e?.name || 'error');
+  if (provider === 'tfl') {
+    try {
       const { stops, upstream } = await cached(`tfl2-${key}`, 30, () => tflStops(origin, radius, env, fetcher));
       return json({ provider, live: true, stops, upstreamErrors: upstream, source: SOURCE.tfl, retrieved: now() });
-    }
-    if (provider !== 'osm') {
-      try {
-        const { stops, upstream } = provider === 'entur'
-          ? { stops: await cached(`entur-${key}`, 30, () => entur(origin, radius, fetcher)), upstream: [] }
-          : await cached(`swiss-${key}`, 30, () => swiss(origin, radius, fetcher));
-        if (stops.length) return json({ provider, live: live(stops), stops, upstreamErrors: upstream, source: SOURCE[provider], retrieved: now() });
-      } catch (e) { upstreamErrors = [e.status || e.name]; }
-    }
+    } catch (e) { fail(e); }
+  }
+  if (provider === 'entur' || provider === 'swiss') {
+    try {
+      const { stops, upstream } = provider === 'entur'
+        ? { stops: await cached(`entur-${key}`, 30, () => entur(origin, radius, fetcher)), upstream: [] }
+        : await cached(`swiss-${key}`, 30, () => swiss(origin, radius, fetcher));
+      if (stops.length) return json({ provider, live: live(stops), stops, upstreamErrors: upstream, source: SOURCE[provider], retrieved: now() });
+      fail({ name: `${provider}-no-stops` });
+    } catch (e) { fail(e); }
+  }
+  try {
     const base = await cached(`osm-stops2-${radius}-${origin.lat.toFixed(3)},${origin.lon.toFixed(3)}`, 3600, () => osmStops(origin, radius, fetcher));
     const { stops, upstream, sources } = await enrichRail(base.map(s => ({ ...s })), cc, env, fetcher);
-    return json({ provider: 'osm', live: live(stops), stops, upstreamErrors: [...upstreamErrors, ...upstream],
+    return json({ provider: 'osm', requestedProvider: provider, live: live(stops), stops, upstreamErrors: [...upstreamErrors, ...upstream],
       source: ['OpenStreetMap', ...sources].join(' · '), retrieved: now() });
-  } catch { return json({ error: 'Transport data is temporarily unavailable. Please try again shortly.' }, 503); }
+  } catch (e) {
+    fail(e);
+    return json({ error: 'Transport data is temporarily unavailable. Please try again shortly.', upstreamErrors }, 503);
+  }
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);
