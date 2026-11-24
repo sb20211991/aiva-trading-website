@@ -1,5 +1,5 @@
 /* GET /api/emergency/transport?lat=&lon=&radius=<m>
-   London (TfL area): live arrivals for buses, Tube, trams, DLR, Overground and Elizabeth line plus live line status
+   London (TfL area): live arrivals for buses, Tube, trams, DLR, Overground, Elizabeth line plus live line status
    (delays, part closures, cancellations) from the TfL Unified API. Norway (Entur), Switzerland (opendata.ch) and the
    rest of the world (Transitous, aggregating open GTFS/GTFS-RT feeds): live departures for every mode. Elsewhere:
    nearby stations and stops from OpenStreetMap, with live trains added from National Rail (Great Britain, when
@@ -12,7 +12,10 @@ import { transitousStops } from '../../_lib/transitous.js';
 export const inLondon = ({ lat, lon }) => lat > 51.25 && lat < 51.72 && lon > -0.56 && lon < 0.35;
 const CLOSED = new Set([1, 2, 4, 16, 20]); // Closed, Suspended, Planned Closure, Not Running, Service Closed
 const OK = new Set([10, 18, 19]); // Good Service, No Issues, Information
-const LIVE_MODES = new Set(['bus', 'tube', 'tram', 'dlr', 'overground', 'elizabeth-line']);
+/* Every TfL mode that publishes arrivals: buses, Tube, trams, DLR, Overground, Elizabeth line, the river piers
+   (river-bus), the cable car and the National Rail stations TfL carries. Missing one only ever showed "no live feed"
+   for a stop that does have one. */
+const LIVE_MODES = new Set(['bus', 'tube', 'tram', 'dlr', 'overground', 'elizabeth-line', 'river-bus', 'cable-car', 'national-rail']);
 const withKey = (u, env) => env?.TFL_APP_KEY ? u + (u.includes('?') ? '&' : '?') + 'app_key=' + encodeURIComponent(env.TFL_APP_KEY) : u;
 
 export function lineState(severity) { return CLOSED.has(severity) ? 'closed' : OK.has(severity) ? 'ok' : 'disrupted'; }
