@@ -57,7 +57,12 @@ jobs:
         run: |
           set -euo pipefail
           gunzip -c pocket-hub/scripts/rail-checkout-ui.patch.gz > "$RUNNER_TEMP/rail-checkout-ui.patch"
-          git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
+          # Idempotent: the patch's result is committed in the repository, so skip when it is already applied.
+          if git apply --reverse --check "$RUNNER_TEMP/rail-checkout-ui.patch" 2>/dev/null; then
+            echo "rail checkout patch already applied"
+          else
+            git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
+          fi
       - name: Test
         run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
