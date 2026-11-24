@@ -87,9 +87,10 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then BRANCH="pr-${{ github.event.pull_request.number }}"; else BRANCH=main; fi
           npx --yes wrangler@4 pages deploy public --project-name="$PROJECT" --branch="$BRANCH" \
             --commit-hash="$GITHUB_SHA" --commit-message="Pocket Hub ${GITHUB_SHA::7}" --commit-dirty=true | tee "$RUNNER_TEMP/deploy.log"
-          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.pages\\.dev' "$RUNNER_TEMP/deploy.log" | tail -1)" >> "$GITHUB_OUTPUT"
+          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' "$RUNNER_TEMP/deploy.log" | tail -1)" >> "$GITHUB_OUTPUT"
       # A freshly uploaded Pages deployment can answer 404 or serve the previous build for a few seconds while the
-      # project alias catches up, so every probe retries with a cap instead of failing a good deploy on the first try.
+      # project alias catches up, so probes retry with a cap. Files are fetched to disk rather than piped into
+      # grep -q: under pipefail, grep closing the pipe early makes curl exit 23 and would fail a passing check.
       - name: Verify deployment
         run: |
           set -euo pipefail
@@ -116,10 +117,16 @@ jobs:
           done
           printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
           # The build steps above must actually reach the CDN: no checkout rewrite, no release.
-          curl -sf -m 30 "$U/aiva-rail.js" | grep -q 'rail-checkout-head'
-          curl -sf -m 30 "$U/aiva-car.js" | grep -q 'cr-form'
+          curl -sf -m 30 -o "$RUNNER_TEMP/aiva-rail.js" "$U/aiva-rail.js"
+          grep -q 'rail-checkout-head' "$RUNNER_TEMP/aiva-rail.js"
+          curl -sf -m 30 -o "$RUNNER_TEMP/aiva-car.js" "$U/aiva-car.js"
+          grep -q 'cr-form' "$RUNNER_TEMP/aiva-car.js"
           # Car hire must answer with the honest no-supplier state: never an error, never invented cars or prices.
-          car_api() { curl -sf -m 30 "$U/api/car?action=search&pickup=Heathrow&from=2026-12-01T10:00:00Z&to=2026-12-05T10:00:00Z&age=35" | grep -q '"available":false'; }
+          car_api() {
+            local body
+            body=$(curl -sf -m 30 "$U/api/car?action=search&pickup=Heathrow&from=2026-12-01T10:00:00Z&to=2026-12-05T10:00:00Z&age=35") || return 1
+            case "$body" in *'"available":false'*) return 0 ;; *) echo "car api: $body" | head -c 300; return 1 ;; esac
+          }
           retry 'car rental api' 4 car_api
           U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
