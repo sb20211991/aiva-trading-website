@@ -121,7 +121,14 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   if (provider === 'tfl') {
     try {
       const { stops, upstream } = await cached(`tfl2-${key}`, 30, () => tflStops(origin, radius, env, fetcher));
-      return json({ provider, live: true, stops, upstreamErrors: upstream, source: SOURCE.tfl, retrieved: now() });
+      const anyLive = stops.some(s => s.departures?.length);
+      /* TfL meters its anonymous quota by IP, so a shared Cloudflare address can be rate-limited on the arrivals calls
+         while stop lookup still answers. A board with no live rows at all reads as broken, so fall through to the
+         stop list with official live links instead of returning it. */
+      if (stops.length && (anyLive || !upstream.length)) {
+        return json({ provider, live: anyLive, stops, upstreamErrors: upstream, source: SOURCE.tfl, retrieved: now() });
+      }
+      upstreamErrors.push(...upstream, anyLive ? 'tfl-no-stops' : 'tfl-no-live-data');
     } catch (e) { fail(e); }
   }
   if (provider === 'entur' || provider === 'swiss') {
