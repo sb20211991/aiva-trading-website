@@ -1,1 +1,1 @@
-[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"uk.aivatrading.app","sha256_cert_fingerprints":["A6:DD:28:F6:69:DC:01:61:43:4D:06:96:95:08:8B:0B:1F:2A:59:63:FB:FB:BB:4B:93:74:49:A5:04:5D:5C:E4"]}}]
+[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"uk.aivatrading.app","sha256_cert_fingerprints":["DD:56:90:2E:FE:34:83:5A:97:33:86:A2:8C:D0:85:33:B3:95:AF:75:9B:95:A4:C0:79:DC:FE:88:C2:7D:3B:AF"]}}]
