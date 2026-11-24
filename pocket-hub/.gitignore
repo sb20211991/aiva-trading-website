@@ -1,1 +1,3 @@
 __pycache__/
+# Vendored at build time from the pinned qrcode-generator version (see .github/workflows/deploy-pocket-hub.yml).
+public/vendor/qrcode.js
