@@ -46,6 +46,8 @@ jobs:
         run: node scripts/split-search-fields.mjs
       - name: Add the Aiva Train and Aiva Tram sections (build step)
         run: node scripts/add-rail-sections.mjs
+      - name: Add the Aiva Car Rental section (build step)
+        run: node scripts/add-car-section.mjs
       - name: Place search results under their search sections (build step)
         run: node scripts/add-results-ux.mjs
       # Aiva Train and Aiva Tram: the phone checkout and the smaller train mark. The gzipped patch is applied from
@@ -57,17 +59,22 @@ jobs:
           gunzip -c pocket-hub/scripts/rail-checkout-ui.patch.gz > "$RUNNER_TEMP/rail-checkout-ui.patch"
           git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
       - name: Test
-        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs
+        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
       # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
-      # frequently over it, so a free TfL app key is what makes London live boards reliable. Missing keys are skipped.
+      # frequently over it, so a free TfL app key is what makes London live boards reliable. The car rental gateway is
+      # switched on the same way: set CAR_RENTAL_GATEWAY_URL and CAR_RENTAL_GATEWAY_KEY once the supplier is signed.
+      # Missing keys are skipped, and without them Aiva Car Rental stays honestly closed.
       - name: Apply provider keys from repository secrets
         env:
           TFL_APP_KEY: ${{ secrets.TFL_APP_KEY }}
           RAIL_DATA_LDB_KEY: ${{ secrets.RAIL_DATA_LDB_KEY }}
+          CAR_RENTAL_GATEWAY_URL: ${{ secrets.CAR_RENTAL_GATEWAY_URL }}
+          CAR_RENTAL_GATEWAY_KEY: ${{ secrets.CAR_RENTAL_GATEWAY_KEY }}
+          CAR_RENTAL_PROVIDER: ${{ secrets.CAR_RENTAL_PROVIDER }}
         run: |
           set -euo pipefail
-          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY; do
+          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER; do
             value="${!name:-}"
             if [ -z "$value" ]; then echo "$name: not set in repository secrets, skipping"; continue; fi
             printf '%s' "$value" | npx --yes wrangler@4 pages secret put "$name" --project-name="$PROJECT" > /dev/null
@@ -88,12 +95,18 @@ jobs:
           U="${{ steps.deploy.outputs.url }}"; [ "${{ github.event_name }}" = "pull_request" ] || U="https://$PROJECT.pages.dev"
           echo "== $U"
           curl -sf -m 30 -o "$RUNNER_TEMP/app.html" "$U/"; grep -qF '<meta name="application-name" content="Aiva">' "$RUNNER_TEMP/app.html"
-          for p in /app.js /aiva-rail.js /vendor/qrcode.js /service-worker.js /manifest.webmanifest /icon-192.png; do printf '%s %s\n' "$p" "$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")"; done
+          for p in /app.js /aiva-rail.js /aiva-car.js /vendor/qrcode.js /service-worker.js /manifest.webmanifest /icon-192.png; do printf '%s %s\n' "$p" "$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p")"; done
           printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
           grep -q 'id="asForm"' "$RUNNER_TEMP/app.html"
           grep -q 'id="asRailTrain"' "$RUNNER_TEMP/app.html"
-          # The build step above must actually reach the CDN: no checkout rewrite, no release.
+          grep -q 'id="asCar"' "$RUNNER_TEMP/app.html"
+          # The build steps above must actually reach the CDN: no checkout rewrite, no release.
           curl -sf -m 30 "$U/aiva-rail.js" | grep -q 'rail-checkout-head'
+          curl -sf -m 30 "$U/aiva-car.js" | grep -q 'cr-form'
+          # Car hire must answer with the honest no-supplier state: never an error, never invented cars or prices.
+          curl -sf -m 30 "$U/api/car?action=search&pickup=Heathrow&from=2026-12-01T10:00:00Z&to=2026-12-05T10:00:00Z&age=35" | grep -q '"available":false'
+          # Car hire leaves no external booking site behind in the transfers reply.
+          curl -sf -m 30 "$U/api/travel/transfers?lat=51.47&lon=-0.4543&toLat=51.5&toLon=-0.12&iata=LHR" | grep -qv 'rentalcars\.com'
           U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'
