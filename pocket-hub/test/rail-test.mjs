@@ -14,7 +14,6 @@ const router = (table) => async (u) => {
 
 const STOP_A = { type: 'STOP', name: 'London St. Pancras Int.', id: 'stop-lon', lat: 51.5308, lon: -0.1238, country: 'GB', tz: 'Europe/London', modes: ['HIGHSPEED_RAIL', 'SUBURBAN', 'BUS'] };
 const STOP_B = { type: 'STOP', name: 'St Pancras Way', id: 'stop-way', lat: 51.5417, lon: -0.1371, country: 'GB', modes: ['BUS'] };
-const STOP_C = { type: 'STOP', name: 'Paris Nord', id: 'stop-par', lat: 48.8809, lon: 2.3553, country: 'FR', tz: 'Europe/Paris', modes: ['HIGHSPEED_RAIL', 'SUBURBAN'] };
 
 const leg = (mode, over = {}) => ({
   mode, duration: 6900, realTime: true, routeShortName: mode === 'TRAM' ? 'Purple Line' : 'EST 9116',
@@ -108,7 +107,7 @@ const itin = (id, mode) => ({ id, duration: 7500, startTime: '2026-12-02T08:00:0
       place: { name: 'Piccadilly', tz: 'Europe/London', scheduledDeparture: '2026-12-02T09:06:00Z', departure: '2026-12-02T09:06:00Z' } },
     { mode: 'BUS', routeShortName: '192', headsign: 'Stockport', place: { scheduledDeparture: '2026-12-02T09:01:00Z', departure: '2026-12-02T09:01:00Z' } }
   ], place: { name: 'Piccadilly (Manchester Metrolink)', tz: 'Europe/London' } };
-  let d = await (await board({ request: new Request(url('/api/rail/departures?stopId=gb-dft-bods_940GZZMAPIC&mode=tram&n=5')) }, reply(rows))).json();
+  const d = await (await board({ request: new Request(url('/api/rail/departures?stopId=gb-dft-bods_940GZZMAPIC&mode=tram&n=5')) }, reply(rows))).json();
   assert.deepEqual(d.departures.map((x) => x.line), ['Blue Line', 'Yellow Line']);
   assert.equal(d.departures[0].delay, 3); assert.equal(d.departures[0].platform, 'P1'); assert.equal(d.departures[0].mode, 'tram');
   assert.equal(d.departures[1].cancelled, true); assert.equal(d.live, true); assert.equal(d.stop.name, 'Piccadilly (Manchester Metrolink)');
@@ -151,17 +150,20 @@ const itin = (id, mode) => ({ id, duration: 7500, startTime: '2026-12-02T08:00:0
 
 // ---- The sections ship in the app shell, with no external link anywhere in the booking journey.
 {
+  const q = String.fromCharCode(34);
   const html = readFileSync(pub('index.html'), 'utf8');
-  for (const id of ['asRailTrain', 'asRailTram', 'railTrainBody', 'railTramBody']) assert.match(html, new RegExp(`id=\"${id}\"`));
+  for (const id of ['asRailTrain', 'asRailTram', 'railTrainBody', 'railTramBody']) assert.ok(html.includes('id=' + q + id + q), id);
   assert.match(html, /Aiva Train/); assert.match(html, /Aiva Tram/);
-  assert.match(html, /data-rail-section=\"train\"/); assert.match(html, /data-rail-section=\"tram\"/);
-  assert.match(html, /src=\"aiva-rail\\.js\"/); assert.match(html, /src=\"vendor\\/qrcode\\.js\"/);
-  const travel = html.slice(html.indexOf('<section id=\"travel\"'), html.indexOf('</section>', html.indexOf('<section id=\"travel\"')));
-  assert.doesNotMatch(travel, /<a [^>]*href=\"https?:/);
-  assert.doesNotMatch(travel, /target=\"_blank\"/);
+  assert.ok(html.includes('data-rail-section=' + q + 'train' + q));
+  assert.ok(html.includes('data-rail-section=' + q + 'tram' + q));
+  assert.ok(html.includes('src=' + q + 'aiva-rail.js' + q));
+  assert.ok(html.includes('src=' + q + 'vendor/qrcode.js' + q));
+  const travel = html.slice(html.indexOf('<section id=' + q + 'travel' + q), html.indexOf('</section>', html.indexOf('<section id=' + q + 'travel' + q)));
+  assert.ok(!travel.includes('href=' + q + 'http'), 'no external link in the travel section');
+  assert.ok(!travel.includes('target=' + q + '_blank' + q));
   assert.ok(existsSync(pub('aiva-rail.js'))); assert.ok(existsSync(pub('vendor/qrcode.js')));
   const sw = readFileSync(pub('service-worker.js'), 'utf8');
-  assert.match(sw, /aiva-rail\\.js/); assert.match(sw, /vendor\\/qrcode\\.js/);
+  assert.ok(sw.includes('aiva-rail.js')); assert.ok(sw.includes('vendor/qrcode.js'));
 }
 
 // ---- The vendored QR generator still produces a scannable matrix for a ticket payload.
