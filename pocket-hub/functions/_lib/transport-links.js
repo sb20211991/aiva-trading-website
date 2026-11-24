@@ -1,5 +1,6 @@
 /* Hand-off links for booking transport with the operator that actually sells it (Aiva does not resell taxis or tickets).
-   Directions open in Amap in mainland China, where Google Maps is unavailable, and in Google Maps everywhere else. */
+   Directions open in Amap in mainland China, where Google Maps is unavailable, and in Google Maps everywhere else.
+   Car hire is the one mode with no hand-off: Aiva Car Rental compares and books it inside the app. */
 const enc = encodeURIComponent;
 
 const RAIL = {
@@ -74,7 +75,8 @@ export function transportLinks(cc, a, b, names = {}, rides = []) {
   return {
     taxi: { book: [...ride, dir('drive', '', `Driving route in ${app}`)], tip: 'Official taxis queue at the airport taxi rank; the fare is metered. Ride apps show the price before you book.' },
     ride: { book: ride, tip: 'The app shows the exact fare and the airport pick-up point before you confirm.' },
-    car: { book: [...(cn ? [] : [{ label: 'Compare car hire', url: 'https://www.rentalcars.com/', kind: 'book' }]), dir('drive', '', `Driving route in ${app}`)], tip: cn ? 'Driving in mainland China requires a Chinese driving licence; foreign and international permits are not accepted. Book a taxi or DiDi instead.' : 'Bring your driving licence and a credit card in the driver’s name.' },
+    /* No comparison-site hand-off any more: Aiva Car Rental prices, compares and books hire inside the app. */
+    car: { book: [dir('drive', '', `Driving route in ${app}`)], tip: cn ? 'Driving in mainland China requires a Chinese driving licence; foreign and international permits are not accepted. Book a taxi or DiDi instead.' : 'Compare and book car hire inside Aiva Car Rental. Bring your driving licence and a credit card in the driver’s name.' },
     train: { book: [...(rail ? [{ label: `Buy tickets: ${rail[0]}`, url: rail[1], kind: 'book' }] : []), dir('transit', 'train')], tip: pay },
     metro: { book: [dir('transit', 'metro')], tip: pay },
     tram: { book: [dir('transit', 'tram')], tip: pay },
