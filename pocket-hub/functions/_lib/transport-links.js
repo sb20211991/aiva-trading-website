@@ -41,9 +41,26 @@ const AMAP = { drive: 'car', transit: 'bus', walk: 'walk' };
 const GMAP = { drive: 'driving', transit: 'transit', walk: 'walking' };
 const GSUB = { train: 'train', metro: 'subway', tram: 'tram', bus: 'bus' };
 
+/* Amap expects GCJ-02 ("Mars") coordinates and ignores coordinate=wgs84 on its web redirect, so GPS points are shifted here. */
+export function gcj02(p) {
+  const { lat, lon } = p;
+  if (lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271) return p;
+  const A = 6378245, EE = 0.00669342162296594323, x = lon - 105, y = lat - 35, PI = Math.PI;
+  let dLat = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x)) + (20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2 / 3
+    + (20 * Math.sin(y * PI) + 40 * Math.sin(y / 3 * PI)) * 2 / 3 + (160 * Math.sin(y / 12 * PI) + 320 * Math.sin(y * PI / 30)) * 2 / 3;
+  let dLon = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x)) + (20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2 / 3
+    + (20 * Math.sin(x * PI) + 40 * Math.sin(x / 3 * PI)) * 2 / 3 + (150 * Math.sin(x / 12 * PI) + 300 * Math.sin(x / 30 * PI)) * 2 / 3;
+  const rad = lat / 180 * PI, m = 1 - EE * Math.sin(rad) ** 2, sm = Math.sqrt(m);
+  dLat = (dLat * 180) / ((A * (1 - EE)) / (m * sm) * PI);
+  dLon = (dLon * 180) / (A / sm * Math.cos(rad) * PI);
+  return { lat: +(lat + dLat).toFixed(6), lon: +(lon + dLon).toFixed(6) };
+}
+
 export function directionsLink(cc, a, b, how, sub, names = {}) {
-  if (String(cc).toLowerCase() === 'cn')
-    return `https://uri.amap.com/navigation?from=${a.lon},${a.lat},${enc(names.from || 'Start')}&to=${b.lon},${b.lat},${enc(names.to || 'Destination')}&mode=${AMAP[how]}&policy=1&coordinate=wgs84&callnative=1&src=aiva`;
+  if (String(cc).toLowerCase() === 'cn') {
+    const f = gcj02(a), t = gcj02(b);
+    return `https://uri.amap.com/navigation?from=${f.lon},${f.lat},${enc(names.from || 'Start')}&to=${t.lon},${t.lat},${enc(names.to || 'Destination')}&mode=${AMAP[how]}&policy=1&callnative=1&src=aiva`;
+  }
   return `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lon}&destination=${b.lat},${b.lon}&travelmode=${GMAP[how]}${sub && GSUB[sub] ? `&transit_mode=${GSUB[sub]}` : ''}`;
 }
 
