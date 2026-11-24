@@ -48,6 +48,14 @@ jobs:
         run: node scripts/add-rail-sections.mjs
       - name: Place search results under their search sections (build step)
         run: node scripts/add-results-ux.mjs
+      # Aiva Train and Aiva Tram: the phone checkout and the smaller train mark. The gzipped patch is applied from
+      # the repository root, before the tests, so the deployed files and the tests always run identical code.
+      - name: Aiva Train checkout for phones (build step)
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          gunzip -c pocket-hub/scripts/rail-checkout-ui.patch.gz > "$RUNNER_TEMP/rail-checkout-ui.patch"
+          git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
       - name: Test
         run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
@@ -84,6 +92,8 @@ jobs:
           printf '/api/shop-status (forwarded to website) %s\n' "$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$U/api/shop-status")"
           grep -q 'id="asForm"' "$RUNNER_TEMP/app.html"
           grep -q 'id="asRailTrain"' "$RUNNER_TEMP/app.html"
+          # The build step above must actually reach the CDN: no checkout rewrite, no release.
+          curl -sf -m 30 "$U/aiva-rail.js" | grep -q 'rail-checkout-head'
           U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'
