@@ -482,3 +482,23 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.match(app, /from \$\{escapeHTML\(a\.iata\)\} airport/);
 }
 console.log('AIVA SEARCH CHECKS PASSED');
+{
+  const { transportLinks, rideLink } = await import('../functions/_lib/transport-links.js');
+  const can = { lat: 23.3924, lon: 113.2988 }, hotel = { lat: 23.1291, lon: 113.2644 };
+  const cn = transportLinks('CN', can, hotel, { from: 'Baiyun Airport', to: 'Hotel' }, ['DiDi']);
+  assert.ok(cn.train.book.some((x) => x.kind === 'book' && x.url.startsWith('https://www.12306.cn/')));
+  assert.ok(cn.taxi.book.some((x) => /DiDi/.test(x.label)) && cn.taxi.book.some((x) => /uri\.amap\.com.*mode=car.*coordinate=wgs84/.test(x.url)));
+  assert.match(cn.metro.book[0].url, /uri\.amap\.com.*mode=bus/); assert.match(cn.walk.book[0].url, /mode=walk/);
+  assert.match(cn.car.tip, /Chinese driving licence/); assert.ok(!cn.car.book.some((x) => /rentalcars/.test(x.url)));
+  const gb = transportLinks('gb', can, hotel, {}, ['Uber', 'Bolt']);
+  assert.match(gb.ride.book[0].url, /^https:\/\/m\.uber\.com\/ul\/\?action=setPickup&pickup\[latitude\]=23\.3924/);
+  assert.match(gb.tram.book[0].url, /google\.com\/maps\/dir\/\?api=1.*travelmode=transit&transit_mode=tram/);
+  assert.equal(rideLink('Unknown', can, hotel), '');
+  for (const m of Object.values(transportLinks('', can, hotel))) for (const l of m.book) assert.match(l.url, /^https:\/\//);
+  const { onRequestGet: tf } = await import('../functions/api/travel/transfers.js');
+  const d = await (await tf({ request: new Request('https://x/api/travel/transfers?from=23.39,113.30&to=23.13,113.27&cc=cn&toName=Hotel'), env: {} }, async () => new Response('{}', { status: 500 }))).json();
+  assert.ok(d.modes.train.book.length && d.modes.taxi.book.length && d.modes.walk.book.length);
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(app, /function asBookHTML/); assert.match(app, /body\+=asBookHTML\(m\)/); assert.match(app, /asMapModes\(\)/); assert.match(html, /id="asMapModes"/);
+}
+console.log('TRANSPORT BOOKING CHECKS PASSED');

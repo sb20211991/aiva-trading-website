@@ -5,6 +5,7 @@
 import { json, point, localToUTC, googleRoutes, osrm, airportServices, cached } from '../../_lib/travel.js';
 import { openTransit, transitZone, lateSummary } from '../../_lib/transit.js';
 import { rideHailing } from '../../_lib/rides.js';
+import { transportLinks } from '../../_lib/transport-links.js';
 
 const PUBLIC = ['train', 'metro', 'tram', 'bus'];
 const AIRPORT_STATION = /airport|flughafen|a[ée]roport|aeroporto|aeropuerto|lufthavn|flygplats|lentoasema|lotnisko|luchthaven|havaliman/i;
@@ -53,6 +54,8 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     walk: { available: walk ? walk.distance <= 6000 : null, minutes: walk?.minutes ?? null, distance: walk?.distance ?? null, steps: walk && walk.distance <= 6000 ? walk.steps || [] : [] },
     ride: { available: drive ? (rideHailing(cc).length ? true : null) : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, services: rideHailing(cc) }
   });
+  const links = transportLinks(cc, from, to, { from: (u.get('fromName') || '').slice(0, 80), to: (u.get('toName') || '').slice(0, 80) }, rideHailing(cc));
+  for (const k of Object.keys(links)) if (modes[k]) Object.assign(modes[k], links[k]);
   const sources = [google ? 'Google Maps · Walking routes: FOSSGIS OSRM' : 'Road and walking routes: FOSSGIS OSRM (routing.openstreetmap.de)',
     ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : 'transport.opendata.ch (Switzerland)'}`] : []),
     'Stations, taxi ranks and car hire: © OpenStreetMap contributors'];
