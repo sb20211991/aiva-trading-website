@@ -70,7 +70,6 @@ export function transportLinks(cc, a, b, names = {}, rides = []) {
   const cn = cc === 'cn', app = cn ? 'Amap' : 'Google Maps';
   const dir = (how, sub, label) => ({ label: label || `Route & live times in ${app}`, url: directionsLink(cc, a, b, how, sub, names), kind: 'directions' });
   const ride = rides.map((n) => ({ label: `Book with ${n}`, url: rideLink(n, a, b, names.to), kind: 'book' })).filter((x) => x.url);
-  if (cn) ride.push({ label: 'Book a taxi in Amap', url: directionsLink(cc, a, b, 'drive', '', names), kind: 'book' });
   const rail = RAIL[cc], pay = cn ? 'Pay at the gate with Alipay or WeChat Pay, or buy a single ticket at the station machine.' : '';
   return {
     taxi: { book: [...ride, dir('drive', '', `Driving route in ${app}`)], tip: 'Official taxis queue at the airport taxi rank; the fare is metered. Ride apps show the price before you book.' },
