@@ -1,11 +1,13 @@
 /* GET /api/emergency/transport?lat=&lon=&radius=<m>
    London (TfL area): live arrivals for buses, Tube, trams, DLR, Overground and Elizabeth line plus live line status
-   (delays, part closures, cancellations) from the TfL Unified API. Norway (Entur) and Switzerland (opendata.ch): live
-   departures for every mode. Elsewhere: nearby stations and stops from OpenStreetMap, with live trains added from
-   National Rail (Great Britain, when RAIL_DATA_LDB_KEY is set) and iRail (Belgium); everything else stays unverified
-   with links to the official live boards. Nothing is estimated. */
+   (delays, part closures, cancellations) from the TfL Unified API. Norway (Entur), Switzerland (opendata.ch) and the
+   rest of the world (Transitous, aggregating open GTFS/GTFS-RT feeds): live departures for every mode. Elsewhere:
+   nearby stations and stops from OpenStreetMap, with live trains added from National Rail (Great Britain, when
+   RAIL_DATA_LDB_KEY is set) and iRail (Belgium); everything else stays unverified with links to the official live
+   boards. Nothing is estimated. */
 import { TFL, NOMINATIM, json, coords, distanceM, fetchJSON, cached, overpass } from '../../_lib/emergency.js';
 import { entur, swiss, irail, darwin, verdict } from '../../_lib/transit.js';
+import { transitousStops } from '../../_lib/transitous.js';
 
 export const inLondon = ({ lat, lon }) => lat > 51.25 && lat < 51.72 && lon > -0.56 && lon < 0.35;
 const CLOSED = new Set([1, 2, 4, 16, 20]); // Closed, Suspended, Planned Closure, Not Running, Service Closed
@@ -101,7 +103,8 @@ async function enrichRail(stops, cc, env, fetcher) {
   return { stops, upstream: [...upstream], sources: [...sources] };
 }
 
-const SOURCE = { tfl: 'Powered by TfL Open Data', entur: 'Entur (Norway)', swiss: 'transport.opendata.ch (Switzerland)' };
+const SOURCE = { tfl: 'Powered by TfL Open Data', entur: 'Entur (Norway)', swiss: 'transport.opendata.ch (Switzerland)',
+  transitous: 'Transitous (MOTIS) · open GTFS/GTFS-RT feeds · © OpenStreetMap contributors' };
 
 export async function onRequestGet({ request, env }, fetcher = fetch) {
   const url = new URL(request.url), origin = coords(url);
@@ -110,9 +113,9 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const cc = (url.searchParams.get('cc') || '').toLowerCase();
   const key = `${radius}-${origin.lat},${origin.lon}`, now = () => new Date().toISOString();
   const live = stops => stops.some(s => s.state === 'live');
-  const provider = inLondon(origin) ? 'tfl' : cc === 'no' ? 'entur' : cc === 'ch' || cc === 'li' ? 'swiss' : 'osm';
+  const provider = inLondon(origin) ? 'tfl' : cc === 'no' ? 'entur' : cc === 'ch' || cc === 'li' ? 'swiss' : 'transitous';
   /* One failed source must never blank the section: a national feed that is unreachable, rate-limited or geo-blocked
-     degrades to OpenStreetMap stops for the same place. 503 only when every source fails. */
+     degrades to the next source for the same place. 503 only when every source fails. */
   const upstreamErrors = [];
   const fail = (e) => upstreamErrors.push(e?.status || e?.name || 'error');
   if (provider === 'tfl') {
@@ -128,6 +131,13 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
         : await cached(`swiss-${key}`, 30, () => swiss(origin, radius, fetcher));
       if (stops.length) return json({ provider, live: live(stops), stops, upstreamErrors: upstream, source: SOURCE[provider], retrieved: now() });
       fail({ name: `${provider}-no-stops` });
+    } catch (e) { fail(e); }
+  }
+  if (provider === 'transitous') {
+    try {
+      const { stops, upstream } = await cached(`transitous-${key}`, 30, () => transitousStops(origin, radius, fetcher));
+      if (stops.length) return json({ provider, live: live(stops), stops, upstreamErrors: upstream, source: SOURCE.transitous, retrieved: now() });
+      fail({ name: 'transitous-no-stops' });
     } catch (e) { fail(e); }
   }
   try {

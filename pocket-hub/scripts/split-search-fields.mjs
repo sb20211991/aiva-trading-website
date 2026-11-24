@@ -25,12 +25,24 @@ const HEAD_ICON = [
 
 const MOBILE_CSS = [
   '.as-route{display:grid;grid-template-columns:26px 1fr;align-items:center;column-gap:8px;row-gap:0}.as-route input{width:100%}.as-route .as-arrow{transform:rotate(90deg);text-align:center}',
-  '.as-route{display:grid;grid-template-columns:26px 1fr;align-items:center;column-gap:8px;row-gap:0}.as-route input{width:100%}.as-bar>.as-arrow{transform:rotate(90deg);text-align:center;padding:2px 0}'
+  '.as-route{display:grid;grid-template-columns:26px 1fr;align-items:center;column-gap:8px;row-gap:0}.as-route input{width:100%}.as-bar>.as-arrow{transform:rotate(90deg);text-align:center;padding:2px 0;align-self:center;width:auto;height:auto}'
+];
+
+/* The stacked bar has no horizontal room to spare: a nowrap ghost button inside a card widens the whole page
+   and makes mobile Safari drift sideways. Let it wrap. */
+const BUTTON_WRAP = [
+  '.as-btn.ghost{background:var(--asl);color:var(--as)}',
+  '.as-btn.ghost{background:var(--asl);color:var(--as)}.as-body .as-btn.ghost{white-space:normal;text-align:left;line-height:1.35}'
+];
+
+const ATTRIB = [
+  '· Google Maps Platform, Entur, opendata.ch (routes and timetables) ·',
+  '· Google Maps Platform, Entur, opendata.ch, Transitous (routes and timetables) ·'
 ];
 
 let html = readFileSync(file, 'utf8');
 
-for (const [label, from, to] of [['route fields', ...MARKUP], ['desktop styles', ...DESKTOP_CSS], ['mobile styles', ...MOBILE_CSS], ['iOS icon', ...HEAD_ICON]]) {
+for (const [label, from, to] of [['route fields', ...MARKUP], ['desktop styles', ...DESKTOP_CSS], ['mobile styles', ...MOBILE_CSS], ['button wrapping', ...BUTTON_WRAP], ['iOS icon', ...HEAD_ICON], ['attribution', ...ATTRIB]]) {
   if (html.includes(to)) { console.log(`split-search-fields: ${label} already split`); continue; }
   const hits = html.split(from).length - 1;
   if (hits !== 1) throw new Error(`split-search-fields: expected exactly one ${label} match in public/index.html, found ${hits}`);
