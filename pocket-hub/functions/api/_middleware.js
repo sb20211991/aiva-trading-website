@@ -1,10 +1,11 @@
-/* Aiva keeps train, tram and metro inside the app.
-   Those three modes show their stations, departure times, changes and last service in Aiva Train, Aiva Tram
-   and the Aiva journey planner, and they never offer a carrier's own site or a map in a new tab. The two
-   endpoints that build those hand-offs still describe every mode, so their reply is rewritten here: train,
-   tram and metro carry no outbound link at all. Taxi, car hire, ride-hailing, bus and walking keep theirs.
-   Scoped to /api so static files are untouched, and any failure returns the original reply unchanged. */
-const NO_OUTBOUND = ['train', 'metro', 'tram'];
+/* Aiva keeps train, tram, metro and car hire inside the app.
+   Train, tram and metro show their stations, departure times, changes and last service in Aiva Train, Aiva Tram
+   and the Aiva journey planner, and car hire is priced and booked in Aiva Car Rental, so those four modes never
+   offer an external booking site in a new tab. The two endpoints that build those hand-offs still describe every
+   mode, so their reply is rewritten here: train, tram, metro and car hire carry no outbound link at all.
+   Taxi, ride-hailing, bus and walking keep theirs. Scoped to /api so static files are untouched, and any failure
+   returns the original reply unchanged. */
+const NO_OUTBOUND = ['train', 'metro', 'tram', 'car'];
 const ROUTES = new Set(['/api/travel/transfers', '/api/emergency/plan']);
 
 const quiet = (target) => (target && typeof target === 'object'
