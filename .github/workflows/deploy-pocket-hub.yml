@@ -46,6 +46,8 @@ jobs:
         run: node scripts/split-search-fields.mjs
       - name: Add the Aiva Train and Aiva Tram sections (build step)
         run: node scripts/add-rail-sections.mjs
+      - name: Place search results under their search sections (build step)
+        run: node scripts/add-results-ux.mjs
       - name: Test
         run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
