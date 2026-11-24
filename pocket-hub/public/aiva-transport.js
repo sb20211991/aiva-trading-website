@@ -167,8 +167,11 @@
   }
 
   /* Hand a planned journey to Aiva Train or Aiva Tram: fills both ends plus the planner's date and
-     time, then runs Aiva's own search. Nothing opens outside Aiva. */
-  function railGo(mode, from, to) {
+     time, then runs Aiva's own search. Nothing opens outside Aiva.
+     A city name is not a station — “Lyon” matches Gare de Lyon in Paris — so both ends are resolved to
+     the station nearest the point the planner already geocoded, and the typed names are only used if
+     that lookup finds nothing. */
+  async function railGo(mode, from, to) {
     const key = mode === 'tram' ? 'Tram' : 'Train';
     const cardEl = document.getElementById('asRail' + key);
     const railForm = document.getElementById('rail' + key + 'Form');
@@ -180,7 +183,6 @@
     }
     const dateEl = document.getElementById('rail' + key + 'Date');
     const timeEl = document.getElementById('rail' + key + 'Time');
-    if (to) { toEl.value = to; toEl.dispatchEvent(new Event('input', { bubbles: true })); }
     if (dateEl && $('asPlanDate') && $('asPlanDate').value) dateEl.value = $('asPlanDate').value;
     if (timeEl && $('asPlanTime') && $('asPlanTime').value) timeEl.value = $('asPlanTime').value;
     cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -190,20 +192,38 @@
       cardEl.querySelector('[data-rail-geo]')?.click();
       return;
     }
-    if (from) { fromEl.value = from; fromEl.dispatchEvent(new Event('input', { bubbles: true })); }
-    status(`Live ${key.toLowerCase()} times for ${from} → ${to} are loading in Aiva ${key}.`);
+    const nearest = async (pt) => {
+      if (!pt || !Number.isFinite(pt.lat) || !Number.isFinite(pt.lon)) return '';
+      try {
+        const res = await fetch(`/api/rail/stations?lat=${pt.lat}&lon=${pt.lon}&radius=${mode === 'tram' ? 5000 : 6000}&mode=${mode}&limit=5`);
+        const d = await res.json().catch(() => ({}));
+        return res.ok && d.stations?.[0]?.name ? d.stations[0].name : '';
+      } catch { return ''; }
+    };
+    status(`Finding the nearest ${key.toLowerCase()} stations for ${from} → ${to}…`);
+    const [boardAt, arriveAt] = await Promise.all([nearest(ends.fromPt), nearest(ends.toPt)]);
+    const a = boardAt || from, b = arriveAt || to;
+    if (b) { toEl.value = b; toEl.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (a) { fromEl.value = a; fromEl.dispatchEvent(new Event('input', { bubbles: true })); }
+    status(`Live ${key.toLowerCase()} times for ${a} → ${b} are loading in Aiva ${key}.`);
     if (railForm.requestSubmit) railForm.requestSubmit();
     else railForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
   }
 
   $('asPlanOut').addEventListener('click', (e) => {
     const b = e.target.closest('[data-aiva-rail]');
-    if (b) railGo(b.dataset.aivaRail, ends.from, ends.to);
+    if (b) {
+      status('');
+      railGo(b.dataset.aivaRail, ends.from, ends.to).catch((err) => status(err.message || 'Aiva could not search this journey.', true));
+    }
   });
 
   function render(d, a, b) {
     const list = d.itineraries || [], links = d.links || {};
-    ends = { from: a.name || a.label || '', to: b.name || b.label || '' };
+    ends = {
+      from: a.name || a.label || '', to: b.name || b.label || '',
+      fromPt: { lat: a.lat, lon: a.lon }, toPt: { lat: b.lat, lon: b.lon }
+    };
     $('asPlanMeta').textContent = `${a.name} → ${b.name}`;
     if (!list.length) { out.innerHTML = `<div class="empty">${esc(d.note || 'No journey was found for this route and time.')}</div>`; return; }
     out.innerHTML = `<div class="mini">${list.length} journey${list.length > 1 ? 's' : ''} · ${esc(a.name)} → ${esc(b.name)} · ${esc(d.source || '')}</div>`
