@@ -34,6 +34,21 @@ jobs:
         run: node scripts/split-search-fields.mjs
       - name: Test
         run: node test/hub-test.mjs && node test/transport-plan-test.mjs
+      # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
+      # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
+      # frequently over it, so a free TfL app key is what makes London live boards reliable. Missing keys are skipped.
+      - name: Apply provider keys from repository secrets
+        env:
+          TFL_APP_KEY: ${{ secrets.TFL_APP_KEY }}
+          RAIL_DATA_LDB_KEY: ${{ secrets.RAIL_DATA_LDB_KEY }}
+        run: |
+          set -euo pipefail
+          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then echo "$name: not set in repository secrets, skipping"; continue; fi
+            printf '%s' "$value" | npx --yes wrangler@4 pages secret put "$name" --project-name="$PROJECT" > /dev/null
+            echo "$name: applied to the Cloudflare Pages project"
+          done
       - name: Deploy
         id: deploy
         run: |
