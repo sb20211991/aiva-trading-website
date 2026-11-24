@@ -1,6 +1,7 @@
 /* Live public-transport providers used outside the TfL area. Each one is an official or community-run open API
    with real-time data; a stop only turns green when the provider itself reports a live departure. */
 import { fetchJSON } from './emergency.js';
+import { motisJourneys } from './motis.js';
 
 export const ENTUR = 'https://api.entur.io/journey-planner/v3/graphql';
 export const SWISS = 'https://transport.opendata.ch/v1';
@@ -111,8 +112,9 @@ export async function darwin(crs, env, fetcher, now = Date.now()) {
   return { departures, alerts };
 }
 
-/* Keyless airport-to-hotel journey planning where an open national planner exists: Entur (Norway) and
-   transport.opendata.ch (Switzerland/Liechtenstein). Returns routes shaped like googleRoutes(), or null elsewhere. */
+/* Keyless airport-to-hotel journey planning: the national planner where one exists (Entur in Norway,
+   transport.opendata.ch in Switzerland/Liechtenstein), otherwise Transitous/MOTIS over the open GTFS/GTFS-RT feeds
+   that cover most of Europe and beyond. Returns routes shaped like googleRoutes(). */
 const inBox = (p, [s, w, n, e]) => p.lat >= s && p.lat <= n && p.lon >= w && p.lon <= e;
 const NO_BOX = [57.9, 4.4, 71.3, 31.2], CH_BOX = [45.8, 5.9, 47.9, 10.6];
 const clock = (s) => (/T(\d{2}:\d{2})/.exec(s || '') || [])[1] || '';
@@ -159,7 +161,7 @@ export async function openTransit(from, to, fetcher, departure, late = false) {
       };
     }) };
   }
-  return null;
+  return motisJourneys(from, to, { fetcher, time: departure, late });
 }
 
 export const transitZone = (from, to) => ({ entur: 'Europe/Oslo', swiss: 'Europe/Zurich' })[openTransitProvider(from, to)] || '';
