@@ -33,7 +33,7 @@ jobs:
       - name: Split Aiva Search fields (build step)
         run: node scripts/split-search-fields.mjs
       - name: Test
-        run: node test/hub-test.mjs
+        run: node test/hub-test.mjs && node test/transport-plan-test.mjs
       - name: Deploy
         id: deploy
         run: |
