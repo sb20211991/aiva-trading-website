@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the Aiva Android app (a Trusted Web Activity around app.aivatrading.uk) on a Linux runner that already has a
-# JDK 17 and the Android SDK, so no Mac, Android Studio or local toolchain is needed. Produces, in this directory:
+# Builds the Aiva Android app (a Trusted Web Activity around app.aivatrading.uk) on a Linux runner that has a JDK 17, so
+# no Mac, Android Studio or local toolchain is needed. Produces, in this directory:
 #   app-release-bundle.aab   signed, for a Google Play upload
 #   app-release-signed.apk   signed, for installing on a phone
 #   assetlinks/assetlinks.json   the certificate fingerprint Android needs to open the site full screen
@@ -10,18 +10,32 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-: "${ANDROID_HOME:=${ANDROID_SDK_ROOT:-}}"
 : "${JAVA_HOME:?JAVA_HOME is not set: run actions/setup-java first}"
 
-SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-[ -x "$SDKMANAGER" ] || SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
-[ -x "$SDKMANAGER" ] || { echo "No sdkmanager under $ANDROID_HOME" >&2; exit 1; }
+# Runner images change between releases and their SDK layouts are not guaranteed; Bubblewrap only accepts an SDK that has
+# cmdline-tools/latest, so build against a command-line-tools install we control rather than whatever is preinstalled.
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$SDK" ] || [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+  SDK="$HOME/android-sdk"
+  [ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ] || {
+    echo "Installing Android command-line tools into $SDK"
+    mkdir -p "$SDK/cmdline-tools"
+    curl -fsSL --retry 3 -o /tmp/cmdline-tools.zip \
+      https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+    unzip -q -o /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
+    mv /tmp/cmdline-tools/cmdline-tools "$SDK/cmdline-tools/latest"
+  }
+fi
+export ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK"
+SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+"$SDKMANAGER" --version
 
-# Accept the SDK licences up front so Bubblewrap can install the build-tools it needs without prompting.
+# Licences first, so nothing below can stop to ask a question that an unattended run cannot answer.
 yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+"$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" > /dev/null
 
 mkdir -p "$HOME/.bubblewrap"
-printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JAVA_HOME" "$ANDROID_HOME" > "$HOME/.bubblewrap/config.json"
+printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JAVA_HOME" "$SDK" > "$HOME/.bubblewrap/config.json"
 
 # Play rejects a versionCode that was already uploaded, so the run number is the versionCode.
 if [ -n "${RUN_NUMBER:-}" ]; then
