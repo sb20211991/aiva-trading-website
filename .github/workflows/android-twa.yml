@@ -1,0 +1,142 @@
+name: Android TWA build
+# Builds the Aiva Android app (a Trusted Web Activity around app.aivatrading.uk) on a GitHub-hosted Ubuntu runner, so no
+# Android Studio, JDK or Mac is needed on a laptop. Outputs a Play-ready signed .aab, a signed .apk for direct device
+# testing, and the assetlinks.json that lets the app open the site full-screen without a browser bar.
+#
+# Signing: set ANDROID_KEYSTORE_BASE64 (base64 of your .keystore) and ANDROID_KEYSTORE_PASSWORD as repository secrets to
+# keep one stable upload key. Without them the run generates a key and uploads it as the `aiva-android-upload-key`
+# artifact, which must then be saved into those two secrets before the next release: Play ties an app to its first key.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['pocket-hub/android/**', '.github/workflows/android-twa.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Bubblewrap
+        run: npm install --global @bubblewrap/cli@latest
+      # Bubblewrap asks for the JDK and SDK paths on first run; writing its config file keeps the whole run unattended.
+      - name: Point Bubblewrap at the runner toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.bubblewrap"
+          JDK="$JAVA_HOME" SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}" python3 - <<'PY'
+          import json, os, pathlib
+          pathlib.Path(os.path.expanduser('~/.bubblewrap/config.json')).write_text(
+              json.dumps({"jdkPath": os.environ["JDK"], "androidSdkPath": os.environ["SDK"]}, indent=2))
+          print("bubblewrap config written")
+          PY
+          test -d "${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+      # Play rejects a build whose versionCode was already uploaded, so the run number is the versionCode.
+      - name: Stamp version
+        working-directory: pocket-hub/android
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const file = "twa-manifest.json";
+            const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+            const n = Number(process.env.RUN_NUMBER);
+            manifest.appVersionCode = n;
+            manifest.appVersionName = "1.0." + n;
+            fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
+            console.log("version " + manifest.appVersionName + " (versionCode " + n + ")");
+          '
+      - name: Prepare signing key
+        working-directory: pocket-hub/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ -n "${KEYSTORE_BASE64:-}" ] && [ -n "${KEYSTORE_PASSWORD:-}" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > android.keystore
+            echo "KEYSTORE_STATUS=existing" >> "$GITHUB_ENV"
+            echo "Using the upload key from repository secrets."
+          else
+            PASS="$(node -e 'process.stdout.write(require("crypto").randomBytes(24).toString("base64url"))')"
+            keytool -genkeypair -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 10950 \
+              -storepass "$PASS" -keypass "$PASS" \
+              -dname "CN=Aiva Trading Limited, O=Aiva Trading Limited, L=London, C=GB"
+            echo "::add-mask::$PASS"
+            printf 'KEYSTORE_PASSWORD=%s\n' "$PASS" >> "$GITHUB_ENV"
+            echo "KEYSTORE_STATUS=generated" >> "$GITHUB_ENV"
+            echo "No upload key in secrets: generated one for this build."
+          fi
+      - name: Generate the Android project and build the signed bundle
+        working-directory: pocket-hub/android
+        run: |
+          set -euo pipefail
+          export BUBBLEWRAP_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD"
+          export BUBBLEWRAP_KEY_PASSWORD="$KEYSTORE_PASSWORD"
+          bubblewrap update --skipVersionUpgrade --directory .
+          bubblewrap build --skipPwaValidation --directory . \
+            --signingKeyPath=./android.keystore --signingKeyAlias=android
+          ls -l app-release-bundle.aab app-release-signed.apk
+      - name: Read the certificate fingerprint and write assetlinks.json
+        id: cert
+        working-directory: pocket-hub/android
+        run: |
+          set -euo pipefail
+          FP="$(keytool -list -v -keystore android.keystore -alias android -storepass "$KEYSTORE_PASSWORD" \
+            | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ' ')"
+          test -n "$FP"
+          echo "sha256=$FP" >> "$GITHUB_OUTPUT"
+          mkdir -p assetlinks
+          printf '[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"uk.aivatrading.app","sha256_cert_fingerprints":["%s"]}}]\n' "$FP" \
+            > assetlinks/assetlinks.json
+          cat assetlinks/assetlinks.json
+      - name: Upload signed app bundle and assetlinks
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiva-android-${{ github.run_number }}
+          path: |
+            pocket-hub/android/app-release-bundle.aab
+            pocket-hub/android/app-release-signed.apk
+            pocket-hub/android/assetlinks/assetlinks.json
+          if-no-files-found: error
+      # Only on a first, keyless run. Save the keystore and its password into ANDROID_KEYSTORE_BASE64 and
+      # ANDROID_KEYSTORE_PASSWORD before the first Play upload, otherwise every later build gets a different key.
+      - name: Upload the newly generated upload key
+        if: env.KEYSTORE_STATUS == 'generated'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiva-android-upload-key
+          path: pocket-hub/android/android.keystore
+      - name: Summary
+        run: |
+          set -euo pipefail
+          if [ "${KEYSTORE_STATUS:-generated}" = existing ]; then
+            KEY_NOTE="from repository secrets"
+          else
+            KEY_NOTE="generated this run, to be saved as a secret"
+          fi
+          {
+            echo "## Aiva Android build"
+            echo ""
+            echo "- version: 1.0.${{ github.run_number }} (versionCode ${{ github.run_number }})"
+            echo "- package: uk.aivatrading.app"
+            echo "- SHA-256 certificate fingerprint: ${{ steps.cert.outputs.sha256 }}"
+            echo "- signing key: $KEY_NOTE"
+            echo ""
+            echo "Download aiva-android-${{ github.run_number }} for app-release-bundle.aab (Play Console),"
+            echo "app-release-signed.apk (install on a phone) and assetlinks.json (serve at"
+            echo "https://app.aivatrading.uk/.well-known/assetlinks.json so the app opens full screen)."
+          } >> "$GITHUB_STEP_SUMMARY"

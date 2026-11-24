@@ -1,0 +1,42 @@
+{
+  "packageId": "uk.aivatrading.app",
+  "host": "app.aivatrading.uk",
+  "name": "Aiva",
+  "launcherName": "Aiva",
+  "display": "standalone",
+  "themeColor": "#0c1530",
+  "themeColorDark": "#000000",
+  "navigationColor": "#0c1530",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#f4f6fa",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://app.aivatrading.uk/icon-512.png",
+  "maskableIconUrl": "https://app.aivatrading.uk/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://app.aivatrading.uk/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://app.aivatrading.uk/",
+  "minSdkVersion": 21,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}
