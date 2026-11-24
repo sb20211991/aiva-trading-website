@@ -24,7 +24,7 @@
     + `.as-plan-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}.as-plan-head b{font-size:16px}.as-plan-head .as-plan-badge{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--asl,#eef1fe);color:var(--as,#3b5bdb);font-weight:600}`
     + `.as-plan-leg{display:grid;grid-template-columns:22px 1fr;gap:7px;padding:6px 0;border-top:1px dashed #eceff7;align-items:start}`
     + `.as-plan-leg:first-of-type{border-top:0}.as-plan-leg .t{font-variant-numeric:tabular-nums;font-weight:600}.as-plan-leg .mini{display:block}`
-    + `.as-plan-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.as-plan-links a{white-space:normal;text-align:left}`;
+    + `.as-plan-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.as-plan-links a,.as-plan-links button{white-space:normal;text-align:left;font:inherit;cursor:pointer}`;
   document.head.appendChild(style);
 
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -111,12 +111,21 @@
     }
   });
 
+  /* Train and tram journeys are never sold through an external tab. They hand over to Aiva Train or
+     Aiva Tram, which run the real search inside Aiva. Any carrier booking link the planner returns for
+     those two modes is dropped here and never rendered. */
+  const HANDOFF = ['train', 'tram'];
+  let ends = { from: '', to: '' };
+
   function bookings(it, links) {
     const seen = new Set(), list = [];
-    for (const mode of [...it.modes, 'walk']) for (const l of (links[mode]?.book || [])) {
-      if (l.kind !== 'book' || !l.url || seen.has(l.url)) continue;
-      seen.add(l.url);
-      list.push(l);
+    for (const mode of [...it.modes, 'walk']) {
+      if (HANDOFF.includes(mode)) continue;
+      for (const l of (links[mode]?.book || [])) {
+        if (l.kind !== 'book' || !l.url || seen.has(l.url)) continue;
+        seen.add(l.url);
+        list.push(l);
+      }
     }
     return list.slice(0, 3);
   }
@@ -137,6 +146,7 @@
 
   function card(it, links) {
     const first = it.legs[0] || {}, last = it.legs[it.legs.length - 1] || {};
+    const rail = HANDOFF.find((m) => (it.modes || []).includes(m)) || null;
     const badges = [
       it.transfers === 0 ? 'Direct' : `${it.transfers} change${it.transfers > 1 ? 's' : ''}`,
       it.realtime ? 'live times' : 'timetabled',
@@ -149,13 +159,51 @@
       + `<span>${dur(it.minutes)}</span>${badges.map((b) => `<span class="as-plan-badge">${esc(b)}</span>`).join('')}</div>`
       + `<div class="mini" style="margin:2px 0 4px">${esc(modes)}${first.tzFrom && last.tzTo && first.tzFrom !== last.tzTo ? ` · local time at each stop (${esc(first.tzFrom.split('/').pop())} → ${esc(last.tzTo.split('/').pop())})` : ''}</div>`
       + it.legs.map(leg).join('')
-      + (books.length || dirs ? `<div class="as-plan-links">${books.map((l) => `<a class="as-btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join('')}`
+      + (rail || books.length || dirs ? `<div class="as-plan-links">`
+        + `${rail ? `<button type="button" class="as-btn" data-aiva-rail="${rail}">${rail === 'train' ? '🚆' : '🚊'} Search in Aiva ${rail === 'train' ? 'Train' : 'Tram'}</button>` : ''}`
+        + `${books.map((l) => `<a class="as-btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join('')}`
         + `${dirs ? `<a class="as-btn ghost" href="${esc(dirs.url)}" target="_blank" rel="noopener noreferrer">Walking &amp; station directions ↗</a>` : ''}</div>` : '')
       + `</div>`;
   }
 
+  /* Hand a planned journey to Aiva Train or Aiva Tram: fills both ends plus the planner's date and
+     time, then runs Aiva's own search. Nothing opens outside Aiva. */
+  function railGo(mode, from, to) {
+    const key = mode === 'tram' ? 'Tram' : 'Train';
+    const cardEl = document.getElementById('asRail' + key);
+    const railForm = document.getElementById('rail' + key + 'Form');
+    const fromEl = document.getElementById('rail' + key + 'From');
+    const toEl = document.getElementById('rail' + key + 'To');
+    if (!cardEl || !railForm || !fromEl || !toEl) {
+      status(`Aiva ${key} is not on this page. Open Aiva ${key} in Aiva Search and search there.`, true);
+      return;
+    }
+    const dateEl = document.getElementById('rail' + key + 'Date');
+    const timeEl = document.getElementById('rail' + key + 'Time');
+    if (to) { toEl.value = to; toEl.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (dateEl && $('asPlanDate') && $('asPlanDate').value) dateEl.value = $('asPlanDate').value;
+    if (timeEl && $('asPlanTime') && $('asPlanTime').value) timeEl.value = $('asPlanTime').value;
+    cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (/^my location$/i.test(from)) {
+      /* The origin is the device's position, not a name: let Aiva ${key} use the same location. */
+      status(`Using your current location. Pick the nearest ${key.toLowerCase()} station, then search.`);
+      cardEl.querySelector('[data-rail-geo]')?.click();
+      return;
+    }
+    if (from) { fromEl.value = from; fromEl.dispatchEvent(new Event('input', { bubbles: true })); }
+    status(`Live ${key.toLowerCase()} times for ${from} → ${to} are loading in Aiva ${key}.`);
+    if (railForm.requestSubmit) railForm.requestSubmit();
+    else railForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  }
+
+  $('asPlanOut').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-aiva-rail]');
+    if (b) railGo(b.dataset.aivaRail, ends.from, ends.to);
+  });
+
   function render(d, a, b) {
     const list = d.itineraries || [], links = d.links || {};
+    ends = { from: a.name || a.label || '', to: b.name || b.label || '' };
     $('asPlanMeta').textContent = `${a.name} → ${b.name}`;
     if (!list.length) { out.innerHTML = `<div class="empty">${esc(d.note || 'No journey was found for this route and time.')}</div>`; return; }
     out.innerHTML = `<div class="mini">${list.length} journey${list.length > 1 ? 's' : ''} · ${esc(a.name)} → ${esc(b.name)} · ${esc(d.source || '')}</div>`
