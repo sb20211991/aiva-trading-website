@@ -40,14 +40,20 @@ def flights(j):
 def transfers(j):
     m = j.get('modes') or {}
     assert m.get('taxi', {}).get('minutes'), 'no drive route'
-    bad = [e for e in j.get('upstreamErrors') or [] if not e.startswith('osm-')]
+    errs = j.get('upstreamErrors') or []
+    # "no journey" means the feed answered and has nothing that far ahead (open feeds cover a few weeks), which is a gap
+    # in coverage rather than a broken provider. Real failures (HTTP errors, an unreachable feed) still fail the check.
+    bad = [e for e in errs if not e.startswith('osm-') and not e.endswith('-no-journey')]
     assert not bad, f'routing provider failed: {bad}'
-    if not j.get('schedules'): warn.append('transfers: no live train/bus timetables (Google Routes not connected)')
-    return f"taxi {m['taxi']['minutes']} min, upstream errors {j.get('upstreamErrors')}"
+    if not j.get('schedules'): warn.append('transfers: no live timetables at this date ' + (', '.join(errs) or 'unknown'))
+    return f"taxi {m['taxi']['minutes']} min, timetables {j.get('schedules')}"
 
 check('place', '/api/travel/place?q=Paris', place)
 check('hotels', f'/api/travel/hotels?lat=48.8566&lon=2.3522&checkin={d}&checkout={r}&adults=1&currency=GBP', hotels)
 check('flights', f'/api/travel/flights?from=LON&to=PAR&depart={d}&return={r}&adults=1&currency=GBP', flights)
-check('transfers', f'/api/travel/transfers?from=49.009,2.5541&to=48.8566,2.3522&time={d}T12:00&tz=Europe/Paris', transfers)
+# Timetables are checked a few days out: open GTFS feeds publish a few weeks ahead at most, so a 30-day date would test
+# the feed horizon rather than the planner.
+near = (datetime.date.today() + datetime.timedelta(days=3)).isoformat()
+check('transfers', f'/api/travel/transfers?from=49.009,2.5541&to=48.8566,2.3522&time={near}T12:00&tz=Europe/Paris', transfers)
 for w in warn: print('WARN ' + w)
 if fail: sys.exit('Aiva Search health check failed: ' + '; '.join(fail))

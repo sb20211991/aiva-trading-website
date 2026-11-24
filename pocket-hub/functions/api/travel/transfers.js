@@ -7,6 +7,17 @@ import { openTransit, transitZone, lateSummary } from '../../_lib/transit.js';
 import { rideHailing } from '../../_lib/rides.js';
 import { transportLinks } from '../../_lib/transport-links.js';
 
+/* Open transport feeds publish a few weeks ahead at most, so "no journey" a long way out is a data horizon, not a missing
+   route or an outage. Say which one it is instead of leaving the traveller guessing. */
+export function timetableNote(errors, timetabled, time) {
+  if (timetabled) return '';
+  const farAhead = !!time && Date.parse(time) - Date.now() > 14 * 864e5;
+  const noJourney = (errors || []).some((e) => /-no-journey$/.test(e));
+  return farAhead && noJourney
+    ? 'Live timetables are not published this far ahead yet: open transport feeds usually cover the next few weeks, so train, metro, tram and bus times appear closer to the date. Driving, taxi, ride-hailing and walking times are live.'
+    : 'Live public transport timetables are unavailable for this route.';
+}
+
 const PUBLIC = ['train', 'metro', 'tram', 'bus'];
 const AIRPORT_STATION = /airport|flughafen|a[ée]roport|aeroporto|aeropuerto|lufthavn|flygplats|lentoasema|lotnisko|luchthaven|havaliman/i;
 const dayAt = (day, hm, tz, lon) => localToUTC(`${day}T${hm}:00`, tz, lon);
@@ -60,6 +71,6 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : open === 'Transitous' ? 'Transitous (MOTIS) · open GTFS/GTFS-RT feeds' : 'transport.opendata.ch (Switzerland)'}`] : []),
     'Stations, taxi ranks and car hire: © OpenStreetMap contributors'];
   return json({ modes, schedules: timetabled, lateChecked: !!(late && lateTime), lateDay, transitFrom: hub?.name || '', upstreamErrors: errors, source: sources.join(' · '), retrieved: new Date().toISOString(),
-    note: timetabled ? '' : 'Live public transport timetables are unavailable for this route.' });
+    note: timetableNote(errors, timetabled, time) });
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);
