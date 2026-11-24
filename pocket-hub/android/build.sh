@@ -12,8 +12,8 @@ cd "$(dirname "$0")"
 
 : "${JAVA_HOME:?JAVA_HOME is not set: run actions/setup-java first}"
 
-# Runner images change between releases and their SDK layouts are not guaranteed; Bubblewrap only accepts an SDK that has
-# cmdline-tools/latest, so build against a command-line-tools install we control rather than whatever is preinstalled.
+# Runner images change between releases and their SDK layouts are not guaranteed; Bubblewrap only accepts an SDK it can
+# drive itself, so build against a command-line-tools install we control rather than whatever is preinstalled.
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [ -z "$SDK" ] || [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
   SDK="$HOME/android-sdk"
@@ -33,6 +33,15 @@ SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
 # Licences first, so nothing below can stop to ask a question that an unattended run cannot answer.
 yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
 "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+# Bubblewrap looks for sdkmanager at <sdk>/bin and <sdk>/tools/bin, not inside cmdline-tools, and refuses the SDK without
+# it ("The provided androidSdk isn't correct"). Point those at the real binaries.
+mkdir -p "$SDK/bin" "$SDK/tools/bin"
+for tool in sdkmanager avdmanager; do
+  ln -sf "$SDK/cmdline-tools/latest/bin/$tool" "$SDK/bin/$tool"
+  ln -sf "$SDK/cmdline-tools/latest/bin/$tool" "$SDK/tools/bin/$tool"
+done
+"$SDK/bin/sdkmanager" --version > /dev/null
 
 mkdir -p "$HOME/.bubblewrap"
 printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JAVA_HOME" "$SDK" > "$HOME/.bubblewrap/config.json"
@@ -61,6 +70,7 @@ if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}
   echo "Using the upload key from repository secrets."
 else
   PASS="$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
+  rm -f android.keystore
   keytool -genkeypair -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 10950 \
     -storepass "$PASS" -keypass "$PASS" \
     -dname "CN=Aiva Trading Limited, O=Aiva Trading Limited, L=London, C=GB"
