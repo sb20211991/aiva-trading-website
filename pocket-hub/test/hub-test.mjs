@@ -364,6 +364,9 @@ console.log('POCKET HUB CHECKS PASSED');
   assert.equal((await hb({ request: req({ action: 'cancel', bookingId: 'BK9001', email: 'eve@example.com', token: await cancelToken('BK9001', sb) }), env: sb }, cf)).status, 404);
   assert.deepEqual(calls.map((c) => c[0]), ['GET']);
   assert.equal((await hb({ request: req({ action: 'cancel', bookingId: 'BK9001' }), env: sb }, cf)).status, 400);
+  { const w = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8'), prod = w.split('[env.production.vars]')[1] || '';
+    assert.match(prod, /HOTEL_BOOKING_LIVE = "true"/); assert.match(prod, /FLIGHT_BOOKING_LIVE = "true"/); assert.match(prod, /WEBSITE_ORIGIN = /);
+    assert.doesNotMatch(w.split('[env.production.vars]')[0], /BOOKING_LIVE/); }
   assert.match(app, /data-as-cancel/); assert.match(app, /action:'cancel'/);
   // Owner readiness check: real prebook in production without payment details; wrong or missing secret stays blocked.
   const ck = (h) => new Request('https://app.aivatrading.uk/api/travel/hotel-book', { method: 'POST', body: JSON.stringify({ action: 'prebook', offerId: 'off_123' }), headers: { 'content-type': 'application/json', ...h } });
