@@ -46,7 +46,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   for (const k of PUBLIC) {
     const rs = routes.filter((r) => r.steps.some((x) => x.kind === k));
     const places = k === 'bus' ? s.busStations : k === 'train' || k === 'metro' || k === 'tram' ? s.stations : [];
-    modes[k] = { available: rs.length ? true : timetabled ? false : places.length ? null : false, routes: rs, places, late: lateBy[k] || null };
+    modes[k] = { available: rs.length ? true : timetabled ? false : null, routes: rs, places, late: lateBy[k] || null };
   }
   Object.assign(modes, {
     taxi: { available: drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.taxiRanks },
