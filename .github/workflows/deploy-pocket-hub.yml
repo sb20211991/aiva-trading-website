@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Split Aiva Search fields (build step)
+        run: node scripts/split-search-fields.mjs
       - name: Test
         run: node test/hub-test.mjs
       - name: Deploy
