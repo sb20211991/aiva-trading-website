@@ -517,7 +517,11 @@
         writeTickets(list);
         el.checkout.hidden = true;
         renderTickets();
-        say(d.testMode ? 'Test ticket issued by the distributor. No real ticket was sold.' : 'Ticket confirmed. Your digital ticket and QR code are below.', 'ok');
+        if (issuedPayload(d)) {
+          say(d.testMode ? 'Test ticket issued by the distributor. No real ticket was sold.' : 'Ticket confirmed. Your digital ticket is below.', 'ok');
+        } else {
+          say('Order reference saved. A travel ticket is unavailable. Contact Aiva before paying again.', 'err');
+        }
         el.tickets.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (err) {
         say(err.message, 'err');
@@ -528,7 +532,7 @@
       const res = await fetch('/api/rail/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(45000) });
       let data = {};
       try { data = await res.json(); } catch { /* non-JSON reply */ }
-      if (!res.ok) throw new Error(data.error || 'The ticket could not be issued. Nothing has been charged twice.');
+      if (!res.ok) throw new Error(data.error || 'We could not verify the ticket. Contact Aiva before paying again.');
       return data;
     }
 
@@ -552,16 +556,23 @@
       return out.paymentToken;
     }
 
+    function issuedPayload(order) {
+      const issued = ['ISSUED', 'TICKETED', 'CONFIRMED'].includes(String(order.status || '').toUpperCase());
+      return issued && (order.ticket?.qrPayload || order.ticket?.barcode) || '';
+    }
+
     function renderTickets() {
       const list = readTickets().filter((t) => t.mode === mode);
       if (!list.length) { el.tickets.hidden = true; return; }
       el.tickets.hidden = false;
       el.tickets.innerHTML = `<h4>${SVG.ticket}My ${noun} tickets</h4>` + list.map((t) => {
-        const qr = qrSVG(t.ticket?.qrPayload || t.ticket?.barcode || t.orderId);
-        return `<div class="rail-ticket"><div class="qr">${qr}</div><div>
+        const payload = issuedPayload(t);
+        const qr = payload ? qrSVG(payload) : '';
+        return `<div class="rail-ticket">${qr ? '<div class="qr">' + qr + '</div>' : ''}<div>
           <b>${esc(t.from || '')} → ${esc(t.to || '')}</b>
           <small>${esc(t.operator || '')}${t.leg ? ' · ' + esc(t.leg) : ''} · ${esc(t.depart || '')}${t.arrive ? '–' + esc(t.arrive) : ''}</small>
-          <small>Confirmation <span class="pnr">${esc(t.pnr || t.orderId || '')}</span>${t.fare?.amount != null ? ' · ' + money(t.fare.amount, t.fare.currency) : ''}</small>
+          <small>Order reference <span class="pnr">${esc(t.pnr || t.orderId || '')}</span>${t.fare?.amount != null ? ' · ' + money(t.fare.amount, t.fare.currency) : ''}</small>
+          ${payload ? '' : '<small>Ticket unavailable · Distributor status: ' + esc(t.status || 'Unknown') + '</small>'}
           ${t.testMode ? '<small>Test booking — not a valid travel ticket.</small>' : ''}
         </div></div>`;
       }).join('');

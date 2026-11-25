@@ -89,7 +89,7 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!prebookId || !transactionId) return json({ error: 'Booking reference missing. Please start again.' }, 400);
       const b = await call('POST', '/flights/bookings', { prebookId, clientReference: `aiva-${prebookId}`.slice(0, 64), payment: { method: 'TRANSACTION_ID', transactionId } }, env, fetcher, 90000);
       const s = shapeFlightBooking(b);
-      if (!s.bookingId) return json({ error: 'The airline did not confirm the booking. Check "My bookings" before trying again; retrying never charges twice.' }, 503);
+      if (!s.bookingId) return json({ error: 'The airline did not confirm the booking. Check "My bookings" and contact Aiva before paying again.' }, 503);
       return json({ ...s, testMode });
     }
     if (body?.action === 'status') {
