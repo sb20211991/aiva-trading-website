@@ -88,13 +88,15 @@ const itin = (id, mode) => ({ id, duration: 7500, startTime: '2026-12-02T08:00:0
   // With an authorised distributor connected, real quotes are passed through and shown cheapest first.
   const env = { RAIL_SALES_GATEWAY_URL: 'https://rail.example', RAIL_SALES_GATEWAY_KEY: 'secret' };
   const fares = { fares: [
-    { itineraryId: 'a', quoteId: 'q1', amount: 86.5, currency: 'GBP', description: 'Standard', refundable: false, payment: { provider: 'card', sessionId: 'sess_1', sdkUrl: 'https://pay.example/sdk.js' } },
+    { itineraryId: 'a', quoteId: 'q1', amount: 86.5, currency: 'GBP', description: 'Standard', refundable: false, payment: { provider: 'card', sessionId: 'sess_1', sdkUrl: 'https://pay.example/sdk.js', methods: ['card', 'apple_pay', 'google_pay', 'crypto'] } },
     { itineraryId: 'zzz', quoteId: 'q2', amount: 12, currency: 'GBP' },
     { itineraryId: 'a', quoteId: 'q3', amount: 'free', currency: 'GBP' }
   ] };
   d = await (await search({ request: new Request(url('/api/rail/search?from=51.5308,-0.1238&to=48.8809,2.3553&time=2026-12-02T08:00:00Z')), env }, router([...table, ['rail.example/fares', fares]]))).json();
   assert.equal(d.sales.available, true); assert.equal(d.sales.fares.length, 1);
   assert.deepEqual([d.sales.fares[0].amount, d.sales.fares[0].currency, d.sales.fares[0].payment.sessionId], [86.5, 'GBP', 'sess_1']);
+  // The checkout advertises exactly the methods the session can take: an unknown one is dropped, never shown.
+  assert.deepEqual(d.sales.fares[0].payment.methods, ['card', 'apple_pay', 'google_pay']);
 }
 
 // ---- Live departure board.
