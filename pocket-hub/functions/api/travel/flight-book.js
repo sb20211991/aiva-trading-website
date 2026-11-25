@@ -39,6 +39,16 @@ export const shapeFlightBooking = (raw) => {
 /* Seats and extra bags the airline offers for this prebook (Nuitee servicesAttachable). Only what the airline returned
    is shown, with its own price; an empty list means the airline offers no paid extras through this channel. */
 const money = (pr) => { const d = pr?.display || pr || {}; const a = Number(d.amount ?? d.total ?? d.price); return Number.isFinite(a) && a >= 0 ? { amount: a, currency: String(d.currency || '').slice(0, 3) } : null; };
+/* Nuitee may label a traveller type ADT/CHD/INF, ADULT/CHILD/INFANT or 0/1/2; the picker compares one form. */
+export const paxType = (v) => { const t = String(v ?? '').trim().toUpperCase(); return /^(ADT|ADULT|0)$/.test(t) ? 'ADT' : /^(CHD|CNN|CHILD|1)$/.test(t) ? 'CHD' : /^(INF|INFANT|2)$/.test(t) ? 'INF' : ''; };
+/* Sandbox only: the structure (never values like ids or secrets) of what the provider returned, to check the mapping. */
+export function servicesSummary(raw) {
+  const groups = Array.isArray(raw?.groups) ? raw.groups : Array.isArray(raw) ? raw : [];
+  const shape = (o, d = 0) => o && typeof o === 'object' && d < 3 ? Object.fromEntries(Object.entries(o).slice(0, 25).map(([k, v]) => [k, Array.isArray(v) ? `array(${v.length})` : v && typeof v === 'object' ? shape(v, d + 1) : typeof v === 'string' ? (/(^id$|Id$|secret|token|transaction)/i.test(k) ? 'string' : v.slice(0, 40)) : v])) : typeof o;
+  return { topKeys: raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw).slice(0, 20) : Array.isArray(raw) ? 'array' : typeof raw,
+    groups: groups.slice(0, 6).map((g) => { const list = Array.isArray(g?.services) ? g.services : Array.isArray(g?.items) ? g.items : [];
+      return { group: shape(Object.fromEntries(Object.entries(g || {}).filter(([k]) => k !== 'services' && k !== 'items'))), count: list.length, first: shape(list[0]), firstSeat: shape(list.find((x) => /seat/i.test(JSON.stringify(x?.category || x?.type || g?.type || '')))) }; }) };
+}
 export function shapeServices(raw) {
   const groups = Array.isArray(raw?.groups) ? raw.groups : Array.isArray(raw) ? raw : [];
   const seats = [], bags = [];
@@ -48,7 +58,7 @@ export function shapeServices(raw) {
       const serviceId = id(String(sv?.serviceId || sv?.id || ''));
       if (!serviceId) continue;
       const cat = String(sv?.category || sv?.type || kind).toLowerCase(), price = money(sv?.pricing || sv?.price);
-      const segmentKey = clean(sv?.segmentKey || g?.segmentKey || '', 80), passengerType = clean(sv?.passengerType || '', 8);
+      const segmentKey = clean(sv?.segmentKey || g?.segmentKey || '', 80), passengerType = paxType(sv?.passengerType ?? sv?.passenger?.type ?? '');
       if (cat.includes('seat')) {
         const m = sv?.metadata?.seat || sv?.seat || {};
         const row = Number(m.seatRow), col = clean(m.seatColumn || '', 2).toUpperCase();
@@ -131,7 +141,7 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!p?.prebookId || !p.transactionId || !p.secretKey) return json({ error: 'This fare is no longer available. Please choose another flight.' }, 409);
       const d = p.booking?.journey?.pricing?.display || {};
       return json({ prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, price: Number(p.price ?? d.total), currency: p.currency || d.currency || '',
-        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [] }, extrasToken: extrasOn ? await extrasToken(p.prebookId, env) : undefined, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [] }, ...(testMode ? { servicesSummary: servicesSummary(p.servicesAttachable) } : {}), extrasToken: extrasOn ? await extrasToken(p.prebookId, env) : undefined, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
     }
     if (body?.action === 'services') {
       if (!extrasOn) return json({ error: 'Seat and bag add-ons are not available yet. Your fare is unchanged; continue to payment.', blocked: 'extras' }, 403);

@@ -24,10 +24,11 @@
 
   window.aivaFlightExtras = (p, box, travellers) => new Promise((resolve) => {
     const sv = p?.services || {}, seats = Array.isArray(sv.seats) ? sv.seats : [], bags = Array.isArray(sv.bags) ? sv.bags : [];
-    if (!box || (!seats.length && !bags.length)) return resolve({ extras: [] });
+    if (!box || (!seats.length && !bags.length)) { if (box && p?.testMode && p?.servicesSummary) box.insertAdjacentHTML('beforeend', `<details class="mini"><summary>Sandbox diagnostics: no seats or bags mapped</summary><pre style="white-space:pre-wrap;font-size:11px" id="fxDiag">${esc(JSON.stringify(p.servicesSummary, null, 1))}</pre></details>`); return resolve({ extras: [] }); }
     const segsKeys = [...new Set(seats.map((s) => s.segmentKey))];
     const names = (travellers || []).map((t, i) => `${t.firstName || 'Traveller'} ${t.lastName || i + 1}`.trim());
     const types = (travellers || []).map((t) => TYPE[t.passengerType] || 'ADT');
+    const diag = p?.testMode && p?.servicesSummary ? `<details class="mini" style="margin-top:8px"><summary>Sandbox diagnostics: provider service structure</summary><pre style="white-space:pre-wrap;font-size:11px" id="fxDiag">${esc(JSON.stringify(p.servicesSummary, null, 1))}</pre></details>` : '';
     const st = { pax: 0, seg: segsKeys[0], picked: {}, bags: {} };
     const seatById = new Map(seats.map((s) => [s.serviceId, s])), bagById = new Map(bags.map((b) => [b.serviceId, b]));
     const total = () => {
@@ -45,7 +46,7 @@
         ${seats.length && types[st.pax] !== 'INF' ? `${segsKeys.length > 1 ? `<div class="fx-tabs">${segsKeys.map((k, i) => `<button type="button" class="as-btn ${k === st.seg ? '' : 'ghost'}" data-fx-segtab="${esc(k)}">Flight ${i + 1}</button>`).join('')}</div>` : ''}${(window.__fxType = types[st.pax], seatGrid(seats, st.seg, st.pax, st.picked))}<div class="mini">${st.picked[`${st.seg}|${st.pax}`] ? `Seat ${esc(seatById.get(st.picked[`${st.seg}|${st.pax}`])?.number)} · ${esc(fmt(seatById.get(st.picked[`${st.seg}|${st.pax}`])?.price))}` : 'No seat chosen: the airline assigns one at check-in.'}</div>` : seats.length ? '<div class="mini">Infants travel on an adult\'s lap, so no seat is needed.</div>' : '<div class="mini">This airline does not offer seat selection for this fare.</div>'}
         ${segBags.length ? `<div class="mini" style="margin-top:10px"><b>Extra bags</b> · cabin and checked bags this airline sells for this traveller</div>${bagSegs.map((sk) => `${bagSegs.length > 1 || sk ? `<div class="mini" style="margin-top:6px"><b>${esc(flightNo(sk))}</b></div>` : ''}${segBags.filter((b) => (b.segmentKey || '') === sk).map((b) => { const k = `${st.pax}|${b.serviceId}`, q = st.bags[k] || 0; return `<div class="row mini" style="margin:4px 0"><span>${b.kind === 'cabin' ? '🎒' : '🧳'} ${esc(b.name)}${b.weightKg ? ` · ${b.weightKg} kg` : ''} · ${esc(fmt(b.price) || 'price on request')}</span><select data-fx-bag="${esc(k)}">${Array.from({ length: b.quantityMax + 1 }, (_, n) => `<option value="${n}"${n === q ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`; }).join('')}`).join('')}` : ''}
         <div class="row" style="margin-top:10px"><span>Extras total</span><b>${t.sum ? esc(fmt({ amount: t.sum, currency: t.cur })) : '—'}</b></div>
-        <div id="fxMsg"></div><div class="actions"><button type="button" class="as-btn" id="fxGo">${t.sum || Object.keys(st.picked).length ? 'Add extras and continue to payment' : 'Continue without extras'}</button>${t.sum || Object.keys(st.picked).length ? '<button type="button" class="as-btn ghost" id="fxSkip">Skip extras</button>' : ''}</div>`;
+        ${diag}<div id="fxMsg"></div><div class="actions"><button type="button" class="as-btn" id="fxGo">${t.sum || Object.keys(st.picked).length ? 'Add extras and continue to payment' : 'Continue without extras'}</button>${t.sum || Object.keys(st.picked).length ? '<button type="button" class="as-btn ghost" id="fxSkip">Skip extras</button>' : ''}</div>`;
     };
     box.onclick = async (e) => {
       if (st.busy) return;
