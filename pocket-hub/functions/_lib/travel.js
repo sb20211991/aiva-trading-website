@@ -83,6 +83,21 @@ export function journeySlices(segs, legs = []) {
 }
 /* Elapsed minutes of one slice: flight times plus layovers (each layover is measured in one airport's local clock). */
 export const sliceMinutes = (ss) => ss.reduce((n, g, i) => n + (g.duration?.minutes || 0) + (i ? Math.max(0, Math.round((Date.parse(g.departureTime) - Date.parse(ss[i - 1].arrivalTime)) / 60000)) : 0), 0);
+/* Paid bag options arrive once per segment, passenger and weight band, so one fare can list 30+ near-identical
+   lines. They are grouped by bag type with the lowest price the airline offers: "Checked bag from 25.14 GBP". */
+export function paidBags(list) {
+  const by = new Map();
+  for (const b of Array.isArray(list) ? list : []) {
+    const type = String(b?.description || b?.bagType || '').trim();
+    const amount = Number(b?.pricing?.display?.amount), currency = String(b?.pricing?.display?.currency || '');
+    if (!type) continue;
+    const cur = by.get(type);
+    if (!Number.isFinite(amount) || !currency) { if (!cur) by.set(type, null); continue; }
+    if (!cur || amount < cur.amount) by.set(type, { amount, currency });
+  }
+  return [...by].map(([type, p]) => p ? `${type} from ${p.amount} ${p.currency}` : type);
+}
+
 export function shapeJourney(j, legs) {
   const o = j.cheapestOffer || j.offers?.[0] || {}, segs = j.segments || [], c = segs[0]?.carrier || {};
   const groups = journeySlices(segs, legs);
@@ -99,9 +114,9 @@ export function shapeJourney(j, legs) {
   const per = o.pricing?.display?.perPassenger || {};
   return { id: o.offerId || j.journeyKey, airline: c.marketingName || '', airlineCode: c.marketingCode || '', logo: c.marketingLogo || '',
     price: Number(o.pricing?.display?.total), currency: o.pricing?.display?.currency || '', expires: o.expiration || '', slices,
-    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || 'No checked bag included',
-    bags: { carryOn: !!bag.hasCarryOnBag, checked: !!bag.hasCheckedBag, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
-      paid: (bag.paid || []).map((b) => `${b.description || b.bagType}${money(b)}`) },
+    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || (o.baggage ? 'No checked bag included' : ''),
+    bags: !o.baggage ? null : { carryOn: !!bag.hasCarryOnBag, checked: !!bag.hasCheckedBag, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
+      paid: paidBags(bag.paid) },
     seatsLeft: Number.isFinite(o.fare?.seatsRemaining) ? o.fare.seatsRemaining : null,
     perPassenger: Object.fromEntries(Object.entries(per).filter(([, v]) => Number.isFinite(v?.total)).map(([k, v]) => [k, v.total])),
     refundable: !!o.terms?.refundable, changeable: !!o.terms?.changeable };

@@ -47,6 +47,8 @@
   .rail-row{display:grid;grid-template-columns:1.15fr auto 1.15fr;gap:9px;align-items:end}
   .rail-row.second{grid-template-columns:repeat(4,minmax(0,1fr))}
   .rail-row.second .rail-go{grid-column:1/-1}
+  .rail-bike{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;font-weight:600;cursor:pointer}
+  .rail-bike input{width:20px;height:20px;margin:0}
   .rail-field{display:grid;gap:4px;min-width:0;font-size:12px;font-weight:700;color:#5b6884}
   .rail-field input[type=text],.rail-field input:not([type]),.rail-field input[type=date],.rail-field input[type=time],.rail-field select{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #dbe1ee;border-radius:11px;background:#fff;font:inherit;font-size:14px;font-weight:600;color:#12203c}
   .rail-field input:focus,.rail-field select:focus{outline:none;border-color:#2f4b7c;box-shadow:0 0 0 3px #2f4b7c22}
@@ -180,7 +182,7 @@
         <label class="rail-field">Date<input id="rail${key}Date" type="date" aria-label="Travel date"></label>
         <label class="rail-field">Time<input id="rail${key}Time" type="time" aria-label="Travel time"></label>
         <label class="rail-field">Travellers<select id="rail${key}Pax" aria-label="Travellers">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></label>
-        <span></span>
+        <label class="rail-bike"><input type="checkbox" id="rail${key}Bike"> 🚲 Travelling with a bike</label>
         <button class="rail-go" id="rail${key}Go" type="submit">${SVG.search}Search ${noun}s</button>
       </div>
       <div class="rail-suggest" id="rail${key}Suggest" role="listbox" aria-label="Matching stations and places" hidden></div>
@@ -194,7 +196,7 @@
 
     const el = {
       form: $('rail' + key + 'Form'), from: $('rail' + key + 'From'), to: $('rail' + key + 'To'),
-      date: $('rail' + key + 'Date'), time: $('rail' + key + 'Time'), pax: $('rail' + key + 'Pax'),
+      date: $('rail' + key + 'Date'), time: $('rail' + key + 'Time'), pax: $('rail' + key + 'Pax'), bike: $('rail' + key + 'Bike'),
       go: $('rail' + key + 'Go'), suggest: $('rail' + key + 'Suggest'), nearby: $('rail' + key + 'Nearby'),
       msg: $('rail' + key + 'Msg'), results: $('rail' + key + 'Results'), checkout: $('rail' + key + 'Checkout'),
       tickets: $('rail' + key + 'Tickets'), tag: $('rail' + key + 'Tag')
@@ -350,10 +352,11 @@
           from: `${from.lat},${from.lon}`, to: `${to.lat},${to.lon}`, mode,
           fromName: from.name, toName: to.name, pax: el.pax.value, time: at.toISOString()
         });
+        if (el.bike?.checked) qs.set('bike', '1');
         const d = await api('/api/rail/search?' + qs, 60000);
         st.data = d;
         render();
-        say('');
+        say(el.bike?.checked ? 'Showing only journeys where every operator publishes that bikes are allowed. Space can be limited and some operators need a bike reservation: check with the operator before you travel.' : '');
       } catch (err) {
         el.results.innerHTML = `<div class="rail-summary"><span>${esc(err.message)}</span></div>`;
         say(err.message, 'err');
@@ -372,7 +375,7 @@
       if (l.kind === 'walk') {
         return `<div class="rail-leg">${SVG.walk}<span>Walk ${l.minutes} min${l.distance ? ' · ' + dist(l.distance) : ''}<small>${esc(l.from)} → ${esc(l.to)}</small></span></div>`;
       }
-      const meta = [l.operator, l.stops ? `${l.stops} stop${l.stops > 1 ? 's' : ''}` : '', l.platform ? `Platform ${l.platform}` : '', l.cancelled ? 'Cancelled' : l.realtime ? 'live' : 'timetabled'].filter(Boolean).map(esc).join(' · ');
+      const meta = [l.operator, l.stops ? `${l.stops} stop${l.stops > 1 ? 's' : ''}` : '', l.platform ? `Platform ${l.platform}` : '', l.cancelled ? 'Cancelled' : l.realtime ? 'live' : 'timetabled', l.bikes ? '🚲 Bikes allowed' : '🚲 Bike carriage not published by the operator'].filter(Boolean).map(esc).join(' · ');
       return `<div class="rail-leg">${SVG[l.kind] || SVG.train}<span><b>${esc(l.line || l.operator || (l.kind === 'tram' ? 'Tram' : 'Train'))}</b>${l.direction ? ' → ' + esc(l.direction) : ''}${l.departure ? ' · ' + esc(l.departure) : ''}${l.arrival ? '–' + esc(l.arrival) : ''}<small>${esc(l.from)} → ${esc(l.to)}${meta ? ' · ' + meta : ''}</small></span></div>`;
     }
 
@@ -384,7 +387,8 @@
       const badges = [`<span class="rail-badge">${esc(changes)}</span>`,
         it.realtime ? '<span class="rail-badge live">Live times</span>' : '<span class="rail-badge">Timetabled</span>',
         fare && best ? '<span class="rail-badge cheap">Cheapest</span>' : '',
-        it.cancelled ? '<span class="rail-badge cancel">Part cancelled</span>' : ''].filter(Boolean).join('');
+        it.cancelled ? '<span class="rail-badge cancel">Part cancelled</span>' : '',
+        ride.length && ride.every((l) => l.bikes) ? '<span class="rail-badge">🚲 Bikes allowed</span>' : ''].filter(Boolean).join('');
       return `<div class="rail-trip${best ? ' best' : ''}">
         <div>
           <div class="rail-trip-head"><span class="times">${esc(first.departure || '')} → ${esc(last.arrival || '')}</span>

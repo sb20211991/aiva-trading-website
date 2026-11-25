@@ -55,7 +55,10 @@ export function normalise(itinerary) {
       minutes: Math.max(1, Math.round((l.duration || 0) / 60)),
       distance: walk ? Math.round(l.distance || 0) : null,
       stops: Array.isArray(l.intermediateStops) ? l.intermediateStops.length : null,
-      realtime: !!l.realTime, cancelled: !!(l.cancelled || a.cancelled || b.cancelled)
+      realtime: !!l.realTime, cancelled: !!(l.cancelled || a.cancelled || b.cancelled),
+      /* GTFS bikes_allowed: MOTIS sends true only when the operator publishes that bikes are allowed. false covers
+         both "not allowed" and "no information", so it is never shown as a ban. */
+      bikes: walk ? null : l.bikesAllowed === true
     };
   });
   const ride = legs.filter((l) => l.kind !== 'walk');
@@ -71,7 +74,7 @@ export function normalise(itinerary) {
   };
 }
 
-export async function motisPlan(from, to, { fetcher = fetch, time, arriveBy = false, modes = [], numItineraries = 5, maxTransfers = 4, directOnly = false } = {}) {
+export async function motisPlan(from, to, { fetcher = fetch, time, arriveBy = false, modes = [], numItineraries = 5, maxTransfers = 4, directOnly = false, requireBikes = false } = {}) {
   const transit = directOnly ? [] : modes.length ? [...new Set(modes.flatMap((m) => GROUPS[m] || []))] : ALL_MODES;
   const q = new URLSearchParams({
     fromPlace: `${from.lat},${from.lon}`, toPlace: `${to.lat},${to.lon}`,
@@ -79,6 +82,7 @@ export async function motisPlan(from, to, { fetcher = fetch, time, arriveBy = fa
     arriveBy: arriveBy ? 'true' : 'false'
   });
   const t = Date.parse(time || '');
+  if (requireBikes) q.set('requireBikeTransport', 'true');
   if (Number.isFinite(t)) q.set('time', new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z'));
   if (transit.length) q.set('transitModes', transit.join(','));
   /* Walking-only request: an empty transitModes tells MOTIS to consider no transit at all, so the whole

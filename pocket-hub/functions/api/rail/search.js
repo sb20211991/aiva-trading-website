@@ -22,13 +22,14 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const mode = u.get('mode') === 'tram' ? 'tram' : 'train';
   const arriveBy = u.get('arriveBy') === '1' || u.get('arriveBy') === 'true';
   const pax = Math.min(9, Math.max(1, Number(u.get('pax')) || 1));
+  const bike = u.get('bike') === '1';
   const at = Date.parse(u.get('time') || '');
   const time = Number.isFinite(at) ? new Date(at).toISOString() : new Date(Date.now() + 30 * 60000).toISOString();
   const fromName = name(u.get('fromName')), toName = name(u.get('toName'));
-  const key = `rail-${mode}-${from.lat},${from.lon}-${to.lat},${to.lon}-${time}-${arriveBy ? 1 : 0}-${pax}`;
+  const key = `rail-${mode}-${from.lat},${from.lon}-${to.lat},${to.lon}-${time}-${arriveBy ? 1 : 0}-${pax}-${bike ? 'bike' : ''}`;
   try {
     const result = await cached(key, 20, async () => {
-      const itineraries = await planRail({ from, to, mode, time, arriveBy, fetcher, results: 6 });
+      const itineraries = await planRail({ from, to, mode, time, arriveBy, fetcher, results: 6, requireBikes: bike });
       /* Nearby stations make it obvious where the journey actually starts and ends. A station lookup failure
          must never blank the journey itself. */
       const [fromStations, toStations] = await Promise.all([
@@ -45,7 +46,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
       }
       return { mode, provider: 'transitous', itineraries, stations: { from: fromStations, to: toStations },
         sales: { ...sales, fares, fareError }, timeZone: fromStations[0]?.tz || '', source: SOURCE, retrieved: new Date().toISOString(),
-        note: itineraries.length ? '' : `No ${mode} journey was found for this route at this time in the open timetable feeds. Open feeds usually cover the next few weeks, so try a closer date. Nothing is estimated.` };
+        note: itineraries.length ? '' : bike ? `No ${mode} journey was found where every operator publishes that bikes are allowed. Many operators do not publish bike rules in open timetable data, so untick “Travelling with a bike” to see all ${mode}s and check bike rules with the operator.` : `No ${mode} journey was found for this route at this time in the open timetable feeds. Open feeds usually cover the next few weeks, so try a closer date. Nothing is estimated.` };
     });
     return json({ ...result, live: result.itineraries.some((i) => i.realtime) }, 200, 20);
   } catch (e) {

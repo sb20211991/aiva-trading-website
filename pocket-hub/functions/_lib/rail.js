@@ -104,9 +104,9 @@ export async function findPlaces({ q, near, mode = '', limit = 4, fetcher = fetc
 
 /* Rail-only or tram-only journeys: MOTIS is asked for the mode group, then any itinerary that does not
    actually use that mode is dropped (for example a replacement bus on a rail request). */
-export async function planRail({ from, to, mode, time, arriveBy = false, fetcher = fetch, results = 5 } = {}) {
+export async function planRail({ from, to, mode, time, arriveBy = false, fetcher = fetch, results = 5, requireBikes = false } = {}) {
   const list = await motisPlan(from, to, {
-    fetcher, time, arriveBy, modes: [mode], numItineraries: Math.min(8, Math.max(2, results + 3)), maxTransfers: 3
+    fetcher, time, arriveBy, requireBikes, modes: [mode], numItineraries: Math.min(8, Math.max(2, results + 3)), maxTransfers: 3
   });
   return list.filter((i) => i.legs.some((l) => l.kind === mode && !(l.cancelled))).slice(0, Math.max(1, results));
 }
