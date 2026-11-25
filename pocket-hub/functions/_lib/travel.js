@@ -143,21 +143,44 @@ const commons = (f) => f ? 'https://commons.wikimedia.org/wiki/Special:FilePath/
 export const FACILITIES = { wifi: [47, 107], parking: [2, 161, 674], pool: [103, 104, 120, 122, 192, 193, 195, 301], gym: [11, 492], spa: [54],
   restaurant: [3, 115, 116], shuttle: [17], ac: [109], pets: [4], accessible: [25, 185], family: [28], ev: [182] };
 export const hotelFacilities = (ids = []) => { const set = new Set(ids.map(Number)); return Object.keys(FACILITIES).filter((k) => FACILITIES[k].some((i) => set.has(i))); };
-export async function liteHotels({ offset = 0, lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
+export async function liteHotels({ offset = 0, stars = '', propertyType = '', lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
   const headers = { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' };
-  const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25&offset=${offset}`, { headers }, fetcher, 15000);
-  const hotels = (list?.data || []).filter((h) => h.id && h.name);
-  const nextOffset = list?.data?.length === 25 ? offset + 25 : null;
-  if (!hotels.length) return { hotels: [], nextOffset };
   const getTypes = async () => {
     const result = await fetchJSON(`${LITEAPI}/data/hotelTypes`, { headers }, fetcher, 8000);
     return Object.fromEntries((result.data || []).map(type => [
       type.hotelTypeId ?? type.typeId ?? type.id, type.name ?? type.hotelTypeName ?? type.hotelType ?? type.type
     ]));
   };
-  const typesPromise = hotels.some(h => h.hotelTypeId != null)
-    ? cached('liteapi-hotel-types-en-v1', 86400, getTypes).catch(() => ({}))
-    : Promise.resolve({});
+  const typesPromise = cached('liteapi-hotel-types-en-v1', 86400, getTypes).catch(() => ({}));
+  const pageSize = 75;
+  const query = new URLSearchParams({ latitude: lat, longitude: lon, radius: 20000, limit: pageSize, offset });
+  if (/^exact-[1-5]$/.test(stars)) query.set('starRating', Number(stars.slice(6)).toFixed(1));
+  if (stars === '3' || stars === '4') {
+    const bands = [];
+    for (let rating = Number(stars); rating <= 5; rating += 0.5) bands.push(rating.toFixed(1));
+    query.set('starRating', bands.join(','));
+  }
+  if (propertyType) {
+    const ids = Object.entries(await typesPromise).filter(([, name]) => accommodationType(name) === propertyType).map(([id]) => id);
+    if (ids.length) query.set('hotelTypeIds', ids.join(','));
+  }
+  const catalog = params => fetchJSON(`${LITEAPI}/data/hotels?${params}`, { headers }, fetcher, 15000);
+  // Supplement the unrestricted page with lower-star properties from across the search area.
+  // Its own offset advances independently through the full, unrestricted catalogue.
+  const lowerStars = new URLSearchParams(query);
+  lowerStars.set('limit', '25');
+  lowerStars.set('starRating', '1.0,1.5,2.0,2.5,3.0');
+  const [list, supplement] = await Promise.all([
+    catalog(query),
+    !offset && !stars && !propertyType ? catalog(lowerStars).catch(() => null) : null
+  ]);
+  const byId = new Map();
+  for (const hotel of [...(list?.data || []), ...(supplement?.data || [])]) {
+    if (hotel.id && hotel.name) byId.set(hotel.id, hotel);
+  }
+  const hotels = [...byId.values()];
+  const nextOffset = list?.data?.length === pageSize ? offset + pageSize : null;
+  if (!hotels.length) return { hotels: [], nextOffset };
   const rates = await fetchJSON(`${LITEAPI}/hotels/rates`, {
     method: 'POST', headers,
     body: JSON.stringify({ hotelIds: hotels.map((h) => h.id), occupancies: [{ adults, ...(children.length ? { children } : {}) }], currency, guestNationality: 'GB', checkin, checkout, timeout: 12 })
@@ -166,7 +189,7 @@ export async function liteHotels({ offset = 0, lat, lon, checkin, checkout, adul
   for (const r of rates?.data || []) {
     for (const rt of r.roomTypes || []) {
       const a = Number(rt.offerRetailRate?.amount ?? rt.rates?.[0]?.retailRate?.total?.[0]?.amount);
-      if (!Number.isFinite(a)) continue;
+      if (!Number.isFinite(a) || a < 0) continue;
       const room = { total: a, currency: rt.offerRetailRate?.currency || rt.rates?.[0]?.retailRate?.total?.[0]?.currency || currency, room: rt.rates?.[0]?.name || '', offerId: rt.offerId || '',
         refundable: rt.rates?.[0]?.cancellationPolicies?.refundableTag === 'RFN', board: rt.rates?.[0]?.boardName || '',
         cancelBy: rt.rates?.[0]?.cancellationPolicies?.cancelPolicyInfos?.[0]?.cancelTime || '',
