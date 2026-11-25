@@ -1,6 +1,8 @@
 /* POST /api/travel/flight-book — in-app flight booking through Nuitee (LiteAPI flights) with the Nuitee payment SDK.
    {action:'verify', offerId} -> live fare, changes and expiry.
    {action:'prebook', offerId, contact, passengers} -> prebookId, transactionId and the payment-form secret, plus the final price.
+   {action:'services', prebookId, selected:[{passengerIndex, serviceId, quantity}]} -> attaches airline seats / extra bags
+     offered in the prebook reply (servicesAttachable) and returns the new transactionId, payment secret and total.
    {action:'book', prebookId, transactionId} -> booking reference and airline status (after the SDK payment; idempotent per prebook).
    {action:'status', bookingId, email} -> latest airline status and PNR (the booking's contact email must match).
    Sandbox keys make test bookings only. A production key books for real only when FLIGHT_BOOKING_LIVE is "true". */
@@ -34,6 +36,44 @@ export const shapeFlightBooking = (raw) => {
   return { bookingId: b.bookingId || '', bookingRef: b.bookingRef || '', status: b.status || '', pnr: b.pnr || findKey(b, 'pnr'),
     price: Number(p.total ?? b.price), currency: p.currency || b.currency || '', segments: segs(b.journey), paymentScheduledAt: b.paymentScheduledAt || '' };
 };
+/* Seats and extra bags the airline offers for this prebook (Nuitee servicesAttachable). Only what the airline returned
+   is shown, with its own price; an empty list means the airline offers no paid extras through this channel. */
+const money = (pr) => { const d = pr?.display || pr || {}; const a = Number(d.amount ?? d.total ?? d.price); return Number.isFinite(a) && a >= 0 ? { amount: a, currency: String(d.currency || '').slice(0, 3) } : null; };
+export function shapeServices(raw) {
+  const groups = Array.isArray(raw?.groups) ? raw.groups : Array.isArray(raw) ? raw : [];
+  const seats = [], bags = [];
+  for (const g of groups) {
+    const kind = String(g?.type || g?.category || '').toLowerCase();
+    for (const sv of (Array.isArray(g?.services) ? g.services : Array.isArray(g?.items) ? g.items : [])) {
+      const serviceId = id(String(sv?.serviceId || sv?.id || ''));
+      if (!serviceId) continue;
+      const cat = String(sv?.category || sv?.type || kind).toLowerCase(), price = money(sv?.pricing || sv?.price);
+      const segmentKey = clean(sv?.segmentKey || g?.segmentKey || '', 80), passengerType = clean(sv?.passengerType || '', 8);
+      if (cat.includes('seat')) {
+        const m = sv?.metadata?.seat || sv?.seat || {};
+        const row = Number(m.seatRow), col = clean(m.seatColumn || '', 2).toUpperCase();
+        if (!Number.isFinite(row) || !/^[A-Z]$/.test(col)) continue;
+        seats.push({ serviceId, segmentKey, passengerType, row, col, number: clean(m.seatNumber || `${row}${col}`, 5), type: clean(m.seatType || '', 20),
+          position: clean(m.position || '', 10), available: m.available !== false, price });
+      } else if (cat.includes('bag') || cat.includes('lugg')) {
+        const m = sv?.metadata?.baggage || sv?.baggage || {};
+        bags.push({ serviceId, segmentKey, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80),
+          weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) ? Number(m.weight ?? m.weightKg) : null, quantityMax: Math.min(3, Math.max(1, Number(m.maxQuantity || sv?.maxQuantity) || 1)), price });
+      }
+    }
+  }
+  return { seats: seats.slice(0, 1500), bags: bags.slice(0, 60) };
+}
+export function selection(list, paxCount) {
+  if (!Array.isArray(list) || !list.length || list.length > 40) return null;
+  const out = [];
+  for (const x of list) {
+    const serviceId = id(String(x?.serviceId || '')), passengerIndex = Number(x?.passengerIndex), quantity = Number(x?.quantity ?? 1);
+    if (!serviceId || !Number.isInteger(passengerIndex) || passengerIndex < 0 || passengerIndex >= paxCount || !Number.isInteger(quantity) || quantity < 1 || quantity > 3) return null;
+    out.push({ passengerIndex, serviceId, quantity });
+  }
+  return out;
+}
 export function passengers(list) {
   if (!Array.isArray(list) || !list.length || list.length > 9) return null;
   const out = [];
@@ -82,7 +122,15 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!p?.prebookId || !p.transactionId || !p.secretKey) return json({ error: 'This fare is no longer available. Please choose another flight.' }, 409);
       const d = p.booking?.journey?.pricing?.display || {};
       return json({ prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, price: Number(p.price ?? d.total), currency: p.currency || d.currency || '',
-        segments: segs(p.booking?.journey), testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+        segments: segs(p.booking?.journey), services: shapeServices(p.servicesAttachable), passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+    }
+    if (body?.action === 'services') {
+      const prebookId = id(body.prebookId), chosen = selection(body.selected, Math.min(9, Math.max(1, Number(body.passengers) || 1)));
+      if (!prebookId) return json({ error: 'Booking reference missing. Please start again.' }, 400);
+      if (!chosen) return json({ error: 'Choose seats or bags for the listed travellers.' }, 400);
+      const r = await call('POST', `/flights/prebooks/${encodeURIComponent(prebookId)}/services`, { selectedServices: chosen }, env, fetcher, 45000);
+      if (!r?.transactionId || !r.secretKey) return json({ error: 'The airline did not accept these extras. You can continue without them.' }, 409);
+      return json({ prebookId, transactionId: r.transactionId, secretKey: r.secretKey, price: Number(r.price ?? r.pricing?.display?.total), currency: r.currency || r.pricing?.display?.currency || '', testMode });
     }
     if (body?.action === 'book') {
       const prebookId = id(body.prebookId), transactionId = id(body.transactionId);
