@@ -402,6 +402,12 @@ console.log('POCKET HUB CHECKS PASSED');
   const st = { data: { bookingId: 'BK9999', status: 'CONFIRMED', pnr: 'XYZ789', contact: { email: 'Ada@Example.com' } } };
   r = await fb({ request: req({ action: 'status', bookingId: 'BK9999', email: 'ada@example.com' }), env: sb }, up(st));
   d = await r.json(); assert.equal(sent.method, 'GET'); assert.deepEqual([d.status, d.pnr], ['CONFIRMED', 'XYZ789']);
+  // Nuitee returns the airline reference only as airlineLocators[].airlinePnr: booking and status must still show it.
+  const locatorOnly = { booking: { bookingId: 'BK7777', bookingRef: 'FH-7', status: 'CONFIRMED', contact: { email: 'ada@example.com' }, airlineLocators: [{ airlineCode: 'BA', airlinePnr: 'ABC123' }] } };
+  r = await fb({ request: req({ action: 'status', bookingId: 'BK7777', email: 'ada@example.com' }), env: sb }, up(locatorOnly));
+  d = await r.json(); assert.equal(d.pnr, 'ABC123', 'status shows the airline locator');
+  r = await fb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345' }), env: sb }, up({ data: locatorOnly }, 201));
+  d = await r.json(); assert.equal(d.pnr, 'ABC123', 'booking shows the airline locator');
   assert.equal((await fb({ request: req({ action: 'status', bookingId: 'BK9999', email: 'eve@example.com' }), env: sb }, up(st))).status, 404, 'status needs the booking email');
   assert.equal((await fb({ request: req({ action: 'status', bookingId: 'BK9999' }), env: sb }, up(st))).status, 400);
   assert.equal(passengers([{ ...pax[0], passengerType: 1 }]), null, 'a child cannot travel alone');

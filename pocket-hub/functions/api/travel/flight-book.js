@@ -31,7 +31,7 @@ const segs = (j) => (j?.segments || []).map((s) => ({ from: s.originCode, to: s.
   airline: s.carrier?.marketingName || '', flight: `${s.carrier?.marketingCode || ''}${s.flight?.marketingNumber || ''}` }));
 export const shapeFlightBooking = (raw) => {
   const b = raw?.booking || raw || {}, p = b.journey?.pricing?.display || b.pricing?.display || {};
-  return { bookingId: b.bookingId || '', bookingRef: b.bookingRef || '', status: b.status || '', pnr: b.pnr || findKey(b, 'pnr'),
+  return { bookingId: b.bookingId || '', bookingRef: b.bookingRef || '', status: b.status || '', pnr: b.pnr || findKey(b, 'pnr') || findKey(b, 'airlinePnr'),
     price: Number(p.total ?? b.price), currency: p.currency || b.currency || '', segments: segs(b.journey), paymentScheduledAt: b.paymentScheduledAt || '' };
 };
 export function passengers(list) {
