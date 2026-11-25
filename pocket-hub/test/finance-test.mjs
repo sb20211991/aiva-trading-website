@@ -36,6 +36,18 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
   assert.equal(d.coins[0].price, 71000); assert.equal(d.coins[0].change24h, -1.5);
   assert.match(d.note, /does not buy, sell/);
 }
+// CoinGecko refused (as it often is from shared cloud IPs): Coinbase's exchange-rate feed prices the wider list.
+{
+  const f = stub([['coingecko', reply({}, 429)], ['exchange-rates?currency=GBP', reply({ data: { currency: 'GBP', rates: { BTC: '0.0000200', ETH: '0.0005', SOL: '0.01', XRP: '0.5', GBP: '1' } } })]]);
+  const d = await (await cryptoHandler(req('/api/finance/crypto?currency=GBP'), f, false)).json();
+  assert.equal(d.source, 'Coinbase exchange rates');
+  assert.deepEqual(d.coins.map((c) => [c.symbol, Math.round(c.price)]), [['BTC', 50000], ['ETH', 2000], ['SOL', 100], ['XRP', 2]]);
+  assert.equal(d.coins[0].change24h, null);
+  // An optional CoinGecko key is sent as a header, never in the URL.
+  let seen = null;
+  await cryptoHandler(req('/api/finance/crypto?currency=GBP'), async (u, init) => { seen = seen || { u: String(u), h: init?.headers }; return reply([]); }, false, { COINGECKO_API_KEY: 'k123' });
+  assert.equal(seen.h['x-cg-demo-api-key'], 'k123'); assert.ok(!seen.u.includes('k123'));
+}
 // CoinGecko down: Coinbase spot for BTC and ETH. Everything down: 502.
 {
   const f = stub([['coingecko', reply({}, 429)], ['BTC-EUR', reply({ data: { amount: '82000.12' } })], ['ETH-EUR', reply({ data: { amount: '3000.5' } })]]);

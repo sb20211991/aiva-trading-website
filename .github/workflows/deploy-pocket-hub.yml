@@ -65,9 +65,10 @@ jobs:
           CAR_RENTAL_GATEWAY_URL: ${{ secrets.CAR_RENTAL_GATEWAY_URL }}
           CAR_RENTAL_GATEWAY_KEY: ${{ secrets.CAR_RENTAL_GATEWAY_KEY }}
           CAR_RENTAL_PROVIDER: ${{ secrets.CAR_RENTAL_PROVIDER }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
         run: |
           set -euo pipefail
-          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER; do
+          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER COINGECKO_API_KEY; do
             value="${!name:-}"
             if [ -z "$value" ]; then echo "$name: not set in repository secrets, skipping"; continue; fi
             printf '%s' "$value" | npx --yes wrangler@4 pages secret put "$name" --project-name="$PROJECT" > /dev/null
@@ -130,7 +131,7 @@ jobs:
           retry 'finance fx api' 4 fx_api
           crypto_api() {
             curl -sf -m 30 -o "$RUNNER_TEMP/crypto.json" "$U/api/finance/crypto?currency=GBP&limit=50" || return 1
-            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['coins'];print('crypto:',len(c),'coins from',d['source'],'BTC',next((x['price'] for x in c if x['symbol']=='BTC'),None));sys.exit(0 if c and c[0]['price']>0 else 1)" "$RUNNER_TEMP/crypto.json"
+            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['coins'];print('crypto:',len(c),'coins from',d['source'],'BTC',next((x['price'] for x in c if x['symbol']=='BTC'),None));sys.exit(0 if len(c)>=10 and c[0]['price']>0 else 1)" "$RUNNER_TEMP/crypto.json"
           }
           retry 'finance crypto api' 4 crypto_api
           curl -sf -m 30 -o "$RUNNER_TEMP/aiva-finance.js" "$U/aiva-finance.js" && grep -q 'afCcFrom' "$RUNNER_TEMP/aiva-finance.js"

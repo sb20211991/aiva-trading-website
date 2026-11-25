@@ -48,7 +48,31 @@ export const COINS = [
   { id: 'usd-coin', symbol: 'USDC', name: 'USD Coin' },
   { id: 'cardano', symbol: 'ADA', name: 'Cardano' },
   { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin' },
-  { id: 'litecoin', symbol: 'LTC', name: 'Litecoin' }
+  { id: 'litecoin', symbol: 'LTC', name: 'Litecoin' },
+  { id: 'tron', symbol: 'TRX', name: 'TRON' },
+  { id: 'avalanche-2', symbol: 'AVAX', name: 'Avalanche' },
+  { id: 'chainlink', symbol: 'LINK', name: 'Chainlink' },
+  { id: 'polkadot', symbol: 'DOT', name: 'Polkadot' },
+  { id: 'shiba-inu', symbol: 'SHIB', name: 'Shiba Inu' },
+  { id: 'bitcoin-cash', symbol: 'BCH', name: 'Bitcoin Cash' },
+  { id: 'stellar', symbol: 'XLM', name: 'Stellar' },
+  { id: 'uniswap', symbol: 'UNI', name: 'Uniswap' },
+  { id: 'near', symbol: 'NEAR', name: 'NEAR Protocol' },
+  { id: 'aptos', symbol: 'APT', name: 'Aptos' },
+  { id: 'sui', symbol: 'SUI', name: 'Sui' },
+  { id: 'internet-computer', symbol: 'ICP', name: 'Internet Computer' },
+  { id: 'ethereum-classic', symbol: 'ETC', name: 'Ethereum Classic' },
+  { id: 'hedera-hashgraph', symbol: 'HBAR', name: 'Hedera' },
+  { id: 'cosmos', symbol: 'ATOM', name: 'Cosmos' },
+  { id: 'filecoin', symbol: 'FIL', name: 'Filecoin' },
+  { id: 'arbitrum', symbol: 'ARB', name: 'Arbitrum' },
+  { id: 'optimism', symbol: 'OP', name: 'Optimism' },
+  { id: 'aave', symbol: 'AAVE', name: 'Aave' },
+  { id: 'pepe', symbol: 'PEPE', name: 'Pepe' },
+  { id: 'render-token', symbol: 'RENDER', name: 'Render' },
+  { id: 'algorand', symbol: 'ALGO', name: 'Algorand' },
+  { id: 'tezos', symbol: 'XTZ', name: 'Tezos' },
+  { id: 'dai', symbol: 'DAI', name: 'Dai' }
 ];
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
@@ -105,10 +129,10 @@ export async function fxHandler(request, fetcher = fetch, useCache = true) {
 }
 
 /* Crypto prices in the chosen fiat currency. CoinGecko first; Coinbase spot for BTC and ETH if CoinGecko fails. */
-export async function cryptoPrices(vs, fetcher = fetch, limit = 50) {
-  const v = vs.toLowerCase();
+export async function cryptoPrices(vs, fetcher = fetch, limit = 50, key = '') {
+  const v = vs.toLowerCase(), cg = key ? { headers: { 'x-cg-demo-api-key': key } } : {};
   try {
-    const m = await fetchJSON(`${COINGECKO}/coins/markets?vs_currency=${v}&order=market_cap_desc&per_page=${limit}&page=1&price_change_percentage=24h`, {}, fetcher, 10000);
+    const m = await fetchJSON(`${COINGECKO}/coins/markets?vs_currency=${v}&order=market_cap_desc&per_page=${limit}&page=1&price_change_percentage=24h`, cg, fetcher, 10000);
     const coins = (Array.isArray(m) ? m : []).filter((c) => finite(c?.current_price) && c.id && c.symbol).map((c) => ({
       id: String(c.id).slice(0, 60), symbol: String(c.symbol).toUpperCase().slice(0, 12), name: String(c.name || c.symbol).slice(0, 60),
       price: c.current_price, change24h: Number.isFinite(c.price_change_percentage_24h) ? c.price_change_percentage_24h : null,
@@ -117,7 +141,7 @@ export async function cryptoPrices(vs, fetcher = fetch, limit = 50) {
     if (coins.length) return { currency: vs, coins, source: 'CoinGecko' };
   } catch {}
   try {
-    const d = await fetchJSON(`${COINGECKO}/simple/price?ids=${COINS.map((c) => c.id).join(',')}&vs_currencies=${v}&include_24hr_change=true&include_market_cap=true&include_last_updated_at=true`, {}, fetcher, 10000);
+    const d = await fetchJSON(`${COINGECKO}/simple/price?ids=${COINS.map((c) => c.id).join(',')}&vs_currencies=${v}&include_24hr_change=true&include_market_cap=true&include_last_updated_at=true`, cg, fetcher, 10000);
     const coins = COINS.filter((c) => finite(d?.[c.id]?.[v])).map((c) => ({
       ...c, price: d[c.id][v],
       change24h: Number.isFinite(d[c.id][`${v}_24h_change`]) ? d[c.id][`${v}_24h_change`] : null,
@@ -125,6 +149,15 @@ export async function cryptoPrices(vs, fetcher = fetch, limit = 50) {
       updated: d[c.id].last_updated_at ? new Date(d[c.id].last_updated_at * 1000).toISOString() : null
     }));
     if (coins.length) return { currency: vs, coins, source: 'CoinGecko' };
+  } catch {}
+  /* Coinbase's public exchange-rate feed lists crypto against every fiat currency (units per 1 `vs`), so one call
+     prices the whole fallback list. No 24h change or market cap is available from it, and none is shown. */
+  try {
+    const d = await fetchJSON(`${COINBASE}/exchange-rates?currency=${vs}`, {}, fetcher, 8000);
+    const r = d?.data?.currency === vs ? d.data.rates || {} : {};
+    const now = new Date().toISOString();
+    const coins = COINS.filter((c) => finite(Number(r[c.symbol]))).map((c) => ({ ...c, price: 1 / Number(r[c.symbol]), change24h: null, marketCap: null, rank: null, updated: now }));
+    if (coins.length >= 3) return { currency: vs, coins, source: 'Coinbase exchange rates' };
   } catch {}
   const coins = [];
   for (const c of COINS.slice(0, 2)) {
@@ -138,12 +171,12 @@ export async function cryptoPrices(vs, fetcher = fetch, limit = 50) {
   throw Object.assign(new Error(`Crypto prices in ${vs} are unavailable right now`), { status: 502 });
 }
 
-export async function cryptoHandler(request, fetcher = fetch, useCache = true) {
+export async function cryptoHandler(request, fetcher = fetch, useCache = true, env = {}) {
   const u = new URL(request.url), vs = (u.searchParams.get('currency') || 'GBP').toUpperCase();
   const limit = Math.min(100, Math.max(10, Number(u.searchParams.get('limit')) || 50));
   if (!isCurrency(vs)) return json({ error: 'Choose a three-letter currency code, for example GBP' }, 400);
   try {
-    const data = useCache ? await cached(`aiva-crypto-v2-${vs}-${limit}`, 60, () => cryptoPrices(vs, fetcher, limit)) : await cryptoPrices(vs, fetcher, limit);
+    const data = useCache ? await cached(`aiva-crypto-v2-${vs}-${limit}`, 60, () => cryptoPrices(vs, fetcher, limit, env.COINGECKO_API_KEY)) : await cryptoPrices(vs, fetcher, limit, env.COINGECKO_API_KEY);
     return json({ ...data, note: 'Indicative market prices. Aiva does not buy, sell, hold or exchange cryptocurrency.' }, 200, 60);
   } catch (err) {
     return json({ error: err.message || 'Crypto prices are unavailable right now' }, err.status || 502);
