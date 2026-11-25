@@ -40,15 +40,31 @@ assert.equal(selection([], 1), null);
   };
   const p = await (await onRequestPost({ request: req({ action: 'prebook', offerId: 'off_1234', contact, passengers: pax }), env }, fetcher)).json();
   assert.equal(p.services.seats.length, 2); assert.equal(p.services.bags.length, 1); assert.equal(p.passengers, 1); assert.equal(p.testMode, true);
-  const r = await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', passengers: 1, selected: [{ passengerIndex: 0, serviceId: 'seat_12A' }, { passengerIndex: 0, serviceId: 'bag_20', quantity: 1 }] }), env }, fetcher);
+  const r = await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', extrasToken: p.extrasToken, passengers: 1, selected: [{ passengerIndex: 0, serviceId: 'seat_12A' }, { passengerIndex: 0, serviceId: 'bag_20', quantity: 1 }] }), env }, fetcher);
   const d = await r.json();
   assert.equal(r.status, 200);
   assert.deepEqual([d.transactionId, d.secretKey, d.price], ['tr_2222', 'sk_2', 161.99]);
   assert.deepEqual(calls.at(-1)[1], { selectedServices: [{ passengerIndex: 0, serviceId: 'seat_12A', quantity: 1 }, { passengerIndex: 0, serviceId: 'bag_20', quantity: 1 }] });
   // A bad selection never reaches the airline.
   const n = calls.length;
-  assert.equal((await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', passengers: 1, selected: [{ passengerIndex: 3, serviceId: 'seat_12A' }] }), env }, fetcher)).status, 400);
+  assert.equal((await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', extrasToken: p.extrasToken, passengers: 1, selected: [{ passengerIndex: 3, serviceId: 'seat_12A' }] }), env }, fetcher)).status, 400);
   assert.equal(calls.length, n);
+  // Another caller's prebook (no or wrong token) is refused before the airline is called.
+  const sel = [{ passengerIndex: 0, serviceId: 'bag_20', quantity: 1 }];
+  assert.equal((await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', passengers: 1, selected: sel }), env }, fetcher)).status, 403);
+  assert.equal((await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', extrasToken: 'f'.repeat(40), passengers: 1, selected: sel }), env }, fetcher)).status, 403);
+  assert.equal(calls.length, n);
+  // No confirmed total from the airline: no payment session is handed out.
+  const noTotal = async (url) => String(url).endsWith('/services') ? reply({ data: [{ transactionId: 'tr_3', secretKey: 'sk_3' }] }) : fetcher(url);
+  const u = await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_1234', extrasToken: p.extrasToken, passengers: 1, selected: sel }), env }, noTotal);
+  const ud = await u.json();
+  assert.equal(u.status, 502); assert.equal(ud.unknown, true); assert.ok(!ud.secretKey);
+}
+// The picker filters seats by traveller type, groups bags by flight, locks while attaching and never reuses an old total.
+{
+  const js = readFileSync(new URL('../public/aiva-flight-extras.js', import.meta.url), 'utf8');
+  assert.match(js, /s\.passengerType === type/); assert.match(js, /flightNo\(sk\)/); assert.match(js, /if \(st\.busy\) return/);
+  assert.match(js, /did not confirm the new total/); assert.ok(!js.includes('...(Number.isFinite(r.price)'));
 }
 // The page loads the picker before app.js, and checkout waits for it after the prebook.
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');

@@ -25,9 +25,12 @@ const dayAt = (day, hm, tz, lon) => localToUTC(`${day}T${hm}:00`, tz, lon);
 export async function onRequestGet({ request, env }, fetcher = fetch) {
   const u = new URL(request.url).searchParams, from = point(u.get('from')), to = point(u.get('to'));
   if (!from || !to) return json({ error: 'Airport and destination locations are required' }, 400);
-  const utc = localToUTC(u.get('time'), u.get('tz'), from.lon), time = utc && Date.parse(utc) > Date.now() ? utc : undefined;
+  const utc = localToUTC(u.get('time'), u.get('tz'), from.lon);
+  let time = utc && Date.parse(utc) > Date.now() ? utc : undefined;
   const tz = u.get('tz') || transitZone(from, to), cc = String(u.get('cc') || '').toLowerCase().slice(0, 2);
   const today = new Date().toISOString().slice(0, 10), day = /^\d{4}-\d{2}-\d{2}$/.test(u.get('day') || '') && u.get('day') >= today ? u.get('day') : (u.get('time') || '').slice(0, 10) >= today ? u.get('time').slice(0, 10) : today;
+  /* A requested day without a clock time (the Ferries form sends a sailing date) plans from 08:00 local that day. */
+  if (!time && u.get('day') && day > today) { const at = dayAt(day, '08:00', tz, from.lon); if (at && Date.parse(at) > Date.now()) time = at; }
   const errors = [], google = !!env?.GOOGLE_MAPS_API_KEY, soft = (tag) => (e) => { errors.push(`${tag}-${e.status || 'error'}`); return null; };
   let lateDay = day, lateAt = dayAt(day, '22:00', tz, from.lon);
   if (lateAt && Date.parse(lateAt) <= Date.now()) { lateDay = new Date(Date.parse(day) + 864e5).toISOString().slice(0, 10); lateAt = dayAt(lateDay, '22:00', tz, from.lon); }

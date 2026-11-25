@@ -21,4 +21,13 @@ assert.equal(salesStatus({ FERRY_SALES_GATEWAY_URL: 'http://gw.example', FERRY_S
 assert.equal(FERRY_DISTRIBUTORS.length, 2);
 assert.ok(FERRY_REQUIRED_DATA.includes('luggage and baggage allowance'));
 assert.deepEqual(salesStatus({}).requiredData, FERRY_REQUIRED_DATA);
+// A sailing date without a clock time plans from 08:00 local that day, not from now.
+{
+  const { onRequestGet } = await import('../functions/api/travel/transfers.js');
+  const day = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10), bodies = [];
+  const f = async (url, init) => { if (String(url).includes('routes')) bodies.push(String(init?.body || '')); return new Response('{}', { status: 500 }); };
+  await onRequestGet({ request: new Request(`https://app.aivatrading.uk/api/travel/transfers?from=51.0,1.3&to=50.95,1.85&day=${day}&tz=Europe/London`), env: { GOOGLE_MAPS_API_KEY: 'k' } }, f);
+  const times = bodies.map((b) => (b.match(/"departureTime":"([^"]+)"/) || [])[1]).filter(Boolean);
+  assert.ok(times.includes(`${day}T08:00:00.000Z`), times.join(','));
+}
 console.log('FERRY SALES GATE CHECKS PASSED');

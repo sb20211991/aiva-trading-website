@@ -97,6 +97,12 @@ export function contact(c) {
   return Object.values(v).every(Boolean) && v.phoneNumber.length >= 5 ? v : null;
 }
 
+/* Ties the extras call to the browser that made the prebook: an HMAC of the prebook id under a server-only key. */
+export async function extrasToken(prebookId, env) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(`aiva-extras:${env.LITEAPI_KEY || ''}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(String(prebookId)));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+}
 export async function onRequestPost({ request, env }, fetcher = fetch) {
   if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
   if (!env?.LITEAPI_KEY) return json({ error: 'Flight booking is not connected yet (Nuitee key missing).' }, 503);
@@ -125,16 +131,20 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!p?.prebookId || !p.transactionId || !p.secretKey) return json({ error: 'This fare is no longer available. Please choose another flight.' }, 409);
       const d = p.booking?.journey?.pricing?.display || {};
       return json({ prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, price: Number(p.price ?? d.total), currency: p.currency || d.currency || '',
-        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [] }, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [] }, extrasToken: extrasOn ? await extrasToken(p.prebookId, env) : undefined, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
     }
     if (body?.action === 'services') {
       if (!extrasOn) return json({ error: 'Seat and bag add-ons are not available yet. Your fare is unchanged; continue to payment.', blocked: 'extras' }, 403);
       const prebookId = id(body.prebookId), chosen = selection(body.selected, Math.min(9, Math.max(1, Number(body.passengers) || 1)));
       if (!prebookId) return json({ error: 'Booking reference missing. Please start again.' }, 400);
+      if (!body.extrasToken || body.extrasToken !== await extrasToken(prebookId, env)) return json({ error: 'This booking session is not yours or has expired. Please start again.' }, 403);
       if (!chosen) return json({ error: 'Choose seats or bags for the listed travellers.' }, 400);
       const r = await call('POST', `/flights/prebooks/${encodeURIComponent(prebookId)}/services`, { selectedServices: chosen }, env, fetcher, 45000);
       if (!r?.transactionId || !r.secretKey) return json({ error: 'The airline did not accept these extras. You can continue without them.' }, 409);
-      return json({ prebookId, transactionId: r.transactionId, secretKey: r.secretKey, price: Number(r.price ?? r.pricing?.display?.total), currency: r.currency || r.pricing?.display?.currency || '', testMode });
+      const price = Number(r.price ?? r.pricing?.display?.total), currency = String(r.currency || r.pricing?.display?.currency || '');
+      /* Never hand out a payment session without the airline's new total: the customer must see what they pay. */
+      if (!Number.isFinite(price) || price <= 0 || !/^[A-Z]{3}$/.test(currency)) return json({ error: 'The airline did not confirm the new total', unknown: true }, 502);
+      return json({ prebookId, transactionId: r.transactionId, secretKey: r.secretKey, price, currency, testMode });
     }
     if (body?.action === 'book') {
       const prebookId = id(body.prebookId), transactionId = id(body.transactionId);

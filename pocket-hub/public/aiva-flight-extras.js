@@ -11,7 +11,7 @@
   const TYPE = ['ADT', 'CHD', 'INF'];
 
   function seatGrid(seats, seg, pax, picked) {
-    const list = seats.filter((s) => s.segmentKey === seg);
+    const type = window.__fxType || '', list = seats.filter((s) => s.segmentKey === seg && (!s.passengerType || !type || s.passengerType === type));
     const cols = [...new Set(list.map((s) => s.col))].sort(), rows = [...new Set(list.map((s) => s.row))].sort((a, b) => a - b);
     const at = new Map(list.map((s) => [`${s.row}-${s.col}`, s]));
     const aisle = new Set(cols.filter((c, i) => i < cols.length - 1 && at.get(`${rows[0]}-${c}`)?.position === 'aisle' && at.get(`${rows[0]}-${cols[i + 1]}`)?.position === 'aisle'));
@@ -38,15 +38,17 @@
     };
     const draw = () => {
       const t = total(), segBags = bags.filter((b) => !b.passengerType || b.passengerType === types[st.pax]);
+      const bagSegs = [...new Set(segBags.map((b) => b.segmentKey || ''))], flightNo = (k) => { const i = segsKeys.indexOf(k); return i >= 0 ? `Flight ${i + 1}` : k ? k.replace(/[-_]/g, ' → ') : 'Whole trip'; };
       box.innerHTML = `<style>.fx-grid{overflow-x:auto;padding:6px 0}.fx-row{display:flex;gap:4px;align-items:center;margin:3px 0}.fx-rn{width:24px;font-size:12px;color:var(--muted)}.fx-seat{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:#fff;font-size:12px;cursor:pointer}.fx-seat.on{background:var(--navy);color:#fff}.fx-seat.exit{border-color:var(--gold)}.fx-seat:disabled{background:#eceff4;color:#b6bdc9;cursor:not-allowed}.fx-gap{width:30px}.fx-aisle{width:14px}.fx-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}</style>
         <div class="item"><b>Seats and extra baggage</b><div class="mini">Optional. These prices were confirmed by the airline for this held fare and are added to your total before payment. Your seats stay held while you choose.</div></div>
         ${names.length > 1 ? `<div class="fx-tabs">${names.map((n, i) => `<button type="button" class="as-btn ${i === st.pax ? '' : 'ghost'}" data-fx-pax="${i}">${esc(n)}</button>`).join('')}</div>` : ''}
-        ${seats.length && types[st.pax] !== 'INF' ? `${segsKeys.length > 1 ? `<div class="fx-tabs">${segsKeys.map((k, i) => `<button type="button" class="as-btn ${k === st.seg ? '' : 'ghost'}" data-fx-segtab="${esc(k)}">Flight ${i + 1}</button>`).join('')}</div>` : ''}${seatGrid(seats, st.seg, st.pax, st.picked)}<div class="mini">${st.picked[`${st.seg}|${st.pax}`] ? `Seat ${esc(seatById.get(st.picked[`${st.seg}|${st.pax}`])?.number)} · ${esc(fmt(seatById.get(st.picked[`${st.seg}|${st.pax}`])?.price))}` : 'No seat chosen: the airline assigns one at check-in.'}</div>` : seats.length ? '<div class="mini">Infants travel on an adult\'s lap, so no seat is needed.</div>' : '<div class="mini">This airline does not offer seat selection for this fare.</div>'}
-        ${segBags.length ? `<div class="mini" style="margin-top:10px"><b>Extra bags</b> · cabin and checked bags this airline sells for this traveller</div>${segBags.map((b) => { const k = `${st.pax}|${b.serviceId}`, q = st.bags[k] || 0; return `<div class="row mini" style="margin:4px 0"><span>${b.kind === 'cabin' ? '🎒' : '🧳'} ${esc(b.name)}${b.weightKg ? ` · ${b.weightKg} kg` : ''} · ${esc(fmt(b.price) || 'price on request')}</span><select data-fx-bag="${esc(k)}">${Array.from({ length: b.quantityMax + 1 }, (_, n) => `<option value="${n}"${n === q ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`; }).join('')}` : ''}
+        ${seats.length && types[st.pax] !== 'INF' ? `${segsKeys.length > 1 ? `<div class="fx-tabs">${segsKeys.map((k, i) => `<button type="button" class="as-btn ${k === st.seg ? '' : 'ghost'}" data-fx-segtab="${esc(k)}">Flight ${i + 1}</button>`).join('')}</div>` : ''}${(window.__fxType = types[st.pax], seatGrid(seats, st.seg, st.pax, st.picked))}<div class="mini">${st.picked[`${st.seg}|${st.pax}`] ? `Seat ${esc(seatById.get(st.picked[`${st.seg}|${st.pax}`])?.number)} · ${esc(fmt(seatById.get(st.picked[`${st.seg}|${st.pax}`])?.price))}` : 'No seat chosen: the airline assigns one at check-in.'}</div>` : seats.length ? '<div class="mini">Infants travel on an adult\'s lap, so no seat is needed.</div>' : '<div class="mini">This airline does not offer seat selection for this fare.</div>'}
+        ${segBags.length ? `<div class="mini" style="margin-top:10px"><b>Extra bags</b> · cabin and checked bags this airline sells for this traveller</div>${bagSegs.map((sk) => `${bagSegs.length > 1 || sk ? `<div class="mini" style="margin-top:6px"><b>${esc(flightNo(sk))}</b></div>` : ''}${segBags.filter((b) => (b.segmentKey || '') === sk).map((b) => { const k = `${st.pax}|${b.serviceId}`, q = st.bags[k] || 0; return `<div class="row mini" style="margin:4px 0"><span>${b.kind === 'cabin' ? '🎒' : '🧳'} ${esc(b.name)}${b.weightKg ? ` · ${b.weightKg} kg` : ''} · ${esc(fmt(b.price) || 'price on request')}</span><select data-fx-bag="${esc(k)}">${Array.from({ length: b.quantityMax + 1 }, (_, n) => `<option value="${n}"${n === q ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`; }).join('')}`).join('')}` : ''}
         <div class="row" style="margin-top:10px"><span>Extras total</span><b>${t.sum ? esc(fmt({ amount: t.sum, currency: t.cur })) : '—'}</b></div>
         <div id="fxMsg"></div><div class="actions"><button type="button" class="as-btn" id="fxGo">${t.sum || Object.keys(st.picked).length ? 'Add extras and continue to payment' : 'Continue without extras'}</button>${t.sum || Object.keys(st.picked).length ? '<button type="button" class="as-btn ghost" id="fxSkip">Skip extras</button>' : ''}</div>`;
     };
     box.onclick = async (e) => {
+      if (st.busy) return;
       const pax = e.target.closest('[data-fx-pax]'), seg = e.target.closest('[data-fx-segtab]'), seat = e.target.closest('[data-fx-seat]');
       if (pax) { st.pax = +pax.dataset.fxPax; return draw(); }
       if (seg) { st.seg = seg.dataset.fxSegtab; return draw(); }
@@ -56,18 +58,22 @@
       const selected = [...Object.entries(st.picked).map(([k, v]) => ({ passengerIndex: +k.split('|')[1], serviceId: v, quantity: 1 })),
         ...Object.entries(st.bags).filter(([, q]) => q > 0).map(([k, q]) => ({ passengerIndex: +k.split('|')[0], serviceId: k.split('|')[1], quantity: q }))];
       if (!selected.length) { box.onclick = box.onchange = null; return resolve({ extras: [] }); }
-      e.target.disabled = true; e.target.textContent = 'Adding extras with the airline…';
+      box.querySelectorAll('button,select').forEach((x) => { x.disabled = true; }); st.busy = true; e.target.textContent = 'Adding extras with the airline…';
       try {
-        const r = await post({ action: 'services', prebookId: p.prebookId, passengers: names.length || 1, selected });
+        const r = await post({ action: 'services', prebookId: p.prebookId, extrasToken: p.extrasToken, passengers: names.length || 1, selected });
+        if (!Number.isFinite(r.price) || !r.currency) throw Object.assign(new Error('The airline did not confirm the new total'), { unknown: true });
         box.onclick = box.onchange = null;
-        resolve({ transactionId: r.transactionId, secretKey: r.secretKey, ...(Number.isFinite(r.price) ? { price: r.price, currency: r.currency || p.currency } : {}), extras: selected });
+        resolve({ transactionId: r.transactionId, secretKey: r.secretKey, price: r.price, currency: r.currency, extras: selected });
       } catch (err) {
+        st.busy = false;
+        if (err.unknown) { box.onclick = box.onchange = null; $msg(`${esc(err.message)}. To avoid paying the wrong amount, please search again and choose this flight again. Nothing has been charged.`); return resolve({ abort: true }); }
+        box.querySelectorAll('button,select').forEach((x) => { x.disabled = false; });
         $msg(`${esc(err.message)} You can try again or skip the extras.`);
-        e.target.disabled = false; e.target.textContent = 'Try again';
+        e.target.textContent = 'Try again';
       }
     };
     const $msg = (h) => { const m = box.querySelector('#fxMsg'); if (m) m.innerHTML = `<div class="notice warn">${h}</div>`; };
-    box.onchange = (e) => { const b = e.target.closest('[data-fx-bag]'); if (b) { st.bags[b.dataset.fxBag] = +b.value; draw(); } };
+    box.onchange = (e) => { if (st.busy) return; const b = e.target.closest('[data-fx-bag]'); if (b) { st.bags[b.dataset.fxBag] = +b.value; draw(); } };
     draw();
   });
 })();
