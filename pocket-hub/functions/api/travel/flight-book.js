@@ -102,8 +102,13 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
     return json({ error: 'Unknown action' }, 400);
   } catch (e) {
     const timeout = e.name === 'TimeoutError';
+    // Name the failing stage (verify / prebook / book / status) and the sanitised upstream status, so a 503 can be traced
+    // without reading card, passenger or key data. No request body is logged.
+    const stage = ['verify', 'prebook', 'book', 'status'].includes(body?.action) ? body.action : 'unknown';
+    const upstream = Number.isInteger(e.status) ? e.status : (timeout ? 'timeout' : 'error');
+    console.error(`flight-book stage=${stage} upstream=${upstream}`);
     return json({ error: timeout ? 'The airline took too long to answer. Check "My bookings" before trying again.' : (e.message || 'Booking failed.'),
-      upstream: e.status || (timeout ? 'timeout' : 'error') }, e.status >= 400 && e.status < 500 ? 409 : 503);
+      stage, upstream }, e.status >= 400 && e.status < 500 ? 409 : 503);
   }
 }
 export const onRequest = () => json({ error: 'Method not allowed' }, 405);

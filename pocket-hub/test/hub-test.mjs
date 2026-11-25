@@ -410,6 +410,9 @@ console.log('POCKET HUB CHECKS PASSED');
   d = await r.json(); assert.equal(d.pnr, 'ABC123', 'booking shows the airline locator');
   assert.equal((await fb({ request: req({ action: 'status', bookingId: 'BK9999', email: 'eve@example.com' }), env: sb }, up(st))).status, 404, 'status needs the booking email');
   assert.equal((await fb({ request: req({ action: 'status', bookingId: 'BK9999' }), env: sb }, up(st))).status, 400);
+  // A failed upstream call reports which stage failed (no body or key data) so a 503 can be traced.
+  const failed = await fb({ request: req({ action: 'prebook', offerId: 'OFF123', contact, passengers: pax }), env: sb }, async () => new Response('{"error":{"message":"down"}}', { status: 503 }));
+  d = await failed.json(); assert.deepEqual([failed.status, d.stage, d.upstream], [503, 'prebook', 503]);
   assert.equal(passengers([{ ...pax[0], passengerType: 1 }]), null, 'a child cannot travel alone');
   assert.equal(passengers([{ ...pax[0], birthday: 'soon' }]), null);
   assert.equal((await fb({ request: req({ action: 'prebook', offerId: 'off_1', contact: { ...contact, email: 'bad' }, passengers: pax }), env: sb }, up({}))).status, 400);
