@@ -61,7 +61,25 @@ const asStops=o=>Math.max(0,...(o.slices||[]).map(s=>+s.stops||0));
 const asJourney=o=>(o.slices||[]).reduce((n,s)=>n+(+s.minutes||0),0);
 function asFlightFilterOpts(){const sel=$('asFfAir'),cur=sel.value,airs=[...new Set(AS.offers.map(o=>o.airline).filter(Boolean))].sort();sel.innerHTML='<option value="">All airlines</option>'+airs.map(a=>`<option${a===cur?' selected':''}>${escapeHTML(a)}</option>`).join('');$('asFlightFilters').hidden=AS.offers.length<2}
 function asFlightView(){const f={p:+($('asFfPrice').value||0),st:$('asFfStops').value,a:$('asFfAir').value,t:$('asFfTime').value,s:$('asFfSort').value||'price'},[t0,t1]=f.t?f.t.split('-').map(Number):[0,24];const list=AS.offers.map((o,i)=>[o,i]).filter(([o])=>(!f.p||o.price<=f.p)&&(f.st===''||asStops(o)<=+f.st)&&(!f.a||o.airline===f.a)&&(!f.t||(asDepHour(o)>=t0&&asDepHour(o)<t1)));const by={price:([a],[b])=>a.price-b.price,time:([a],[b])=>asJourney(a)-asJourney(b)||a.price-b.price,dep:([a],[b])=>String(a.slices[0]?.departing).localeCompare(String(b.slices[0]?.departing))}[f.s];return list.sort(by)}
-function asRenderFlights(){const el=$('asFlightList');if(!el)return;const v=asFlightView();el.innerHTML=v.length?(v.length<AS.offers.length?`<p class="mini" style="margin:0 0 6px">Showing ${v.length} of ${AS.offers.length} flights</p>`:'')+v.map(([o,i])=>asFlightHTML(o,i)).join(''):'<div class="empty">No flights match these filters. Clear a filter to see more.</div>'}
+function asRenderFlights() {
+  const list = $('asFlightList');
+  if (!list) return;
+  const matches = asFlightView();
+  if (!matches.length) {
+    list.innerHTML = '<div class="empty">No flights match these filters. Clear a filter to see more.</div>';
+    return;
+  }
+  const offers = matches.map(([offer]) => offer);
+  const prices = offers.filter(offer => Number.isFinite(offer.price));
+  const durations = offers.map(asJourney).filter(minutes => minutes > 0);
+  const summary = [matches.length + (matches.length === 1 ? ' matching flight' : ' matching flights')];
+  if (prices.length && prices.every(offer => offer.currency === prices[0].currency)) {
+    summary.push('From ' + asFmtMoney(Math.min(...prices.map(offer => offer.price)), prices[0].currency));
+  }
+  if (durations.length) summary.push('Shortest ' + asDur(Math.min(...durations)));
+  list.innerHTML = '<p class="asu-flight-summary">' + escapeHTML(summary.join(' · ')) + '</p>' +
+    matches.map(([offer, index]) => asFlightHTML(offer, index)).join('');
+}
 async function asLoadFlights(seq,q){const box=$('asFlights');box.innerHTML='<div class="empty">Searching live flights…</div>';$('asFlexDays').hidden=true;$('asFlightFilters').hidden=true;if(!AS.fromCode||!AS.airport){box.innerHTML='<div class="empty">No airport with an IATA code was found for this route.</div>';return}try{const d=await asGet(`/api/travel/flights?${asFlightParams(q)}`);if(seq!==AS.seq)return;AS.offers=d.offers||[];AS.fmin=Math.min(...AS.offers.map(o=>o.price));AS.fprov=d.provider||'';asFlightFilterOpts();$('asFlightsMeta').textContent=d.source||'';if(!d.configured){box.innerHTML=`<div class="notice warn"><b>Blocked:</b> live flights need a flight provider key, which has not been added to Aiva yet. Hotels, transport, transfers and the map below are live.</div>`;return}box.innerHTML=(d.testMode?`<div class="notice warn"><b>Test data:</b> flight fares come from the Nuitee sandbox key, so they are not real bookable prices until the Nuitee production key is added.</div>`:'')+(AS.offers.length?'<div id="asFlightList"></div>':`<div class="empty">${escapeHTML(d.error||'No flights found for this route and date.')}</div>`);if(AS.offers.length)asRenderFlights();if(q.flex&&q.trip!=='multi')asLoadFlex(seq,q)}catch(err){if(seq===AS.seq)box.innerHTML=`<div class="empty">${escapeHTML(err.message)}</div>`}}
 async function asLoadFlex(seq,q){const el=$('asFlexDays'),today=asIso(new Date()),days=[-3,-2,-1,0,1,2,3].filter(n=>asIso(new Date(Date.parse(q.depart)+n*864e5))>=today);AS.flex=days.map(n=>({n,date:asIso(new Date(Date.parse(q.depart)+n*864e5)),price:n===0?AS.offers[0]?.price:undefined,currency:AS.offers[0]?.currency||'GBP'}));const draw=()=>{const min=Math.min(...AS.flex.map(x=>x.price).filter(Number.isFinite));el.hidden=false;el.innerHTML=`<div class="mini"><b>Flexible dates</b> · cheapest ${q.trip==='return'?'round trip':'fare'} by departure day</div><div class="as-flexrow">${AS.flex.map(x=>`<button type="button" class="${x.n===0?'active':''} ${x.price===min?'low':''}" data-as-flex="${x.date}"><b>${asDay(x.date)}</b><span>${x.price===undefined?'…':Number.isFinite(x.price)?asFmtMoney(x.price,x.currency):'No flights'}</span></button>`).join('')}</div>`};draw();await Promise.all(AS.flex.filter(x=>x.n!==0).map(async x=>{try{const d=await asGet(`/api/travel/flights?${asFlightParams(q,x.n)}`);x.price=d.offers?.[0]?.price??null;x.currency=d.offers?.[0]?.currency||x.currency}catch{x.price=null}if(seq===AS.seq)draw()}))}
 function emGc(a,b){const R=6371000,r=Math.PI/180,dl=(b.lat-a.lat)*r,dn=(b.lon-a.lon)*r,h=Math.sin(dl/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
