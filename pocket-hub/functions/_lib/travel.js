@@ -165,17 +165,20 @@ export async function liteHotels({ offset = 0, stars = '', propertyType = '', la
     if (ids.length) query.set('hotelTypeIds', ids.join(','));
   }
   const catalog = params => fetchJSON(`${LITEAPI}/data/hotels?${params}`, { headers }, fetcher, 15000);
-  // Supplement the unrestricted page with lower-star properties from across the search area.
-  // Its own offset advances independently through the full, unrestricted catalogue.
-  const lowerStars = new URLSearchParams(query);
-  lowerStars.set('limit', '25');
-  lowerStars.set('starRating', '1.0,1.5,2.0,2.5,3.0');
-  const [list, supplement] = await Promise.all([
+  // Fetch the unrestricted catalogue alongside each budget band so provider popularity
+  // cannot fill every budget slot with three-star properties. Only the main list drives pagination.
+  const budgetBands = !offset && !stars && !propertyType ? ['1.0,1.5', '2.0,2.5', '3.0'] : [];
+  const [list, ...supplements] = await Promise.all([
     catalog(query),
-    !offset && !stars && !propertyType ? catalog(lowerStars).catch(() => null) : null
+    ...budgetBands.map(band => {
+      const budgetQuery = new URLSearchParams(query);
+      budgetQuery.set('limit', '16');
+      budgetQuery.set('starRating', band);
+      return catalog(budgetQuery).catch(() => null);
+    })
   ]);
   const byId = new Map();
-  for (const hotel of [...(list?.data || []), ...(supplement?.data || [])]) {
+  for (const hotel of [list, ...supplements].flatMap(page => page?.data || [])) {
     if (hotel.id && hotel.name) byId.set(hotel.id, hotel);
   }
   const hotels = [...byId.values()];

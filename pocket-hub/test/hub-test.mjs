@@ -259,6 +259,7 @@ console.log('POCKET HUB CHECKS PASSED');
     const broad = await search('');
     assert.deepEqual(broad.hotels.map(h => h.id), ['budget', 'unrated']);
     assert.ok(lists.every(q => +q.get('latitude') === lat && +q.get('longitude') === lon));
+    assert.deepEqual(lists.map(q => q.get('starRating')).sort(), ['1.0,1.5', '2.0,2.5', '3.0', null]);
     lists.length = 0;
     await search('&stars=exact-2&type=Aparthotel');
     assert.equal(lists.length, 1);
