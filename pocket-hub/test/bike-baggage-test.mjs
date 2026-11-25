@@ -33,6 +33,9 @@ const leg = (over) => ({ mode: 'REGIONAL_RAIL', from: { name: 'A', departure: '2
   const none = shapeJourney(journey({}), legs);
   assert.equal(none.bags, null);
   assert.equal(none.baggage, '');
+  const partial = shapeJourney(journey({ baggage: { hasCarryOnBag: true } }), legs);
+  assert.equal(partial.bags.checked, null);
+  assert.equal(partial.baggage, '');
   const cabinOnly = shapeJourney(journey({ baggage: { hasCarryOnBag: true, hasCheckedBag: false, included: [] } }), legs);
   assert.equal(cabinOnly.baggage, 'No checked bag included');
   assert.equal(cabinOnly.bags.carryOn, true);

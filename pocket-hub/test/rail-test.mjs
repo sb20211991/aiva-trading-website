@@ -140,6 +140,12 @@ const itin = (id, mode) => ({ id, duration: 7500, startTime: '2026-12-02T08:00:0
   assert.deepEqual([d.orderId, d.pnr, d.status, d.operator], ['ord_1', 'PNR9X', 'CONFIRMED', 'Eurostar']);
   assert.deepEqual(d.ticket, { barcode: 'BC-123', qrPayload: 'BC-123' }); assert.equal(d.fare.amount, 86.5);
 
+  const pending = await order({ request: req({ action: 'order', quoteId: 'q1', paymentToken: 'tok',
+    passengers: [{ firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' }] }), env }, reply({ orderId: 'ord_pending' }));
+  const pendingOrder = await pending.json();
+  assert.equal(pendingOrder.status, 'UNKNOWN');
+  assert.equal(pendingOrder.ticket.qrPayload, '');
+
   const failing = await order({ request: req({ action: 'order', quoteId: 'q1', paymentToken: 'tok', passengers: [{ firstName: 'A', lastName: 'B', email: 'a@b.co' }] }), env },
     async () => new Response(JSON.stringify({ error: { message: 'Fare expired' } }), { status: 409 }));
   assert.equal(failing.status, 409); assert.match((await failing.json()).error, /Fare expired/);
