@@ -49,6 +49,7 @@ function asTrip(){const f=AS.flight,h=AS.hotel,a=AS.airport,q=AS.q||{},dep=q.dep
 function asSliceHTML(s,k,trip){const stops=s.stops?`${s.stops} stop${s.stops>1?'s':''}`:'Non-stop';const tag=trip==='return'?(k?'Return':'Outbound'):trip==='multi'?`Flight ${k+1}`:'';return `<div class="as-slice">${tag?`<span class="as-tag">${tag} · ${asDay(s.departing)}</span>`:''}<div class="as-time">${asTime(s.departing)} <small>${escapeHTML(s.from)}</small> → ${asTime(s.arriving)}${asPlus(s.departing,s.arriving)} <small>${escapeHTML(s.to)}</small></div><div class="as-sub">${stops} · ${asDur(s.minutes)}${s.flights.length?' · '+escapeHTML(s.flights.join(', ')):''}</div></div>`}
 function asBaggageHTML(offer) {
   const bags = offer.bags;
+  if (!bags && offer.baggage) return '<div class="mini"><b>Reported baggage</b> · ' + escapeHTML(offer.baggage) + '</div>';
   const allowance = value => value === true ? 'Included' : value === false ? 'Not included' : 'Allowance unconfirmed';
   const details = bags?.included?.length ? bags.included.join(', ') : !bags ? offer.baggage : '';
   return `<div class="mini"><b>Cabin baggage</b> · ${allowance(bags?.carryOn)}</div>
