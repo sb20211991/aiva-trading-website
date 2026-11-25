@@ -27,6 +27,62 @@
     + `.as-plan-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.as-plan-links a,.as-plan-links button{white-space:normal;text-align:left;font:inherit;cursor:pointer}`;
   document.head.appendChild(style);
 
+  const road = document.createElement('div');
+  road.className = 'as-plan-out road-results';
+  out.classList.add('transit-results');
+  out.after(road);
+  road.textContent = 'Compare driving, cycling and walking directions.';
+  const swap = document.createElement('button');
+  swap.type = 'button';
+  swap.className = 'btn light as-plan-swap';
+  swap.textContent = '⇅ Swap';
+  swap.setAttribute('aria-label', 'Swap origin and destination');
+  $('asPlanTo').closest('.as-plan-row').append(swap);
+  swap.addEventListener('click', () => {
+    const from = $('asPlanFrom'), to = $('asPlanTo');
+    [from.value, to.value] = [to.value, from.value];
+    [pinned.from, pinned.to] = [pinned.to, pinned.from];
+  });
+  const title = root.closest('.as-card').querySelector('h3');
+  const originalTitle = title.textContent;
+  let activeCategory;
+  $('travel').addEventListener('aiva-category', ({ detail }) => {
+    if (activeCategory === detail) return;
+    activeCategory = detail;
+    ++seq;
+    busy = false;
+    $('asPlanGo').disabled = false;
+    title.textContent = detail === 'road' ? 'Compare road routes' : originalTitle;
+    $('asPlanGo').textContent = detail === 'road' ? 'Compare routes' : 'Find journeys';
+    $('asPlanMeta').textContent = '';
+    status('');
+  });
+
+  async function compareRoad(a, b, mine) {
+    const profiles = [['car', 'Driving'], ['bike', 'Cycling'], ['foot', 'Walking']];
+    const cards = await Promise.all(profiles.map(async ([profile, label]) => {
+      const query = new URLSearchParams({ from: a.lat + ',' + a.lon, to: b.lat + ',' + b.lon, profile });
+      try {
+        const res = await fetch('/api/travel/road-route?' + query);
+        const route = await res.json();
+        if (!res.ok) throw new Error(route.error || 'Directions unavailable.');
+        return '<article class="as-plan-card"><strong>' + label + '</strong><p>' +
+          dur(route.minutes) + ' · ' + dist(route.distance) + '</p><details><summary>Directions</summary><ol>' +
+          route.steps.map(step => '<li>' + esc(step.text) + '</li>').join('') + '</ol></details></article>';
+      } catch (error) {
+        return '<article class="as-plan-card"><strong>' + label + '</strong><p>' + esc(error.message) + '</p></article>';
+      }
+    }));
+    if (mine !== seq) return;
+    const ride = new URL('https://m.uber.com/ul/');
+    ride.search = new URLSearchParams({ action: 'setPickup', 'pickup[latitude]': a.lat, 'pickup[longitude]': a.lon,
+      'dropoff[latitude]': b.lat, 'dropoff[longitude]': b.lon });
+    road.innerHTML = '<strong>' + esc(a.name) + ' → ' + esc(b.name) + '</strong>' + cards.join('') +
+      '<div class="as-plan-links"><a class="as-btn ghost" href="' + esc(ride.href) +
+      '" target="_blank" rel="noopener noreferrer">Check rides on Uber ↗</a></div>' +
+      '<small>Estimated travel times · FOSSGIS routing · © OpenStreetMap contributors</small>';
+  }
+
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const soon = () => { const d = new Date(Date.now() + 15 * 60000); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   if ($('asPlanDate')) $('asPlanDate').value = today();
@@ -78,12 +134,20 @@
     const mine = ++seq;
     $('asPlanGo').disabled = true;
     status('Planning your journey…');
-    out.innerHTML = '<div class="empty">Checking timetables…</div>';
+    const isRoad = activeCategory === 'road';
+    const results = isRoad ? road : out;
+    results.textContent = isRoad ? 'Comparing road routes…' : 'Checking timetables…';
     try {
       const [a, b] = await Promise.all([
         pinned.from && pinned.from.label === fromText ? pinned.from : place(fromText),
         pinned.to && pinned.to.label === toText ? pinned.to : place(toText)
       ]);
+      if (mine !== seq) return;
+      if (isRoad) {
+        await compareRoad(a, b, mine);
+        if (mine === seq) status('');
+        return;
+      }
       const modes = [...root.querySelectorAll('[data-plan-mode].active')].map((x) => x.dataset.planMode);
       const qs = new URLSearchParams({
         from: `${a.lat},${a.lon}`, to: `${b.lat},${b.lon}`,
@@ -103,7 +167,7 @@
       status('');
     } catch (err) {
       if (mine === seq) {
-        out.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+        results.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
         status('');
       }
     } finally {
@@ -161,7 +225,7 @@
     return `<div class="as-plan-card"><div class="as-plan-head"><b>${esc(first.departure || '')} → ${esc(last.arrival || '')}</b>`
       + `<span>${dur(it.minutes)}</span>${badges.map((b) => `<span class="as-plan-badge">${esc(b)}</span>`).join('')}</div>`
       + `<div class="mini" style="margin:2px 0 4px">${esc(modes)}${first.tzFrom && last.tzTo && first.tzFrom !== last.tzTo ? ` · local time at each stop (${esc(first.tzFrom.split('/').pop())} → ${esc(last.tzTo.split('/').pop())})` : ''}</div>`
-      + it.legs.map(leg).join('')
+      + '<details><summary>Journey details</summary>' + it.legs.map(leg).join('') + '</details>'
       + (rail || books.length || dirs ? `<div class="as-plan-links">`
         + `${rail ? `<button type="button" class="as-btn" data-aiva-rail="${rail}">${rail === 'train' ? '🚆' : '🚊'} Search in Aiva ${rail === 'train' ? 'Train' : 'Tram'}</button>` : ''}`
         + `${books.map((l) => `<a class="as-btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join('')}`
@@ -240,7 +304,14 @@
     $('asPlanMeta').textContent = `${a.name} → ${b.name}`;
     if (!list.length) { out.innerHTML = `<div class="empty">${esc(d.note || 'No journey was found for this route and time.')}</div>`; return; }
     out.innerHTML = `<div class="mini">${list.length} journey${list.length > 1 ? 's' : ''} · ${esc(a.name)} → ${esc(b.name)} · ${esc(d.source || '')}</div>`
-      + list.map((it) => card(it, links)).join('')
+      + (list.length > 1 ? '<label>Sort journeys <select class="journey-order"><option value="recommended">Provider order</option><option value="minutes">Shortest duration</option><option value="transfers">Fewest changes</option></select></label>' : '')
+      + '<div class="as-plan-out journey-list">' + list.map((it) => card(it, links)).join('') + '</div>'
       + (d.note ? `<div class="mini">${esc(d.note)}</div>` : '');
+    out.querySelector('.journey-order')?.addEventListener('change', event => {
+      const key = event.target.value;
+      const sorted = [...list];
+      if (key === 'minutes' || key === 'transfers') sorted.sort((a, b) => a[key] - b[key]);
+      out.querySelector('.journey-list').innerHTML = sorted.map(it => card(it, links)).join('');
+    });
   }
 })();

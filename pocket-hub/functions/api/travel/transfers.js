@@ -59,6 +59,9 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     const places = k === 'bus' ? s.busStations : k === 'train' || k === 'metro' || k === 'tram' ? s.stations : [];
     modes[k] = { available: rs.length ? true : timetabled ? false : null, routes: rs, places, late: lateBy[k] || null };
   }
+  const ferryTimetable = google ? Array.isArray(transit) : !!open && open !== 'Transitous';
+  const crossings = ferryTimetable ? routes.filter(route => route.steps.some(step => step.kind === 'ferry')) : [];
+  modes.ferry = { available: crossings.length ? true : ferryTimetable ? false : null, routes: crossings };
   Object.assign(modes, {
     taxi: { available: drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.taxiRanks },
     car: { available: s.carRental.length || drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.carRental },
@@ -66,7 +69,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     ride: { available: drive ? (rideHailing(cc).length ? true : null) : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, services: rideHailing(cc) }
   });
   const links = transportLinks(cc, from, to, { from: (u.get('fromName') || '').slice(0, 80), to: (u.get('toName') || '').slice(0, 80) }, rideHailing(cc));
-  for (const k of Object.keys(links)) if (modes[k]) Object.assign(modes[k], links[k]);
+  for (const k of Object.keys(links)) if (modes[k] && k !== 'ferry') Object.assign(modes[k], links[k]);
   const sources = [google ? 'Google Maps · Walking routes: FOSSGIS OSRM' : 'Road and walking routes: FOSSGIS OSRM (routing.openstreetmap.de)',
     ...(open ? [`Train, metro, tram and bus timetables: ${open === 'Entur' ? 'Entur (Norway)' : open === 'Transitous' ? 'Transitous (MOTIS) · open GTFS/GTFS-RT feeds' : 'transport.opendata.ch (Switzerland)'}`] : []),
     'Stations, taxi ranks and car hire: © OpenStreetMap contributors'];

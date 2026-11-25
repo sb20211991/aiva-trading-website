@@ -148,6 +148,15 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
   const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25`, { headers }, fetcher, 15000);
   const hotels = (list?.data || []).filter((h) => h.id && h.name);
   if (!hotels.length) return [];
+  const getTypes = async () => {
+    const result = await fetchJSON(`${LITEAPI}/data/hotelTypes`, { headers }, fetcher, 8000);
+    return Object.fromEntries((result.data || []).map(type => [
+      type.hotelTypeId ?? type.typeId ?? type.id, type.name ?? type.hotelTypeName ?? type.hotelType ?? type.type
+    ]));
+  };
+  const typesPromise = hotels.some(h => h.hotelTypeId != null)
+    ? cached('liteapi-hotel-types-en-v1', 86400, getTypes).catch(() => ({}))
+    : Promise.resolve({});
   const rates = await fetchJSON(`${LITEAPI}/hotels/rates`, {
     method: 'POST', headers,
     body: JSON.stringify({ hotelIds: hotels.map((h) => h.id), occupancies: [{ adults, ...(children.length ? { children } : {}) }], currency, guestNationality: 'GB', checkin, checkout, timeout: 12 })
@@ -169,7 +178,9 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
     const seen = new Set();
     return list.sort((a, b) => a.total - b.total).filter((x) => { const k = `${x.room}|${x.board}|${x.refundable}`; return x.offerId && !seen.has(k) && seen.add(k); }).slice(0, 8);
   };
+  const types = await typesPromise;
   return hotels.map((h) => ({
+    propertyType: accommodationType(types[h.hotelTypeId] || h.hotelTypeName || h.hotelType),
     id: h.id, name: h.name, stars: Number(h.stars) || null, rating: Number(h.rating) || null, address: h.address || '',
     lat: Number(h.latitude), lon: Number(h.longitude), image: h.main_photo || h.thumbnail || '', facilities: hotelFacilities(h.facilityIds || []), distance: distanceM({ lat, lon }, { lat: Number(h.latitude), lon: Number(h.longitude) }),
     available: !!price[h.id], price: price[h.id] || null, rooms: roomOptions(rooms[h.id])
@@ -182,13 +193,24 @@ export async function nominatimNear(phrase, { lat, lon }, km, fetcher = fetch) {
   return (list || []).map((r) => ({ type: r.osm_type, id: r.osm_id, lat: Number(r.lat), lon: Number(r.lon),
     tags: { ...(r.extratags || {}), name: r.namedetails?.['name:en'] || r.name || r.namedetails?.name, [r.category]: r.type } }));
 }
+function accommodationType(value) {
+  const label = String(value || '').toLowerCase().replace(/[_-]/g, ' ');
+  if (/aparthotel|apart hotel|apartment hotel|serviced apartment/.test(label)) return 'Aparthotel';
+  if (/apartment|flat/.test(label)) return 'Apartment';
+  if (/hostel/.test(label)) return 'Hostel';
+  if (/guest house|guesthouse|bed and breakfast/.test(label)) return 'Guest house';
+  if (/resort/.test(label)) return 'Resort';
+  if (/hotel/.test(label)) return 'Hotel';
+  return '';
+}
+
 export async function osmHotels({ lat, lon }, fetcher = fetch) {
-  const els = await overpass(`[out:json][timeout:20];nwr["tourism"="hotel"]["name"](around:6000,${lat},${lon});out center tags 80;`, fetcher)
+  const els = await overpass(`[out:json][timeout:20];nwr["tourism"~"^(hotel|apartment|hostel|guest_house|resort)$"]["name"](around:6000,${lat},${lon});out center tags 80;`, fetcher)
     .catch(() => nominatimNear('hotel', { lat, lon }, 7, fetcher));
   return els.map((e) => {
     const t = e.tags || {}, p = { lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon };
     return {
-      id: `osm-${e.type}-${e.id}`, name: t['name:en'] || t.name, stars: Number(t.stars) || null, rating: null,
+      propertyType: accommodationType(t['hotel:type'] || t.tourism), id: `osm-${e.type}-${e.id}`, name: t['name:en'] || t.name, stars: Number(t.stars) || null, rating: null,
       address: [t['addr:housenumber'], t['addr:street'], t['addr:city']].filter(Boolean).join(', '), lat: p.lat, lon: p.lon,
       image: /^https:\/\/upload\.wikimedia\.org\//.test(t.image || '') ? t.image : commons(t.wikimedia_commons?.startsWith('File:') ? t.wikimedia_commons : ''),
       distance: distanceM({ lat, lon }, p), available: null, price: null
