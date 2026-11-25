@@ -38,8 +38,17 @@ export function shapeOffer(o) {
     id: o.id, airline: o.owner?.name || '', airlineCode: o.owner?.iata_code || '', logo: o.owner?.logo_symbol_url || '',
     price: Number(o.total_amount), currency: o.total_currency, expires: o.expires_at || '', slices,
     cabin: o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.cabin_class_marketing_name || '',
-    baggage: o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.baggages?.map((b) => `${b.quantity}× ${b.type.replace('_', ' ')}`).join(', ') || ''
+    baggage: o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.baggages?.map((b) => `${b.quantity}× ${b.type.replace('_', ' ')}`).join(', ') || '',
+    bags: duffelBags(o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.baggages)
   };
+}
+/* Duffel reports included bags per passenger as {type:'carry_on'|'checked', quantity}. Zero means not included. */
+function duffelBags(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const q = (t) => list.filter((b) => b?.type === t).reduce((n, b) => n + (Number(b.quantity) || 0), 0);
+  const has = (t) => list.some((b) => b?.type === t) ? q(t) > 0 : null;
+  const allowance = list.filter((b) => Number(b?.quantity) > 0).map((b) => ({ kind: b.type === 'checked' ? 'checked' : 'cabin', pieces: Number(b.quantity), weightKg: null, size: '', description: b.type === 'checked' ? 'Checked bag' : 'Cabin bag' }));
+  return { carryOn: has('carry_on'), checked: has('checked'), included: allowance.map((a) => `${a.pieces}× ${a.description}`), paid: [], allowance, extras: [], source: 'airline fare data via Duffel' };
 }
 const DUFFEL_PAX = (adults, children, infants) => [...Array.from({ length: adults }, () => ({ type: 'adult' })), ...Array.from({ length: children }, () => ({ type: 'child' })), ...Array.from({ length: infants }, () => ({ type: 'infant_without_seat' }))];
 export async function duffelFlights({ legs, adults, children = 0, infants = 0, cabin = 'economy', currency }, env, fetcher = fetch) {
@@ -98,6 +107,37 @@ export function paidBags(list) {
   return [...by].map(([type, p]) => p ? `${type} from ${p.amount} ${p.currency}` : type);
 }
 
+/* Airline baggage, classified from the airline's own fields: personal item (under the seat), cabin bag (overhead
+   locker) or checked bag. Weight and size are passed through only when the airline sent them; nothing is assumed. */
+export function bagKind(b) {
+  const t = `${b?.bagType || b?.type || ''} ${b?.description || ''}`.toLowerCase();
+  if (/personal|under.?seat|small (bag|item)|handbag|laptop/.test(t)) return 'personal';
+  if (/carry|cabin|hand|overhead/.test(t)) return 'cabin';
+  if (/check|hold|registered|suitcase/.test(t)) return 'checked';
+  return 'other';
+}
+const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+const bagWeight = (b) => num(b?.weightKg ?? b?.weight?.value ?? b?.weight ?? b?.maxWeight) ?? (() => { const m = String(b?.description || '').match(/(\d{1,2})\s?kg/i); return m ? Number(m[1]) : null; })();
+const bagSize = (b) => { const z = b?.size || b?.dimensions; if (!z) return ''; if (typeof z === 'string') return z.slice(0, 40);
+  const d = [z.length, z.width, z.height].map(num); return d.every(Boolean) ? `${d.join(' × ')} ${z.unit || 'cm'}` : ''; };
+export function allowanceItems(list) {
+  return (Array.isArray(list) ? list : []).map((b) => ({ kind: bagKind(b), pieces: num(b?.pieces ?? b?.quantity) || 1, weightKg: bagWeight(b),
+    size: bagSize(b), description: String(b?.description || b?.bagType || '').trim().slice(0, 80) }));
+}
+/* Paid bags as structured options: one per bag type and weight, at the lowest price the airline quoted. */
+export function extraBagOptions(list) {
+  const by = new Map();
+  for (const b of Array.isArray(list) ? list : []) {
+    const description = String(b?.description || b?.bagType || '').trim().slice(0, 80);
+    const amount = Number(b?.pricing?.display?.amount), currency = String(b?.pricing?.display?.currency || '');
+    if (!description || !Number.isFinite(amount) || amount < 0 || !/^[A-Z]{3}$/.test(currency)) continue;
+    const kind = bagKind(b), weightKg = bagWeight(b), key = `${kind}|${weightKg || ''}|${description.toLowerCase()}`;
+    const cur = by.get(key);
+    if (!cur || amount < cur.amount) by.set(key, { kind, description, weightKg, size: bagSize(b), amount, currency });
+  }
+  return [...by.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.amount - b.amount).slice(0, 12);
+}
+
 export function shapeJourney(j, legs) {
   const o = j.cheapestOffer || j.offers?.[0] || {}, segs = j.segments || [], c = segs[0]?.carrier || {};
   const groups = journeySlices(segs, legs);
@@ -114,9 +154,9 @@ export function shapeJourney(j, legs) {
   const per = o.pricing?.display?.perPassenger || {};
   return { id: o.offerId || j.journeyKey, airline: c.marketingName || '', airlineCode: c.marketingCode || '', logo: c.marketingLogo || '',
     price: Number(o.pricing?.display?.total), currency: o.pricing?.display?.currency || '', expires: o.expiration || '', slices,
-    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || (o.baggage ? 'No checked bag included' : ''),
-    bags: !o.baggage ? null : { carryOn: !!bag.hasCarryOnBag, checked: !!bag.hasCheckedBag, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
-      paid: paidBags(bag.paid) },
+    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || (bag.hasCheckedBag === false ? 'No checked bag included' : ''),
+    bags: !o.baggage ? null : { carryOn: typeof bag.hasCarryOnBag === 'boolean' ? bag.hasCarryOnBag : null, checked: typeof bag.hasCheckedBag === 'boolean' ? bag.hasCheckedBag : null, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
+      paid: paidBags(bag.paid), allowance: allowanceItems(bag.included), extras: extraBagOptions(bag.paid), source: 'airline fare data via Nuitée' },
     seatsLeft: Number.isFinite(o.fare?.seatsRemaining) ? o.fare.seatsRemaining : null,
     perPassenger: Object.fromEntries(Object.entries(per).filter(([, v]) => Number.isFinite(v?.total)).map(([k, v]) => [k, v.total])),
     refundable: !!o.terms?.refundable, changeable: !!o.terms?.changeable };
@@ -143,20 +183,47 @@ const commons = (f) => f ? 'https://commons.wikimedia.org/wiki/Special:FilePath/
 export const FACILITIES = { wifi: [47, 107], parking: [2, 161, 674], pool: [103, 104, 120, 122, 192, 193, 195, 301], gym: [11, 492], spa: [54],
   restaurant: [3, 115, 116], shuttle: [17], ac: [109], pets: [4], accessible: [25, 185], family: [28], ev: [182] };
 export const hotelFacilities = (ids = []) => { const set = new Set(ids.map(Number)); return Object.keys(FACILITIES).filter((k) => FACILITIES[k].some((i) => set.has(i))); };
-export async function liteHotels({ lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
+export async function liteHotels({ offset = 0, stars = '', propertyType = '', lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
   const headers = { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' };
-  const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25`, { headers }, fetcher, 15000);
-  const hotels = (list?.data || []).filter((h) => h.id && h.name);
-  if (!hotels.length) return [];
   const getTypes = async () => {
     const result = await fetchJSON(`${LITEAPI}/data/hotelTypes`, { headers }, fetcher, 8000);
     return Object.fromEntries((result.data || []).map(type => [
       type.hotelTypeId ?? type.typeId ?? type.id, type.name ?? type.hotelTypeName ?? type.hotelType ?? type.type
     ]));
   };
-  const typesPromise = hotels.some(h => h.hotelTypeId != null)
-    ? cached('liteapi-hotel-types-en-v1', 86400, getTypes).catch(() => ({}))
-    : Promise.resolve({});
+  const typesPromise = cached('liteapi-hotel-types-en-v1', 86400, getTypes).catch(() => ({}));
+  const pageSize = 75;
+  const query = new URLSearchParams({ latitude: lat, longitude: lon, radius: 20000, limit: pageSize, offset });
+  if (/^exact-[1-5]$/.test(stars)) query.set('starRating', Number(stars.slice(6)).toFixed(1));
+  if (stars === '3' || stars === '4') {
+    const bands = [];
+    for (let rating = Number(stars); rating <= 5; rating += 0.5) bands.push(rating.toFixed(1));
+    query.set('starRating', bands.join(','));
+  }
+  if (propertyType) {
+    const ids = Object.entries(await typesPromise).filter(([, name]) => accommodationType(name) === propertyType).map(([id]) => id);
+    if (ids.length) query.set('hotelTypeIds', ids.join(','));
+  }
+  const catalog = params => fetchJSON(`${LITEAPI}/data/hotels?${params}`, { headers }, fetcher, 15000);
+  // Fetch the unrestricted catalogue alongside each budget band so provider popularity
+  // cannot fill every budget slot with three-star properties. Only the main list drives pagination.
+  const budgetBands = !offset && !stars && !propertyType ? ['1.0,1.5', '2.0,2.5', '3.0'] : [];
+  const [list, ...supplements] = await Promise.all([
+    catalog(query),
+    ...budgetBands.map(band => {
+      const budgetQuery = new URLSearchParams(query);
+      budgetQuery.set('limit', '16');
+      budgetQuery.set('starRating', band);
+      return catalog(budgetQuery).catch(() => null);
+    })
+  ]);
+  const byId = new Map();
+  for (const hotel of [list, ...supplements].flatMap(page => page?.data || [])) {
+    if (hotel.id && hotel.name) byId.set(hotel.id, hotel);
+  }
+  const hotels = [...byId.values()];
+  const nextOffset = list?.data?.length === pageSize ? offset + pageSize : null;
+  if (!hotels.length) return { hotels: [], nextOffset };
   const rates = await fetchJSON(`${LITEAPI}/hotels/rates`, {
     method: 'POST', headers,
     body: JSON.stringify({ hotelIds: hotels.map((h) => h.id), occupancies: [{ adults, ...(children.length ? { children } : {}) }], currency, guestNationality: 'GB', checkin, checkout, timeout: 12 })
@@ -165,7 +232,7 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
   for (const r of rates?.data || []) {
     for (const rt of r.roomTypes || []) {
       const a = Number(rt.offerRetailRate?.amount ?? rt.rates?.[0]?.retailRate?.total?.[0]?.amount);
-      if (!Number.isFinite(a)) continue;
+      if (!Number.isFinite(a) || a < 0) continue;
       const room = { total: a, currency: rt.offerRetailRate?.currency || rt.rates?.[0]?.retailRate?.total?.[0]?.currency || currency, room: rt.rates?.[0]?.name || '', offerId: rt.offerId || '',
         refundable: rt.rates?.[0]?.cancellationPolicies?.refundableTag === 'RFN', board: rt.rates?.[0]?.boardName || '',
         cancelBy: rt.rates?.[0]?.cancellationPolicies?.cancelPolicyInfos?.[0]?.cancelTime || '',
@@ -179,12 +246,13 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
     return list.sort((a, b) => a.total - b.total).filter((x) => { const k = `${x.room}|${x.board}|${x.refundable}`; return x.offerId && !seen.has(k) && seen.add(k); }).slice(0, 8);
   };
   const types = await typesPromise;
-  return hotels.map((h) => ({
+  const properties = hotels.map((h) => ({
     propertyType: accommodationType(types[h.hotelTypeId] || h.hotelTypeName || h.hotelType),
     id: h.id, name: h.name, stars: Number(h.stars) || null, rating: Number(h.rating) || null, address: h.address || '',
     lat: Number(h.latitude), lon: Number(h.longitude), image: h.main_photo || h.thumbnail || '', facilities: hotelFacilities(h.facilityIds || []), distance: distanceM({ lat, lon }, { lat: Number(h.latitude), lon: Number(h.longitude) }),
     available: !!price[h.id], price: price[h.id] || null, rooms: roomOptions(rooms[h.id])
-  })).sort((a, b) => (b.available - a.available) || ((a.price?.total ?? 1e12) - (b.price?.total ?? 1e12)) || a.distance - b.distance).slice(0, 15);
+  })).sort((a, b) => (b.available - a.available) || ((a.price?.total ?? 1e12) - (b.price?.total ?? 1e12)) || a.distance - b.distance);
+  return { hotels: properties, nextOffset };
 }
 /* Nominatim fallback when Overpass is overloaded: bounded phrase search around a point, shaped like Overpass elements. */
 export async function nominatimNear(phrase, { lat, lon }, km, fetcher = fetch) {
@@ -196,6 +264,7 @@ export async function nominatimNear(phrase, { lat, lon }, km, fetcher = fetch) {
 function accommodationType(value) {
   const label = String(value || '').toLowerCase().replace(/[_-]/g, ' ');
   if (/aparthotel|apart hotel|apartment hotel|serviced apartment/.test(label)) return 'Aparthotel';
+  if (/\bvillas?\b/.test(label)) return 'Villa';
   if (/apartment|flat/.test(label)) return 'Apartment';
   if (/hostel/.test(label)) return 'Hostel';
   if (/guest house|guesthouse|bed and breakfast/.test(label)) return 'Guest house';
@@ -205,7 +274,7 @@ function accommodationType(value) {
 }
 
 export async function osmHotels({ lat, lon }, fetcher = fetch) {
-  const els = await overpass(`[out:json][timeout:20];nwr["tourism"~"^(hotel|apartment|hostel|guest_house|resort)$"]["name"](around:6000,${lat},${lon});out center tags 80;`, fetcher)
+  const els = await overpass(`[out:json][timeout:20];nwr["tourism"~"^(hotel|aparthotel|apartment|villa|hostel|guest_house|resort)$"]["name"](around:6000,${lat},${lon});out center tags 80;`, fetcher)
     .catch(() => nominatimNear('hotel', { lat, lon }, 7, fetcher));
   return els.map((e) => {
     const t = e.tags || {}, p = { lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon };
@@ -216,7 +285,7 @@ export async function osmHotels({ lat, lon }, fetcher = fetch) {
       distance: distanceM({ lat, lon }, p), available: null, price: null
     };
   }).filter((h) => h.name && !/^(test|hotel|fixme)$/i.test(h.name.trim()) && Number.isFinite(h.lat))
-    .sort((a, b) => (!!b.image - !!a.image) || ((b.stars || 0) - (a.stars || 0)) || a.distance - b.distance).slice(0, 15);
+    .sort((a, b) => (!!b.image - !!a.image) || ((b.stars || 0) - (a.stars || 0)) || a.distance - b.distance);
 }
 
 /* ---------- Airport -> hotel routes ---------- */
@@ -291,3 +360,4 @@ export async function airportServices(p, fetcher = fetch) {
   }
   return out;
 }
+

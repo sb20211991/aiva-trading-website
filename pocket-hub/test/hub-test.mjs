@@ -235,6 +235,37 @@ console.log('POCKET HUB CHECKS PASSED');
     [/hotels\/rates/, { data: [{ hotelId: 'h1', roomTypes: [{ offerRetailRate: { amount: 432, currency: 'GBP' }, rates: [{ name: 'Deluxe King' }] }] }] }]]));
   d = await r.json();
   assert.equal(d.priced, true); assert.equal(d.hotels[0].name, 'Langham Place Guangzhou'); assert.equal(d.hotels[0].price.total, 432); assert.equal(d.hotels[1].available, false);
+  // Keep unrated inventory, include the budget supplement, and scope exact filters at discovery.
+  for (const [lat, lon] of [[51.5, -0.12], [36.19, 44.01], [35.68, 139.69]]) {
+    const lists = [];
+    const fixture = async (url, init) => {
+      const { pathname, searchParams } = new URL(url);
+      let data;
+      if (pathname.endsWith('/hotelTypes')) data = [{ id: 9, name: 'Serviced Apartment' }];
+      else if (pathname.endsWith('/hotels')) {
+        lists.push(searchParams);
+        const cheap = searchParams.has('starRating');
+        data = [{ id: cheap ? 'budget' : 'unrated', name: cheap ? 'Budget House' : 'Unrated House',
+          stars: cheap ? 2 : null, hotelTypeId: 9, latitude: lat, longitude: lon }];
+      } else {
+        data = JSON.parse(init.body).hotelIds.map(hotelId => ({
+          hotelId, roomTypes: [{ offerId: hotelId, offerRetailRate: { amount: hotelId === 'budget' ? 24 : 70 } }]
+        }));
+      }
+      return Response.json({ data });
+    };
+    const destination = 'hotels?lat=' + lat + '&lon=' + lon + '&checkin=2027-02-10&checkout=2027-02-12';
+    const search = async filters => (await hotels({ request: rq(destination + filters), env: { LITEAPI_KEY: 'test' } }, fixture)).json();
+    const broad = await search('');
+    assert.deepEqual(broad.hotels.map(h => h.id), ['budget', 'unrated']);
+    assert.ok(lists.every(q => +q.get('latitude') === lat && +q.get('longitude') === lon));
+    assert.deepEqual(lists.map(q => q.get('starRating')).sort(), ['1.0,1.5', '2.0,2.5', '3.0', null]);
+    lists.length = 0;
+    await search('&stars=exact-2&type=Aparthotel');
+    assert.equal(lists.length, 1);
+    assert.equal(lists[0].get('starRating'), '2.0');
+    assert.equal(lists[0].get('hotelTypeIds'), '9');
+  }
   r = await hotels({ request: rq('hotels?lat=23.13&lon=113.26'), env: {} }, fk([[/overpass/, { elements: [{ type: 'node', id: 1, lat: 23.13, lon: 113.27, tags: { tourism: 'hotel', name: 'White Swan', stars: '5', wikimedia_commons: 'File:Swan.jpg' } }] }]]));
   d = await r.json();
   assert.equal(d.priced, false); assert.equal(d.hotels[0].price, null); assert.match(d.hotels[0].image, /Special:FilePath\/Swan\.jpg/);

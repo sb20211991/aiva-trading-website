@@ -30,18 +30,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Aiva Train and Aiva Tram draw a ticket QR code on the device. The generator is a pinned, MIT-licensed
-      # dependency vendored here at build time, so every deploy uses the same version and the repository keeps no
-      # minified third-party blob. It is created before the tests, which check that it still renders a matrix.
-      - name: Vendor the offline QR generator (qrcode-generator 1.4.4, MIT)
-        run: |
-          set -euo pipefail
-          mkdir -p public/vendor
-          npm pack qrcode-generator@1.4.4 --silent >/dev/null
-          tar -xzf qrcode-generator-1.4.4.tgz
-          { printf '%s\n' '/* qrcode-generator 1.4.4 - MIT licence, Copyright (c) 2009 Kazuhiko Arase (http://www.d-project.com/).' '   Vendored so Aiva draws a ticket QR code on the device, with no third-party image service. */'; cat package/qrcode.js; } > public/vendor/qrcode.js
-          rm -rf package qrcode-generator-1.4.4.tgz
-          test -s public/vendor/qrcode.js
       - name: Split Aiva Search fields (build step)
         run: node scripts/split-search-fields.mjs
       - name: Add the Aiva Train and Aiva Tram sections (build step)
@@ -64,7 +52,7 @@ jobs:
             git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
           fi
       - name: Test
-        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs
+        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
       # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
       # frequently over it, so a free TfL app key is what makes London live boards reliable. The car rental gateway is
@@ -77,9 +65,10 @@ jobs:
           CAR_RENTAL_GATEWAY_URL: ${{ secrets.CAR_RENTAL_GATEWAY_URL }}
           CAR_RENTAL_GATEWAY_KEY: ${{ secrets.CAR_RENTAL_GATEWAY_KEY }}
           CAR_RENTAL_PROVIDER: ${{ secrets.CAR_RENTAL_PROVIDER }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
         run: |
           set -euo pipefail
-          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER; do
+          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER COINGECKO_API_KEY; do
             value="${!name:-}"
             if [ -z "$value" ]; then echo "$name: not set in repository secrets, skipping"; continue; fi
             printf '%s' "$value" | npx --yes wrangler@4 pages secret put "$name" --project-name="$PROJECT" > /dev/null
@@ -133,6 +122,19 @@ jobs:
             case "$body" in *'"available":false'*) return 0 ;; *) echo "car api: $body" | head -c 300; return 1 ;; esac
           }
           retry 'car rental api' 4 car_api
+          # Aiva Finance: real provider replies through the deployed functions. Currencies must cover the world
+          # (100+ codes, IQD included); crypto must list priced coins. Values are never invented.
+          fx_api() {
+            curl -sf -m 30 -o "$RUNNER_TEMP/fx.json" "$U/api/finance/fx?base=GBP" || return 1
+            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));n=len(d['rates']);s={v for v in d['sources'].values()};print('fx:',n,'currencies, sources',sorted(s),'live',d.get('live'));sys.exit(0 if n>=100 and 'IQD' in d['rates'] and 'USD' in d['rates'] else 1)" "$RUNNER_TEMP/fx.json"
+          }
+          retry 'finance fx api' 4 fx_api
+          crypto_api() {
+            curl -sf -m 30 -o "$RUNNER_TEMP/crypto.json" "$U/api/finance/crypto?currency=GBP&limit=50" || return 1
+            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['coins'];print('crypto:',len(c),'coins from',d['source'],'BTC',next((x['price'] for x in c if x['symbol']=='BTC'),None));sys.exit(0 if len(c)>=10 and c[0]['price']>0 else 1)" "$RUNNER_TEMP/crypto.json"
+          }
+          retry 'finance crypto api' 4 crypto_api
+          curl -sf -m 30 -o "$RUNNER_TEMP/aiva-finance.js" "$U/aiva-finance.js" && grep -q 'afCcFrom' "$RUNNER_TEMP/aiva-finance.js"
           U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'

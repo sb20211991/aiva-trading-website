@@ -104,7 +104,7 @@ export async function createOrder(env, { quoteId, passengers, paymentToken }, fe
   if (!data?.orderId) throw boom('The distributor did not confirm the ticket.', 503);
   const barcode = clean(data.ticket?.barcode, 200), payload = clean(data.ticket?.qrPayload, 400);
   return {
-    orderId: String(data.orderId).slice(0, 80), pnr: clean(data.pnr, 40), status: clean(data.status || 'CONFIRMED', 40),
+    orderId: String(data.orderId).slice(0, 80), pnr: clean(data.pnr, 40), status: clean(data.status || 'UNKNOWN', 40),
     operator: clean(data.operator, 80), from: clean(data.from, 120), to: clean(data.to, 120),
     depart: clean(data.depart, 40), arrive: clean(data.arrive, 40),
     fare: { amount: num(data.fare?.amount), currency: String(data.fare?.currency || '').toUpperCase().slice(0, 3) },

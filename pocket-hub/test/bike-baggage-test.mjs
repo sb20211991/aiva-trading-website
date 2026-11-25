@@ -3,7 +3,9 @@
    and never says "no checked bag" when the airline sent no baggage data. */
 import assert from 'node:assert/strict';
 import { normalise, motisPlan } from '../functions/_lib/motis.js';
-import { shapeJourney, paidBags } from '../functions/_lib/travel.js';
+import { shapeJourney, paidBags, bagKind, allowanceItems, extraBagOptions } from '../functions/_lib/travel.js';
+import { readFileSync } from 'node:fs';
+import { shapeServices } from '../functions/api/travel/flight-book.js';
 
 const leg = (over) => ({ mode: 'REGIONAL_RAIL', from: { name: 'A', departure: '2026-11-27T10:20:00Z', tz: 'Europe/London' },
   to: { name: 'B', arrival: '2026-11-27T11:43:00Z', tz: 'Europe/London' }, duration: 4980, agencyName: 'Thameslink', ...over });
@@ -33,6 +35,9 @@ const leg = (over) => ({ mode: 'REGIONAL_RAIL', from: { name: 'A', departure: '2
   const none = shapeJourney(journey({}), legs);
   assert.equal(none.bags, null);
   assert.equal(none.baggage, '');
+  const partial = shapeJourney(journey({ baggage: { hasCarryOnBag: true } }), legs);
+  assert.equal(partial.bags.checked, null);
+  assert.equal(partial.baggage, '');
   const cabinOnly = shapeJourney(journey({ baggage: { hasCarryOnBag: true, hasCheckedBag: false, included: [] } }), legs);
   assert.equal(cabinOnly.baggage, 'No checked bag included');
   assert.equal(cabinOnly.bags.carryOn, true);
@@ -50,4 +55,32 @@ const leg = (over) => ({ mode: 'REGIONAL_RAIL', from: { name: 'A', departure: '2
   assert.deepEqual(paidBags(undefined), []);
 }
 
+// ---- Airline-specific allowance: personal item, cabin bag and checked bag, with the airline's weight and size.
+{
+  assert.equal(bagKind({ bagType: 'PERSONAL_ITEM' }), 'personal');
+  assert.equal(bagKind({ bagType: 'CARRY_ON' }), 'cabin');
+  assert.equal(bagKind({ description: 'Checked bag 23kg' }), 'checked');
+  const a = allowanceItems([{ bagType: 'PERSONAL_ITEM', pieces: 1, size: { length: 40, width: 30, height: 20 } }, { bagType: 'CARRY_ON', description: 'Cabin bag 10kg' }, { bagType: 'CHECKED', pieces: 2, weight: 23 }]);
+  assert.deepEqual(a.map((b) => [b.kind, b.pieces, b.weightKg, b.size]), [['personal', 1, null, '40 × 30 × 20 cm'], ['cabin', 1, 10, ''], ['checked', 2, 23, '']]);
+  // Nothing is assumed: no weight in the airline data means no weight shown.
+  assert.equal(allowanceItems([{ bagType: 'CHECKED' }])[0].weightKg, null);
+  // Paid bags: one option per type and weight at the airline's lowest price; unpriced or bad-currency rows are dropped.
+  const x = extraBagOptions([{ description: 'Checked bag 20kg', pricing: { display: { amount: 30, currency: 'GBP' } } }, { description: 'Checked bag 20kg', pricing: { display: { amount: 25.5, currency: 'GBP' } } },
+    { description: 'Checked bag 32kg', pricing: { display: { amount: 55, currency: 'GBP' } } }, { bagType: 'CARRY_ON', description: 'Cabin bag 10kg', pricing: { display: { amount: 12, currency: 'GBP' } } },
+    { description: 'Checked bag 15kg' }, { description: 'Odd', pricing: { display: { amount: 5, currency: 'pounds' } } }]);
+  assert.deepEqual(x.map((b) => [b.kind, b.weightKg, b.amount]), [['cabin', 10, 12], ['checked', 20, 25.5], ['checked', 32, 55]]);
+  const j = shapeJourney({ cheapestOffer: { offerId: 'o', pricing: { display: { total: 100, currency: 'GBP' } }, baggage: { hasCarryOnBag: true, hasCheckedBag: false,
+    included: [{ bagType: 'PERSONAL_ITEM', pieces: 1 }, { bagType: 'CARRY_ON', pieces: 1, weight: 10 }], paid: [{ description: 'Checked bag 20kg', pricing: { display: { amount: 25, currency: 'EUR' } } }] } },
+    segments: [{ originCode: 'STN', destinationCode: 'BCN', departureTime: '2026-12-01T10:00:00Z', arrivalTime: '2026-12-01T12:00:00Z', carrier: { marketingName: 'Example Air' } }] }, [{ from: 'STN', to: 'BCN', date: '2026-12-01' }]);
+  assert.deepEqual(j.bags.allowance.map((b) => b.kind), ['personal', 'cabin']);
+  assert.equal(j.bags.extras[0].amount, 25); assert.equal(j.bags.extras[0].currency, 'EUR');
+  assert.match(j.bags.source, /airline/);
+  // Extra bags at prebook carry cabin/checked kind and the airline's price.
+  const sv = shapeServices({ groups: [{ type: 'BAGGAGE', services: [{ serviceId: 'bag_cabin10', category: 'baggage', name: 'Cabin bag 10kg', pricing: { display: { amount: 15, currency: 'EUR' } }, metadata: { baggage: { weight: 10 } } },
+    { serviceId: 'bag_hold23', category: 'baggage', name: 'Checked bag 23kg', pricing: { display: { amount: 40, currency: 'EUR' } }, metadata: { baggage: { weight: 23, maxQuantity: 2 } } }] }] });
+  assert.deepEqual(sv.bags.map((b) => [b.kind, b.weightKg, b.price.amount, b.quantityMax]), [['cabin', 10, 15, 1], ['checked', 23, 40, 2]]);
+  // The results card names the airline's allowance and offers add-on bags with prices.
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(app, /baggage allowance/); assert.match(app, /Personal item/); assert.match(app, /Add baggage/);
+}
 console.log('BIKE AND BAGGAGE CHECKS PASSED');
