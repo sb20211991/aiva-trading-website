@@ -38,6 +38,7 @@
   #travel .asu-more>summary::after,#travel .asu-filters>summary::after{content:"▾";font-size:12px;transition:transform .15s}
   #travel .asu-more[open]>summary::after,#travel .asu-filters[open]>summary::after{transform:rotate(180deg)}
   #travel .asu-more>summary:focus-visible,#travel .asu-filters>summary:focus-visible{outline:3px solid #f3c876}
+  #asHotelFilters input[type="number"]{width:6em;min-height:38px;border:1px solid #dcd8e5;border-radius:8px;padding:6px;color:inherit;background:#fff}
   #travel .asu-filters{padding:0 14px 6px}
   #travel[data-asu] #asKind,#travel[data-asu] #asTabs{display:none!important}
   #travel[data-asu]:not([data-asu="flights"]):not([data-asu="hotels"]) :is(#asTripType,#asForm,#asMulti,.asu-more,#asStatus){display:none!important}
@@ -142,7 +143,8 @@
     });
 
     wrap($('asOpts'), 'asu-more', 'More options: children, infants, cabin, flexible dates');
-    wrap($('asHotelFilters'), 'asu-filters', 'Filters and sorting');
+    wrap($('asHotelFilters'), 'asu-filters', 'Filter hotels');
+    $('asHotelFilters').parentElement.open = true;
 
     /* Results for flights and hotels bring their transfer and trip cards with them once a search has started. */
     $('asForm')?.addEventListener('submit', () => section.classList.add('asu-searched'));
