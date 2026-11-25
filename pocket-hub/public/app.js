@@ -60,7 +60,7 @@ function asBaggageHTML(offer) {
   if (items.length) {
     const kinds = new Set(items.map(b => b.kind));
     free = items.map(b => `<div class="mini">${LABEL[b.kind] || LABEL.other} · <b>${b.pieces}× included</b>${spec(b) ? ' · ' + escapeHTML(spec(b)) : ''}${b.description && !/^[A-Z_]+$/.test(b.description) ? ' <span style="color:var(--muted)">(' + escapeHTML(b.description) + ')</span>' : ''}</div>`).join('');
-    if (!kinds.has('cabin') && !kinds.has('personal')) free = `<div class="mini">🎒 Cabin baggage · ${allowance(bags.carryOn)}</div>` + free;
+    if (!kinds.has('cabin')) free += `<div class="mini">🎒 Cabin bag (overhead locker) · ${kinds.has('personal') && bags.carryOn !== true ? 'Not included' : allowance(bags.carryOn)}</div>`;
     if (!kinds.has('checked')) free += `<div class="mini">🧳 Checked baggage · ${allowance(bags.checked)}</div>`;
   } else {
     free = `<div class="mini">🎒 Cabin baggage · ${allowance(bags?.carryOn)}</div><div class="mini">🧳 Checked baggage · ${allowance(bags?.checked)}</div>`;
