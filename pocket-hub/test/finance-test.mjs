@@ -67,6 +67,7 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
   assert.equal(d.rates.IQD, 1665.2); assert.equal(d.sources.IQD, 'live');
   assert.equal(d.rates.KMF, 560.2); assert.equal(d.sources.KMF, 'er');
   assert.ok(!('BTC' in d.rates) && !('XAU' in d.rates));
+  assert.equal((await fxHandler(req('/api/finance/fx?base=HRK'), f, false)).status, 400);
   assert.equal(currencyName('GGP'), 'Guernsey pound'); assert.equal(currencyName('CNH'), 'Chinese yuan (offshore)');
   assert.ok(d.live); assert.equal(d.count, Object.keys(d.rates).length);
   // Every returned currency has an English name, not only the curated list.
@@ -87,6 +88,7 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
 {
   const js = readFileSync(new URL('../public/aiva-finance.js', import.meta.url), 'utf8');
   for (const id of ['fxSwap', 'afMulti', 'afCcFrom', 'afCcTo', 'afCcAmount', 'afCryptoSearch']) assert.ok(js.includes(id), id);
+  assert.match(js, /RETIRED\.has\(F\.pref\)/);
 }
 assert.ok(Object.keys(CURRENCIES).length >= 50 && CURRENCIES.IQD && CURRENCIES.TRY && CURRENCIES.CNY);
 assert.deepEqual(COINS.slice(0, 2).map((c) => c.symbol), ['BTC', 'ETH']);

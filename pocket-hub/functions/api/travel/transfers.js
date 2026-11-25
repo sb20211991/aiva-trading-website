@@ -65,7 +65,8 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   /* Google and the national feeds are complete enough that no crossing means none that day. Transitous (community
      GTFS) is patchy, so its absence stays "unknown" — but a sailing it does return is a real timetabled crossing. */
   const ferryTimetable = google ? Array.isArray(transit) : !!open && open !== 'Transitous';
-  const crossings = ferryTimetable || open === 'Transitous' ? routes.filter(route => route.steps.some(step => step.kind === 'ferry')) : [];
+  /* MOTIS reports distance for walking legs only, so a Transitous ferry route's total would understate the trip: omit it. */
+  const crossings = ferryTimetable || open === 'Transitous' ? routes.filter(route => route.steps.some(step => step.kind === 'ferry')).map(route => open === 'Transitous' ? { ...route, distance: null } : route) : [];
   modes.ferry = { available: crossings.length ? true : ferryTimetable ? false : null, routes: crossings };
   Object.assign(modes, {
     taxi: { available: drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.taxiRanks },

@@ -8,8 +8,10 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const F = { pref: 'GBP', rates: null, names: {}, base: null, meta: null, cache: {}, coins: [], crypto: null, multi: ['USD', 'EUR', 'IQD', 'TRY', 'AED', 'SAR', 'CNY', 'JPY'] };
-  try { F.pref = localStorage.getItem(KEY) || 'GBP'; } catch {}
-  try { const m = JSON.parse(localStorage.getItem(MULTI_KEY) || 'null'); if (Array.isArray(m) && m.length) F.multi = m.filter((c) => /^[A-Z]{3}$/.test(c)).slice(0, 20); } catch {}
+  /* Codes no longer offered (withdrawn currencies, special drawing rights) are migrated away from saved settings. */
+  const RETIRED = new Set(['HRK', 'SLL', 'ZWL', 'XDR']);
+  try { F.pref = localStorage.getItem(KEY) || 'GBP'; if (RETIRED.has(F.pref)) { F.pref = 'GBP'; localStorage.setItem(KEY, 'GBP'); } } catch {}
+  try { const m = JSON.parse(localStorage.getItem(MULTI_KEY) || 'null'); if (Array.isArray(m) && m.length) F.multi = m.filter((c) => /^[A-Z]{3}$/.test(c) && !RETIRED.has(c)).slice(0, 20); } catch {}
 
   const money = (n, c, digits) => {
     try { return new Intl.NumberFormat('en-GB', { style: 'currency', currency: c, maximumFractionDigits: digits ?? (n >= 100 ? 2 : n >= 1 ? 4 : 8) }).format(n); }
@@ -51,7 +53,7 @@
     if (!Object.keys(names).length) return;
     for (const [id, val] of [['fxBase', $('fxBase')?.value || 'GBP'], ['fxTarget', $('fxTarget')?.value || 'USD'], ['afPref', F.pref], ['afMultiAdd', '']]) {
       const el = $(id); if (!el) continue;
-      const extra = { ...names }; if (val && !(val in extra)) extra[val] = val;
+      const extra = { ...names }; if (val && !(val in extra) && !RETIRED.has(val)) extra[val] = val;
       el.innerHTML = (id === 'afMultiAdd' ? '<option value="">+ Add a currency…</option>' : '') + options(extra, val);
     }
     const n = $('afCount'); if (n) n.textContent = `${Object.keys(names).length} currencies available`;

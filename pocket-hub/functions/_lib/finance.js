@@ -118,6 +118,7 @@ export async function fxHandler(request, fetcher = fetch, useCache = true) {
   const url = new URL(request.url);
   const base = (url.searchParams.get('base') || 'GBP').toUpperCase();
   if (!isCurrency(base)) return json({ error: 'Choose a three-letter currency code, for example GBP' }, 400);
+    if (WITHDRAWN.has(base) || NOT_FIAT.has(base)) return json({ error: `${base} is not a current national currency. Choose another, for example GBP`, withdrawn: true }, 400);
   const symbols = (url.searchParams.get('symbols') || '').toUpperCase().split(',').filter(isCurrency);
   try {
     const all = useCache ? await cached(`aiva-fx-v2-${base}`, 300, () => ratesFor(base, fetcher)) : await ratesFor(base, fetcher);

@@ -24,7 +24,7 @@
 
   window.aivaFlightExtras = (p, box, travellers) => new Promise((resolve) => {
     const sv = p?.services || {}, seats = Array.isArray(sv.seats) ? sv.seats : [], bags = Array.isArray(sv.bags) ? sv.bags : [];
-    if (!box || (!seats.length && !bags.length)) { if (box && p?.testMode && p?.servicesSummary) box.insertAdjacentHTML('beforeend', `<details class="mini"><summary>Sandbox diagnostics: no seats or bags mapped</summary><pre style="white-space:pre-wrap;font-size:11px" id="fxDiag">${esc(JSON.stringify(p.servicesSummary, null, 1))}</pre></details>`); return resolve({ extras: [] }); }
+    if (!box || (!seats.length && !bags.length)) { if (box && p?.testMode && p?.servicesSummary) (box.parentElement || box).insertAdjacentHTML('beforeend', `<details class="mini"><summary>Sandbox diagnostics: no seats or bags mapped</summary><pre style="white-space:pre-wrap;font-size:11px" id="fxDiag">${esc(JSON.stringify(p.servicesSummary, null, 1))}</pre></details>`); return resolve({ extras: [] }); }
     const segsKeys = [...new Set(seats.map((s) => s.segmentKey))];
     const names = (travellers || []).map((t, i) => `${t.firstName || 'Traveller'} ${t.lastName || i + 1}`.trim());
     const types = (travellers || []).map((t) => TYPE[t.passengerType] || 'ADT');

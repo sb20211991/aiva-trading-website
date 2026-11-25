@@ -39,7 +39,7 @@ assert.deepEqual(salesStatus({}).requiredData, FERRY_REQUIRED_DATA);
   const run = async (body) => (await (await onRequestGet({ request: new Request(`https://app.aivatrading.uk/api/travel/transfers?from=50.8955,-1.3955&to=50.7615,-1.2985&cc=gb&day=${day}`), env: {} },
     async (url) => String(url).includes('transitous') || String(url).includes('motis') ? new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }) : new Response('{}', { status: 500 }))).json()).modes.ferry;
   const yes = await run(withFerry);
-  assert.equal(yes.available, true, JSON.stringify(yes)); assert.ok(yes.routes[0].steps.some((x) => x.kind === 'ferry' && /Red Funnel/.test(x.operator)));
+  assert.equal(yes.available, true, JSON.stringify(yes)); assert.equal(yes.routes[0].distance, null); assert.ok(yes.routes[0].steps.some((x) => x.kind === 'ferry' && /Red Funnel/.test(x.operator)));
   const none = await run({ itineraries: [] });
   assert.equal(none.available, null); assert.equal(none.routes.length, 0);
 }
