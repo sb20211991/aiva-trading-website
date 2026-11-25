@@ -571,7 +571,7 @@
         return `<div class="rail-ticket">${qr ? '<div class="qr">' + qr + '</div>' : ''}<div>
           <b>${esc(t.from || '')} → ${esc(t.to || '')}</b>
           <small>${esc(t.operator || '')}${t.leg ? ' · ' + esc(t.leg) : ''} · ${esc(t.depart || '')}${t.arrive ? '–' + esc(t.arrive) : ''}</small>
-          <small>Order reference <span class="pnr">${esc(t.pnr || t.orderId || '')}</span>${t.fare?.amount != null ? ' · ' + money(t.fare.amount, t.fare.currency) : ''}</small>
+          <small>Order reference <span class="pnr">${esc(payload ? (t.pnr || t.orderId || '') : (t.orderId || t.pnr || ''))}</span>${t.fare?.amount != null ? ' · ' + money(t.fare.amount, t.fare.currency) : ''}</small>
           ${payload ? '' : '<small>Ticket unavailable · Distributor status: ' + esc(t.status || 'Unknown') + '</small>'}
           ${t.testMode ? '<small>Test booking — not a valid travel ticket.</small>' : ''}
         </div></div>`;
