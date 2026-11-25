@@ -67,9 +67,10 @@
       } catch (err) {
         st.busy = false;
         if (err.unknown) { box.onclick = box.onchange = null; $msg(`${esc(err.message)}. To avoid paying the wrong amount, please search again and choose this flight again. Nothing has been charged.`); return resolve({ abort: true }); }
-        box.querySelectorAll('button,select').forEach((x) => { x.disabled = false; });
+        // Redraw rather than re-enable: the grid re-applies which seats are unavailable or taken.
+        draw();
         $msg(`${esc(err.message)} You can try again or skip the extras.`);
-        e.target.textContent = 'Try again';
+        const go = box.querySelector('#fxGo'); if (go) go.textContent = 'Try again';
       }
     };
     const $msg = (h) => { const m = box.querySelector('#fxMsg'); if (m) m.innerHTML = `<div class="notice warn">${h}</div>`; };

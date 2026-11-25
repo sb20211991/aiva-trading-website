@@ -64,7 +64,7 @@ assert.equal(selection([], 1), null);
 {
   const js = readFileSync(new URL('../public/aiva-flight-extras.js', import.meta.url), 'utf8');
   assert.match(js, /s\.passengerType === type/); assert.match(js, /flightNo\(sk\)/); assert.match(js, /if \(st\.busy\) return/);
-  assert.match(js, /did not confirm the new total/); assert.ok(!js.includes('...(Number.isFinite(r.price)'));
+  assert.match(js, /did not confirm the new total/); assert.ok(!js.includes("forEach((x) => { x.disabled = false; })")); assert.ok(!js.includes('...(Number.isFinite(r.price)'));
 }
 // The page loads the picker before app.js, and checkout waits for it after the prebook.
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
