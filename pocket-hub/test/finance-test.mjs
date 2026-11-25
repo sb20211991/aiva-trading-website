@@ -1,10 +1,10 @@
 /* Aiva Finance: exchange rates and crypto prices. Offline: every provider reply is a local stub. */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fxHandler, cryptoHandler, ratesFor, CURRENCIES, COINS } from '../functions/_lib/finance.js';
+import { fxHandler, cryptoHandler, ratesFor, CURRENCIES, COINS, currencyName } from '../functions/_lib/finance.js';
 
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-const stub = (routes) => async (url) => { for (const [k, v] of routes) if (String(url).includes(k)) return typeof v === 'function' ? v(url) : v; return reply({}, 404); };
+const stub = (routes) => async (url) => { for (const [k, v] of routes) if (String(url).includes(k)) return typeof v === 'function' ? v(url) : v.clone(); return reply({}, 404); };
 const req = (q) => new Request('https://app.aivatrading.uk' + q);
 
 // ECB rates win; currencies the ECB lacks (IQD) come from open.er-api.com and are labelled.
@@ -43,6 +43,36 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
   assert.equal(d.source, 'Coinbase spot price');
   assert.deepEqual(d.coins.map((c) => [c.symbol, c.price]), [['BTC', 82000.12], ['ETH', 3000.5]]);
   assert.equal((await cryptoHandler(req('/api/finance/crypto?currency=GBP'), stub([]), false)).status, 502);
+}
+// Live Coinbase rates win over the ECB for the same currency; crypto and metals in that feed are never shown as currencies.
+{
+  const f = stub([['exchange-rates?currency=GBP', reply({ data: { currency: 'GBP', rates: { USD: '1.2712', EUR: '1.1801', IQD: '1665.2', BTC: '0.0000141', XAU: '0.0004', JPY: '195.3' } } })],
+    ['frankfurter', reply({ base: 'GBP', date: '2026-11-25', rates: { USD: 1.27, EUR: 1.18, JPY: 195 } })],
+    ['open.er-api', reply({ result: 'success', rates: { GBP: 1, USD: 1.30, IQD: 1660.5, KMF: 560.2, JPY: 194 } })]]);
+  const d = await (await fxHandler(req('/api/finance/fx?base=GBP'), f, false)).json();
+  assert.equal(d.rates.USD, 1.2712); assert.equal(d.sources.USD, 'live');
+  assert.equal(d.rates.IQD, 1665.2); assert.equal(d.sources.IQD, 'live');
+  assert.equal(d.rates.KMF, 560.2); assert.equal(d.sources.KMF, 'er');
+  assert.ok(!('BTC' in d.rates) && !('XAU' in d.rates));
+  assert.ok(d.live); assert.equal(d.count, Object.keys(d.rates).length);
+  // Every returned currency has an English name, not only the curated list.
+  assert.equal(d.names.KMF, currencyName('KMF')); assert.notEqual(d.names.KMF, 'KMF');
+  // A live reply for a different base is ignored.
+  const g = stub([['exchange-rates', reply({ data: { currency: 'USD', rates: { EUR: '0.9' } } })], ['frankfurter', reply({ base: 'GBP', rates: { EUR: 1.18 } })]]);
+  assert.equal((await ratesFor('GBP', g)).sources.EUR, 'ecb');
+}
+// Crypto: the CoinGecko market list (top coins by market cap) is used when available.
+{
+  const f = stub([['coins/markets', reply([{ id: 'bitcoin', symbol: 'btc', name: 'Bitcoin', current_price: 71000, price_change_percentage_24h: 1.2, market_cap: 1.4e12, market_cap_rank: 1 },
+    { id: 'pepe', symbol: 'pepe', name: 'Pepe', current_price: 0.0000081, market_cap_rank: 30 }, { id: 'dead', symbol: 'ded', name: 'Dead', current_price: 0 }])]]);
+  const d = await (await cryptoHandler(req('/api/finance/crypto?currency=GBP&limit=50'), f, false)).json();
+  assert.deepEqual(d.coins.map((c) => c.symbol), ['BTC', 'PEPE']);
+  assert.equal(d.coins[0].rank, 1);
+}
+// The Finance page offers multi-currency comparison, a swap button and a crypto converter.
+{
+  const js = readFileSync(new URL('../public/aiva-finance.js', import.meta.url), 'utf8');
+  for (const id of ['fxSwap', 'afMulti', 'afCcFrom', 'afCcTo', 'afCcAmount', 'afCryptoSearch']) assert.ok(js.includes(id), id);
 }
 assert.ok(Object.keys(CURRENCIES).length >= 50 && CURRENCIES.IQD && CURRENCIES.TRY && CURRENCIES.CNY);
 assert.deepEqual(COINS.slice(0, 2).map((c) => c.symbol), ['BTC', 'ETH']);

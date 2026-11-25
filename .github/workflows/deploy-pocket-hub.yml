@@ -121,6 +121,19 @@ jobs:
             case "$body" in *'"available":false'*) return 0 ;; *) echo "car api: $body" | head -c 300; return 1 ;; esac
           }
           retry 'car rental api' 4 car_api
+          # Aiva Finance: real provider replies through the deployed functions. Currencies must cover the world
+          # (100+ codes, IQD included); crypto must list priced coins. Values are never invented.
+          fx_api() {
+            curl -sf -m 30 -o "$RUNNER_TEMP/fx.json" "$U/api/finance/fx?base=GBP" || return 1
+            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));n=len(d['rates']);s={v for v in d['sources'].values()};print('fx:',n,'currencies, sources',sorted(s),'live',d.get('live'));sys.exit(0 if n>=100 and 'IQD' in d['rates'] and 'USD' in d['rates'] else 1)" "$RUNNER_TEMP/fx.json"
+          }
+          retry 'finance fx api' 4 fx_api
+          crypto_api() {
+            curl -sf -m 30 -o "$RUNNER_TEMP/crypto.json" "$U/api/finance/crypto?currency=GBP&limit=50" || return 1
+            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['coins'];print('crypto:',len(c),'coins from',d['source'],'BTC',next((x['price'] for x in c if x['symbol']=='BTC'),None));sys.exit(0 if c and c[0]['price']>0 else 1)" "$RUNNER_TEMP/crypto.json"
+          }
+          retry 'finance crypto api' 4 crypto_api
+          curl -sf -m 30 -o "$RUNNER_TEMP/aiva-finance.js" "$U/aiva-finance.js" && grep -q 'afCcFrom' "$RUNNER_TEMP/aiva-finance.js"
           U="$U" python3 ../scripts/pocket-hub-health.py
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'

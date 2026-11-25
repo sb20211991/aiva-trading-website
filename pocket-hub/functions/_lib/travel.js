@@ -38,8 +38,17 @@ export function shapeOffer(o) {
     id: o.id, airline: o.owner?.name || '', airlineCode: o.owner?.iata_code || '', logo: o.owner?.logo_symbol_url || '',
     price: Number(o.total_amount), currency: o.total_currency, expires: o.expires_at || '', slices,
     cabin: o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.cabin_class_marketing_name || '',
-    baggage: o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.baggages?.map((b) => `${b.quantity}× ${b.type.replace('_', ' ')}`).join(', ') || ''
+    baggage: o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.baggages?.map((b) => `${b.quantity}× ${b.type.replace('_', ' ')}`).join(', ') || '',
+    bags: duffelBags(o.slices?.[0]?.segments?.[0]?.passengers?.[0]?.baggages)
   };
+}
+/* Duffel reports included bags per passenger as {type:'carry_on'|'checked', quantity}. Zero means not included. */
+function duffelBags(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const q = (t) => list.filter((b) => b?.type === t).reduce((n, b) => n + (Number(b.quantity) || 0), 0);
+  const has = (t) => list.some((b) => b?.type === t) ? q(t) > 0 : null;
+  const allowance = list.filter((b) => Number(b?.quantity) > 0).map((b) => ({ kind: b.type === 'checked' ? 'checked' : 'cabin', pieces: Number(b.quantity), weightKg: null, size: '', description: b.type === 'checked' ? 'Checked bag' : 'Cabin bag' }));
+  return { carryOn: has('carry_on'), checked: has('checked'), included: allowance.map((a) => `${a.pieces}× ${a.description}`), paid: [], allowance, extras: [], source: 'airline fare data via Duffel' };
 }
 const DUFFEL_PAX = (adults, children, infants) => [...Array.from({ length: adults }, () => ({ type: 'adult' })), ...Array.from({ length: children }, () => ({ type: 'child' })), ...Array.from({ length: infants }, () => ({ type: 'infant_without_seat' }))];
 export async function duffelFlights({ legs, adults, children = 0, infants = 0, cabin = 'economy', currency }, env, fetcher = fetch) {
@@ -98,6 +107,37 @@ export function paidBags(list) {
   return [...by].map(([type, p]) => p ? `${type} from ${p.amount} ${p.currency}` : type);
 }
 
+/* Airline baggage, classified from the airline's own fields: personal item (under the seat), cabin bag (overhead
+   locker) or checked bag. Weight and size are passed through only when the airline sent them; nothing is assumed. */
+export function bagKind(b) {
+  const t = `${b?.bagType || b?.type || ''} ${b?.description || ''}`.toLowerCase();
+  if (/personal|under.?seat|small (bag|item)|handbag|laptop/.test(t)) return 'personal';
+  if (/carry|cabin|hand|overhead/.test(t)) return 'cabin';
+  if (/check|hold|registered|suitcase/.test(t)) return 'checked';
+  return 'other';
+}
+const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+const bagWeight = (b) => num(b?.weightKg ?? b?.weight?.value ?? b?.weight ?? b?.maxWeight) ?? (() => { const m = String(b?.description || '').match(/(\d{1,2})\s?kg/i); return m ? Number(m[1]) : null; })();
+const bagSize = (b) => { const z = b?.size || b?.dimensions; if (!z) return ''; if (typeof z === 'string') return z.slice(0, 40);
+  const d = [z.length, z.width, z.height].map(num); return d.every(Boolean) ? `${d.join(' × ')} ${z.unit || 'cm'}` : ''; };
+export function allowanceItems(list) {
+  return (Array.isArray(list) ? list : []).map((b) => ({ kind: bagKind(b), pieces: num(b?.pieces ?? b?.quantity) || 1, weightKg: bagWeight(b),
+    size: bagSize(b), description: String(b?.description || b?.bagType || '').trim().slice(0, 80) }));
+}
+/* Paid bags as structured options: one per bag type and weight, at the lowest price the airline quoted. */
+export function extraBagOptions(list) {
+  const by = new Map();
+  for (const b of Array.isArray(list) ? list : []) {
+    const description = String(b?.description || b?.bagType || '').trim().slice(0, 80);
+    const amount = Number(b?.pricing?.display?.amount), currency = String(b?.pricing?.display?.currency || '');
+    if (!description || !Number.isFinite(amount) || amount < 0 || !/^[A-Z]{3}$/.test(currency)) continue;
+    const kind = bagKind(b), weightKg = bagWeight(b), key = `${kind}|${weightKg || ''}|${description.toLowerCase()}`;
+    const cur = by.get(key);
+    if (!cur || amount < cur.amount) by.set(key, { kind, description, weightKg, size: bagSize(b), amount, currency });
+  }
+  return [...by.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.amount - b.amount).slice(0, 12);
+}
+
 export function shapeJourney(j, legs) {
   const o = j.cheapestOffer || j.offers?.[0] || {}, segs = j.segments || [], c = segs[0]?.carrier || {};
   const groups = journeySlices(segs, legs);
@@ -116,7 +156,7 @@ export function shapeJourney(j, legs) {
     price: Number(o.pricing?.display?.total), currency: o.pricing?.display?.currency || '', expires: o.expiration || '', slices,
     cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || (bag.hasCheckedBag === false ? 'No checked bag included' : ''),
     bags: !o.baggage ? null : { carryOn: typeof bag.hasCarryOnBag === 'boolean' ? bag.hasCarryOnBag : null, checked: typeof bag.hasCheckedBag === 'boolean' ? bag.hasCheckedBag : null, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
-      paid: paidBags(bag.paid) },
+      paid: paidBags(bag.paid), allowance: allowanceItems(bag.included), extras: extraBagOptions(bag.paid), source: 'airline fare data via Nuitée' },
     seatsLeft: Number.isFinite(o.fare?.seatsRemaining) ? o.fare.seatsRemaining : null,
     perPassenger: Object.fromEntries(Object.entries(per).filter(([, v]) => Number.isFinite(v?.total)).map(([k, v]) => [k, v.total])),
     refundable: !!o.terms?.refundable, changeable: !!o.terms?.changeable };

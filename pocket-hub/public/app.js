@@ -51,11 +51,25 @@ function asBaggageHTML(offer) {
   const bags = offer.bags;
   if (!bags && offer.baggage) return '<div class="mini"><b>Reported baggage</b> · ' + escapeHTML(offer.baggage) + '</div>';
   const allowance = value => value === true ? 'Included' : value === false ? 'Not included' : 'Allowance unconfirmed';
-  const details = bags?.included?.length ? bags.included.join(', ') : !bags ? offer.baggage : '';
-  return `<div class="mini"><b>Cabin baggage</b> · ${allowance(bags?.carryOn)}</div>
-    <div class="mini"><b>Checked baggage</b> · ${allowance(bags?.checked)}</div>
-    ${details ? `<div class="mini">${escapeHTML(details)}</div>` : ''}
-    ${bags?.paid?.length ? `<div class="mini"><b>Extra baggage</b> · ${escapeHTML(bags.paid.join(', '))}</div>` : ''}`;
+  const LABEL = { personal: '👜 Personal item', cabin: '🎒 Cabin bag', checked: '🧳 Checked bag', other: '🧳 Bag' };
+  const spec = b => [b.weightKg ? `up to ${b.weightKg} kg` : '', b.size || ''].filter(Boolean).join(' · ');
+  const money = (n, c) => { let t; try { t = new Intl.NumberFormat('en-GB', { style: 'currency', currency: c }).format(n); } catch { t = `${n} ${c}`; } return t + (window.aivaFxSuffix ? window.aivaFxSuffix(n, c) : ''); };
+  const items = Array.isArray(bags?.allowance) ? bags.allowance : [];
+  const airline = escapeHTML(offer.airline || 'Airline');
+  let free;
+  if (items.length) {
+    const kinds = new Set(items.map(b => b.kind));
+    free = items.map(b => `<div class="mini">${LABEL[b.kind] || LABEL.other} · <b>${b.pieces}× included</b>${spec(b) ? ' · ' + escapeHTML(spec(b)) : ''}${b.description && !/^[A-Z_]+$/.test(b.description) ? ' <span style="color:var(--muted)">(' + escapeHTML(b.description) + ')</span>' : ''}</div>`).join('');
+    if (!kinds.has('cabin') && !kinds.has('personal')) free = `<div class="mini">🎒 Cabin baggage · ${allowance(bags.carryOn)}</div>` + free;
+    if (!kinds.has('checked')) free += `<div class="mini">🧳 Checked baggage · ${allowance(bags.checked)}</div>`;
+  } else {
+    free = `<div class="mini">🎒 Cabin baggage · ${allowance(bags?.carryOn)}</div><div class="mini">🧳 Checked baggage · ${allowance(bags?.checked)}</div>`;
+  }
+  const extras = Array.isArray(bags?.extras) ? bags.extras : [];
+  const paid = extras.length
+    ? `<div class="mini" style="margin-top:4px"><b>Add baggage</b> (airline prices, per traveller per flight)</div>${extras.map(b => `<div class="mini">${LABEL[b.kind] || LABEL.other} · ${escapeHTML(b.description)}${b.weightKg && !String(b.description).includes(String(b.weightKg)) ? ' · ' + b.weightKg + ' kg' : ''} · from <b>${escapeHTML(money(b.amount, b.currency))}</b></div>`).join('')}<div class="mini" style="color:var(--muted)">Choose bags after you hold the fare; the airline confirms the exact price before you pay.</div>`
+    : bags?.paid?.length ? `<div class="mini"><b>Extra baggage</b> · ${escapeHTML(bags.paid.join(', '))}</div>` : '';
+  return `<div class="mini"><b>${airline} baggage allowance</b></div>${free}${paid}`;
 }
 function asFlightDetails(o){const segs=o.slices.flatMap((s,k)=>(s.segments||[]).map(g=>({...g,k})));const pp=o.perPassenger||{};return `<details class="as-details"><summary>Flight details &amp; fare rules</summary>${segs.map(g=>`<div class="as-leg"><span>✈️</span><span><b>${escapeHTML(g.flight)}</b> ${escapeHTML(g.airline)}${g.operator&&g.operator!==g.airline?' (operated by '+escapeHTML(g.operator)+')':''} · ${asDay(g.departing)} ${asTime(g.departing)} ${escapeHTML(g.fromName||g.from)} → ${asTime(g.arriving)} ${escapeHTML(g.toName||g.to)} · ${asDur(g.minutes)}</span></div>`).join('')}<div class="mini"><b>Cabin / fare:</b> ${escapeHTML(o.cabin||'—')}</div><div class="mini"><b>Ticket:</b> ${o.refundable?'Refundable':'Non-refundable'} · ${o.changeable?'Changes allowed':'No changes'}</div>${Object.keys(pp).length?`<div class="mini"><b>Price per traveller:</b> ${Object.entries(pp).map(([k,v])=>`${k} ${asFmtMoney(v,o.currency)}`).join(' · ')}</div>`:''}${o.expires?`<div class="mini">Fare valid until ${escapeHTML(new Date(o.expires).toLocaleString('en-GB'))}</div>`:''}</details>`}
 function asFlightHTML(o,i){const trip=AS.q?.trip||'return';return `<div class="as-flight ${AS.flight?.id===o.id?'sel':''}"><div><div class="as-air">${o.logo?`<img src="${escapeHTML(o.logo)}" alt="" loading="lazy">`:'✈️'}<span>${escapeHTML(o.airline)}</span></div>${o.price===AS.fmin?'<span class="as-badge">Best Deal</span>':''}</div><div>${o.slices.map((s,k)=>asSliceHTML(s,k,trip)).join('')}<div class="as-sub">${escapeHTML(o.cabin||'')}${o.seatsLeft!=null?` · <b>${o.seatsLeft} seat${o.seatsLeft===1?'':'s'} left</b>`:''}</div></div><div class="as-price">${asFmtMoney(o.price,o.currency)}<small>${trip==='oneway'?'one way':trip==='multi'?'all flights':'round trip'} · ${asPaxCount(AS.q)} traveller${asPaxCount(AS.q)>1?'s':''}</small></div><button type="button" class="as-btn" data-as-flight="${i}">${AS.flight?.id===o.id?'Selected ✓':'Select flight'}</button>${asBaggageHTML(o)}${asFlightDetails(o)}</div>`}

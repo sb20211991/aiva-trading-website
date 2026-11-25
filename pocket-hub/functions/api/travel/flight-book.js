@@ -57,7 +57,7 @@ export function shapeServices(raw) {
           position: clean(m.position || '', 10), available: m.available !== false, price });
       } else if (cat.includes('bag') || cat.includes('lugg')) {
         const m = sv?.metadata?.baggage || sv?.baggage || {};
-        bags.push({ serviceId, segmentKey, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80),
+        bags.push({ serviceId, segmentKey, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80), kind: /cabin|carry|hand|overhead|personal/i.test(`${sv?.name || ''} ${sv?.description || ''} ${m.bagType || m.type || ''}`) ? 'cabin' : 'checked',
           weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) ? Number(m.weight ?? m.weightKg) : null, quantityMax: Math.min(3, Math.max(1, Number(m.maxQuantity || sv?.maxQuantity) || 1)), price });
       }
     }
