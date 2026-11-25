@@ -114,8 +114,8 @@ export function shapeJourney(j, legs) {
   const per = o.pricing?.display?.perPassenger || {};
   return { id: o.offerId || j.journeyKey, airline: c.marketingName || '', airlineCode: c.marketingCode || '', logo: c.marketingLogo || '',
     price: Number(o.pricing?.display?.total), currency: o.pricing?.display?.currency || '', expires: o.expiration || '', slices,
-    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || (o.baggage ? 'No checked bag included' : ''),
-    bags: !o.baggage ? null : { carryOn: !!bag.hasCarryOnBag, checked: !!bag.hasCheckedBag, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
+    cabin: [o.segmentFares?.[0]?.cabin, o.fare?.family].filter(Boolean).join(' · '), baggage: bags || (bag.hasCheckedBag === false ? 'No checked bag included' : ''),
+    bags: !o.baggage ? null : { carryOn: typeof bag.hasCarryOnBag === 'boolean' ? bag.hasCarryOnBag : null, checked: typeof bag.hasCheckedBag === 'boolean' ? bag.hasCheckedBag : null, included: (bag.included || []).map((b) => `${b.pieces || 1}× ${b.description || b.bagType}${b.size ? ' · ' + b.size : ''}`),
       paid: paidBags(bag.paid) },
     seatsLeft: Number.isFinite(o.fare?.seatsRemaining) ? o.fare.seatsRemaining : null,
     perPassenger: Object.fromEntries(Object.entries(per).filter(([, v]) => Number.isFinite(v?.total)).map(([k, v]) => [k, v.total])),
