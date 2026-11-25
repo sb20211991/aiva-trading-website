@@ -1,4 +1,4 @@
-/* qrcode-generator 2.0.4 — https://github.com/kazuhikoarase/qrcode-generator
+/* qrcode-generator 1.4.4 — https://github.com/kazuhikoarase/qrcode-generator
 MIT License
 
 Copyright (c) 2009 Kazuhiko Arase
@@ -745,7 +745,7 @@ var qrcode = function() {
       for (var row = 0; row < length; row++) {
         for (var col = 0; col < length; col++) {
           context.fillStyle = _this.isDark(row, col) ? 'black' : 'white';
-          context.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+          context.fillRect(row * cellSize, col * cellSize, cellSize, cellSize);
         }
       }
     }
