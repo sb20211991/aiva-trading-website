@@ -14,7 +14,7 @@
   const $ = (id) => document.getElementById(id);
   const KEY = 'aiva-search-category';
   const CATS = [
-    ['flights', '✈️', 'Flights'], ['trains', '🚆', 'Trains'], ['journeys', '🚌', 'Public transport'], ['road', '🛣️', 'Road routes'], ['trams', '🚊', 'Trams'],
+    ['flights', '✈️', 'Flights'], ['ferries', '⛴️', 'Ferries'], ['trains', '🚆', 'Trains'], ['journeys', '🚌', 'Public transport'], ['road', '🛣️', 'Road routes'], ['trams', '🚊', 'Trams'],
     ['car', '🚗', 'Car rental'], ['hotels', '🏨', 'Hotels'], ['sos', '🆘', 'SOS']
   ];
   const IDS = CATS.map((c) => c[0]);
@@ -41,7 +41,8 @@
   #asHotelFilters input[type="number"]{width:6em;min-height:38px;border:1px solid #dcd8e5;border-radius:8px;padding:6px;color:inherit;background:#fff}
   #travel .asu-filters{padding:0 14px 6px}
   #travel[data-asu] #asKind,#travel[data-asu] #asTabs{display:none!important}
-  #travel[data-asu]:not([data-asu="flights"]):not([data-asu="hotels"]) :is(#asTripType,#asForm,#asMulti,.asu-more,#asStatus){display:none!important}
+  #travel[data-asu]:not([data-asu="flights"]):not([data-asu="hotels"]):not([data-asu="ferries"]) :is(#asTripType,#asForm,#asMulti,.asu-more,#asStatus){display:none!important}
+  #travel[data-asu="ferries"] :is(#asOpts,.asu-more,#asPax,#asTripType,#asFlightFilters,#asFlexDays,#asGrid [data-as]:not([data-as="flights"])){display:none!important}
   #travel:is([data-asu="trains"],[data-asu="trams"],[data-asu="car"]) #asGrid{display:none!important}
   #travel[data-asu]:not([data-asu="trains"]) #asRailTrain,#travel[data-asu]:not([data-asu="trams"]) #asRailTram,
   #travel[data-asu]:not([data-asu="car"]) #asCar{display:none!important}
@@ -71,7 +72,8 @@
     if (!IDS.includes(cat)) cat = 'flights';
     current = cat;
     section.dataset.asu = cat;
-    if (cat === 'flights' || cat === 'hotels') { setKind(cat); tab(cat)?.click(); }
+    if (cat === 'ferries') { setKind(cat); tab('flights')?.click(); }
+    else if (cat === 'flights' || cat === 'hotels') { setKind(cat); tab(cat)?.click(); }
     else if (cat === 'journeys' || cat === 'road') tab('transport')?.click();
     else if (cat === 'sos') tab('sos')?.click();
     for (const b of section.querySelectorAll('.asu-bar [role="tab"]')) {
@@ -95,7 +97,7 @@
     const as = card.dataset.as;
     if (as === 'sos') return 'sos';
     if (as === 'hotels') return 'hotels';
-    if (as === 'flights') return 'flights';
+    if (as === 'flights') return current === 'ferries' ? 'ferries' : 'flights';
     if (as === 'transport' || as === 'maps') return current === 'road' ? 'road' : 'journeys';
     if (as === 'transfers') return current === 'flights' ? '' : 'flights';
     if (as === 'trip') return current === 'flights' || current === 'hotels' ? '' : kind();
