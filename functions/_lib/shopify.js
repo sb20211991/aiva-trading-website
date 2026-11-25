@@ -77,7 +77,7 @@ export async function createShopifyCart(env, lines, orderId, itemTotal, toMinor)
     lines: lines.map(({ product, qty }) => ({ merchandiseId: product.shopifyVariantId, quantity: qty })),
     attributes: [{ key: 'aiva_order_id', value: orderId }],
     buyerIdentity: { countryCode: 'GB' },
-    note: 'Aiva website order ' + orderId
+    note: 'Aiva Trading website order ' + orderId
   };
   const r = await storefront(env, CART_CREATE, { input });
   const payload = r.data?.cartCreate;
