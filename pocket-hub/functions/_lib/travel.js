@@ -143,11 +143,12 @@ const commons = (f) => f ? 'https://commons.wikimedia.org/wiki/Special:FilePath/
 export const FACILITIES = { wifi: [47, 107], parking: [2, 161, 674], pool: [103, 104, 120, 122, 192, 193, 195, 301], gym: [11, 492], spa: [54],
   restaurant: [3, 115, 116], shuttle: [17], ac: [109], pets: [4], accessible: [25, 185], family: [28], ev: [182] };
 export const hotelFacilities = (ids = []) => { const set = new Set(ids.map(Number)); return Object.keys(FACILITIES).filter((k) => FACILITIES[k].some((i) => set.has(i))); };
-export async function liteHotels({ lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
+export async function liteHotels({ offset = 0, lat, lon, checkin, checkout, adults, children = [], currency }, env, fetcher = fetch) {
   const headers = { 'X-API-Key': env.LITEAPI_KEY, 'Content-Type': 'application/json' };
-  const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25`, { headers }, fetcher, 15000);
+  const list = await fetchJSON(`${LITEAPI}/data/hotels?latitude=${lat}&longitude=${lon}&radius=8000&limit=25&offset=${offset}`, { headers }, fetcher, 15000);
   const hotels = (list?.data || []).filter((h) => h.id && h.name);
-  if (!hotels.length) return [];
+  const nextOffset = list?.data?.length === 25 ? offset + 25 : null;
+  if (!hotels.length) return { hotels: [], nextOffset };
   const getTypes = async () => {
     const result = await fetchJSON(`${LITEAPI}/data/hotelTypes`, { headers }, fetcher, 8000);
     return Object.fromEntries((result.data || []).map(type => [
@@ -179,12 +180,13 @@ export async function liteHotels({ lat, lon, checkin, checkout, adults, children
     return list.sort((a, b) => a.total - b.total).filter((x) => { const k = `${x.room}|${x.board}|${x.refundable}`; return x.offerId && !seen.has(k) && seen.add(k); }).slice(0, 8);
   };
   const types = await typesPromise;
-  return hotels.map((h) => ({
+  const properties = hotels.map((h) => ({
     propertyType: accommodationType(types[h.hotelTypeId] || h.hotelTypeName || h.hotelType),
     id: h.id, name: h.name, stars: Number(h.stars) || null, rating: Number(h.rating) || null, address: h.address || '',
     lat: Number(h.latitude), lon: Number(h.longitude), image: h.main_photo || h.thumbnail || '', facilities: hotelFacilities(h.facilityIds || []), distance: distanceM({ lat, lon }, { lat: Number(h.latitude), lon: Number(h.longitude) }),
     available: !!price[h.id], price: price[h.id] || null, rooms: roomOptions(rooms[h.id])
-  })).sort((a, b) => (b.available - a.available) || ((a.price?.total ?? 1e12) - (b.price?.total ?? 1e12)) || a.distance - b.distance).slice(0, 15);
+  })).sort((a, b) => (b.available - a.available) || ((a.price?.total ?? 1e12) - (b.price?.total ?? 1e12)) || a.distance - b.distance);
+  return { hotels: properties, nextOffset };
 }
 /* Nominatim fallback when Overpass is overloaded: bounded phrase search around a point, shaped like Overpass elements. */
 export async function nominatimNear(phrase, { lat, lon }, km, fetcher = fetch) {
@@ -196,6 +198,7 @@ export async function nominatimNear(phrase, { lat, lon }, km, fetcher = fetch) {
 function accommodationType(value) {
   const label = String(value || '').toLowerCase().replace(/[_-]/g, ' ');
   if (/aparthotel|apart hotel|apartment hotel|serviced apartment/.test(label)) return 'Aparthotel';
+  if (/\bvillas?\b/.test(label)) return 'Villa';
   if (/apartment|flat/.test(label)) return 'Apartment';
   if (/hostel/.test(label)) return 'Hostel';
   if (/guest house|guesthouse|bed and breakfast/.test(label)) return 'Guest house';
@@ -205,7 +208,7 @@ function accommodationType(value) {
 }
 
 export async function osmHotels({ lat, lon }, fetcher = fetch) {
-  const els = await overpass(`[out:json][timeout:20];nwr["tourism"~"^(hotel|apartment|hostel|guest_house|resort)$"]["name"](around:6000,${lat},${lon});out center tags 80;`, fetcher)
+  const els = await overpass(`[out:json][timeout:20];nwr["tourism"~"^(hotel|aparthotel|apartment|villa|hostel|guest_house|resort)$"]["name"](around:6000,${lat},${lon});out center tags 80;`, fetcher)
     .catch(() => nominatimNear('hotel', { lat, lon }, 7, fetcher));
   return els.map((e) => {
     const t = e.tags || {}, p = { lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon };
@@ -216,7 +219,7 @@ export async function osmHotels({ lat, lon }, fetcher = fetch) {
       distance: distanceM({ lat, lon }, p), available: null, price: null
     };
   }).filter((h) => h.name && !/^(test|hotel|fixme)$/i.test(h.name.trim()) && Number.isFinite(h.lat))
-    .sort((a, b) => (!!b.image - !!a.image) || ((b.stars || 0) - (a.stars || 0)) || a.distance - b.distance).slice(0, 15);
+    .sort((a, b) => (!!b.image - !!a.image) || ((b.stars || 0) - (a.stars || 0)) || a.distance - b.distance);
 }
 
 /* ---------- Airport -> hotel routes ---------- */
@@ -291,3 +294,4 @@ export async function airportServices(p, fetcher = fetch) {
   }
   return out;
 }
+
