@@ -45,6 +45,7 @@
   #travel[data-asu]:not([data-asu="trains"]) #asRailTrain,#travel[data-asu]:not([data-asu="trams"]) #asRailTram,
   #travel[data-asu]:not([data-asu="car"]) #asCar{display:none!important}
   #travel:is([data-asu="flights"],[data-asu="hotels"]):not(.asu-searched) #asGrid :is([data-as="transfers"],[data-as="trip"]){display:none!important}
+  #travel[data-asu="journeys"]:not(.asu-searched) #asGrid .as-card:has(#asTransport){display:none!important}
   @media(max-width:700px){#travel .asu-bar{margin-left:-2px;margin-right:-2px}#travel .asu-bar button{padding:0 14px;font-size:14px}}
   @media(prefers-reduced-motion:reduce){#travel .asu-bar button,#travel .asu-more>summary::after,#travel .asu-filters>summary::after{transition:none}}`;
 
