@@ -1,6 +1,6 @@
 /* OSDM mapping checks. Offline: no distributor call is made. Field names come from the osdm-sys models. */
 import assert from 'node:assert/strict';
-import { buildOfferCollectionRequest, geoPlace, priceToMajor, bookingToOrder } from '../functions/_lib/osdm.js';
+import { buildOfferCollectionRequest, geoPlace, priceToMajor, bookingToOrder, OSDM_ENDPOINTS, tokenRequestBody, createTokenProvider } from '../functions/_lib/osdm.js';
 
 const LON = { lat: 51.5308, lon: -0.1238 };
 const PAR = { lat: 48.8809, lon: 2.3553 };
@@ -60,6 +60,28 @@ const PAR = { lat: 48.8809, lon: 2.3553 };
   assert.deepEqual(order.fare, { amount: null, currency: '' });
   assert.equal(order.status, 'CONFIRMED');
   assert.throws(() => bookingToOrder({}), /did not return a booking/);
+}
+
+// ---- Endpoints and token: client credentials form, cached token, refusal when the login fails.
+{
+  assert.deepEqual(OSDM_ENDPOINTS, { tripCollection: '/trip-collection', offers: '/offers', bookings: '/bookings' });
+  const form = tokenRequestBody({ clientId: 'c1', clientSecret: 's3' });
+  assert.equal(form.get('grant_type'), 'client_credentials');
+  assert.equal(form.get('client_id'), 'c1');
+  assert.throws(() => tokenRequestBody({ clientId: 'c1' }), /client id and secret/);
+
+  let calls = 0, clock = 0;
+  const fetcher = async () => { calls++; return new Response(JSON.stringify({ access_token: 'tok-' + calls, expires_in: 300 }), { status: 200 }); };
+  const token = createTokenProvider({ tokenUrl: 'https://idp.example/token', clientId: 'c1', clientSecret: 's3', fetcher, now: () => clock });
+  assert.equal(await token(), 'tok-1');
+  assert.equal(await token(), 'tok-1', 'cached while valid');
+  clock = 250000; // inside the 60s margin before expiry
+  assert.equal(await token(), 'tok-2', 'refreshed near expiry');
+  assert.equal(calls, 2);
+
+  const refused = createTokenProvider({ tokenUrl: 'https://idp.example/token', clientId: 'c1', clientSecret: 'bad',
+    fetcher: async () => new Response('{"error":"invalid_client"}', { status: 401 }) });
+  await assert.rejects(refused(), /login was refused/);
 }
 
 console.log('osdm mapping checks passed');

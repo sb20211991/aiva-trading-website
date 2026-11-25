@@ -65,3 +65,36 @@ export function bookingToOrder(booking, { testMode = false } = {}) {
     testMode: testMode === true
   };
 }
+
+/* Endpoints from the OSDM processes page (osdm.io/spec/processes). Relative to the provider's API base. */
+export const OSDM_ENDPOINTS = {
+  tripCollection: '/trip-collection',
+  offers: '/offers',
+  bookings: '/bookings'
+};
+
+/* OAuth2 client credentials with client_id and client_secret (RFC 6749 4.4.2). The spec's preferred method is a
+   signed JWT (private_key_jwt); that needs the distributor's public key registered and is not built yet. */
+export function tokenRequestBody({ clientId, clientSecret }) {
+  if (!clientId || !clientSecret) throw fail('The distributor login needs a client id and secret.', 500);
+  return new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
+}
+
+/* Caches the access token until shortly before expires_in. The spec issues no refresh tokens, so a new token is
+   requested when the old one is near expiry. */
+export function createTokenProvider({ tokenUrl, clientId, clientSecret, fetcher = fetch, now = () => Date.now(), marginMs = 60000 }) {
+  let cached = null;
+  return async function accessToken() {
+    if (cached && now() < cached.expiresAt - marginMs) return cached.token;
+    const res = await fetcher(tokenUrl, {
+      method: 'POST', body: tokenRequestBody({ clientId, clientSecret }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || typeof data?.access_token !== 'string' || !Number.isFinite(Number(data?.expires_in))) {
+      throw fail('The distributor login was refused.', 503);
+    }
+    cached = { token: data.access_token, expiresAt: now() + Number(data.expires_in) * 1000 };
+    return cached.token;
+  };
+}
