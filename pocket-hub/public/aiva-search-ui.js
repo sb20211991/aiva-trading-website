@@ -14,8 +14,8 @@
   const $ = (id) => document.getElementById(id);
   const KEY = 'aiva-search-category';
   const CATS = [
-    ['flights', '✈️', 'Flights'], ['hotels', '🏨', 'Hotels'], ['trains', '🚆', 'Trains'], ['trams', '🚊', 'Trams'],
-    ['car', '🚗', 'Car rental'], ['journeys', '🧭', 'Journeys'], ['sos', '🆘', 'SOS']
+    ['flights', '✈️', 'Flights'], ['trains', '🚆', 'Trains'], ['journeys', '🚌', 'Public transport'], ['road', '🛣️', 'Road routes'], ['trams', '🚊', 'Trams'],
+    ['car', '🚗', 'Car rental'], ['hotels', '🏨', 'Hotels'], ['sos', '🆘', 'SOS']
   ];
   const IDS = CATS.map((c) => c[0]);
   let section, current = '';
@@ -47,6 +47,16 @@
   #travel:is([data-asu="flights"],[data-asu="hotels"]):not(.asu-searched) #asGrid :is([data-as="transfers"],[data-as="trip"]){display:none!important}
   #travel[data-asu="journeys"]:not(.asu-searched) #asGrid .as-card:has(#asTransport){display:none!important}
   @media(max-width:700px){#travel .asu-bar{margin-left:-2px;margin-right:-2px}#travel .asu-bar button{padding:0 14px;font-size:14px}}
+  #travel .asu-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;overflow:visible;margin:12px 0;padding:6px;border:1px solid #d8e3df;border-radius:16px;background:#f3f7f5}
+  #travel .asu-bar button{justify-content:flex-start;padding:8px 12px;min-width:0;border-radius:10px;background:transparent;border:1px solid transparent;color:#213f39;font-size:14px;line-height:1.2}
+  #travel .asu-bar button[aria-selected="true"]{color:white;background:#164d43;border-color:#164d43;box-shadow:0 2px 6px #123b3226}
+  #travel .asu-flight-summary{border-left:3px solid #23715f;padding:10px 12px;background:#edf6f2;color:#173e36;font-weight:650;border-radius:4px;margin:0 0 12px}
+  #travel .as-head h2 u{text-decoration:none}
+  #travel[data-asu="road"] #asGrid [data-as]:not(:has(#asPlan)),#travel[data-asu="road"] #asPlanModes,#travel[data-asu="road"] .as-plan-row:has(#asPlanDate){display:none!important}
+  #travel:not([data-asu="road"]) .road-results,#travel[data-asu="road"] .transit-results{display:none}
+  #travel .as-plan-swap{align-self:end;min-height:40px}
+  #travel .as-plan-card details{margin-top:8px}#travel .as-plan-card summary{cursor:pointer;font-weight:650;padding:6px 0}
+  @media(max-width:520px){#travel .asu-bar{grid-template-columns:repeat(2,minmax(0,1fr))}#travel .asu-bar button{min-height:44px}}
   @media(prefers-reduced-motion:reduce){#travel .asu-bar button,#travel .asu-more>summary::after,#travel .asu-filters>summary::after{transition:none}}`;
 
   const tab = (name) => document.querySelector(`#asTabs [data-as-tab="${name}"]`);
@@ -61,7 +71,7 @@
     current = cat;
     section.dataset.asu = cat;
     if (cat === 'flights' || cat === 'hotels') { setKind(cat); tab(cat)?.click(); }
-    else if (cat === 'journeys') tab('transport')?.click();
+    else if (cat === 'journeys' || cat === 'road') tab('transport')?.click();
     else if (cat === 'sos') tab('sos')?.click();
     for (const b of section.querySelectorAll('.asu-bar [role="tab"]')) {
       const on = b.dataset.asu === cat;
@@ -69,6 +79,7 @@
       b.tabIndex = on ? 0 : -1;
       if (on && focus) b.focus();
     }
+    section.dispatchEvent(new CustomEvent('aiva-category', { detail: cat }));
     if (save) { try { localStorage.setItem(KEY, cat); } catch { /* storage unavailable */ } }
   }
 
@@ -84,7 +95,7 @@
     if (as === 'sos') return 'sos';
     if (as === 'hotels') return 'hotels';
     if (as === 'flights') return 'flights';
-    if (as === 'transport' || as === 'maps') return 'journeys';
+    if (as === 'transport' || as === 'maps') return current === 'road' ? 'road' : 'journeys';
     if (as === 'transfers') return current === 'flights' ? '' : 'flights';
     if (as === 'trip') return current === 'flights' || current === 'hotels' ? '' : kind();
     return '';
