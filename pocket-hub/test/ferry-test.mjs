@@ -30,4 +30,17 @@ assert.deepEqual(salesStatus({}).requiredData, FERRY_REQUIRED_DATA);
   const times = bodies.map((b) => (b.match(/"departureTime":"([^"]+)"/) || [])[1]).filter(Boolean);
   assert.ok(times.includes(`${day}T08:00:00.000Z`), times.join(','));
 }
+// Transitous (no Google key): a returned sailing is shown; no sailing stays "unknown", never "no ferry".
+{
+  const { onRequestGet } = await import('../functions/api/travel/transfers.js');
+  const day = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const leg = (mode, from, to, s, e) => ({ mode, from: { name: from }, to: { name: to }, startTime: `${day}T${s}:00Z`, endTime: `${day}T${e}:00Z`, routeShortName: mode === 'FERRY' ? 'RedJet' : '', agencyName: mode === 'FERRY' ? 'Red Funnel' : '', duration: 600, distance: 100 });
+  const withFerry = { itineraries: [{ duration: 1800, startTime: `${day}T08:20:00Z`, endTime: `${day}T08:54:00Z`, legs: [leg('WALK', 'Start', 'Terminal', '08:20', '08:25'), leg('FERRY', 'Southampton', 'West Cowes', '08:25', '08:50'), leg('WALK', 'Terminal', 'Destination', '08:50', '08:54')] }] };
+  const run = async (body) => (await (await onRequestGet({ request: new Request(`https://app.aivatrading.uk/api/travel/transfers?from=50.8955,-1.3955&to=50.7615,-1.2985&cc=gb&day=${day}`), env: {} },
+    async (url) => String(url).includes('transitous') || String(url).includes('motis') ? new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }) : new Response('{}', { status: 500 }))).json()).modes.ferry;
+  const yes = await run(withFerry);
+  assert.equal(yes.available, true, JSON.stringify(yes)); assert.ok(yes.routes[0].steps.some((x) => x.kind === 'ferry' && /Red Funnel/.test(x.operator)));
+  const none = await run({ itineraries: [] });
+  assert.equal(none.available, null); assert.equal(none.routes.length, 0);
+}
 console.log('FERRY SALES GATE CHECKS PASSED');

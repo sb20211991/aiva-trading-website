@@ -62,8 +62,10 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     const places = k === 'bus' ? s.busStations : k === 'train' || k === 'metro' || k === 'tram' ? s.stations : [];
     modes[k] = { available: rs.length ? true : timetabled ? false : null, routes: rs, places, late: lateBy[k] || null };
   }
+  /* Google and the national feeds are complete enough that no crossing means none that day. Transitous (community
+     GTFS) is patchy, so its absence stays "unknown" — but a sailing it does return is a real timetabled crossing. */
   const ferryTimetable = google ? Array.isArray(transit) : !!open && open !== 'Transitous';
-  const crossings = ferryTimetable ? routes.filter(route => route.steps.some(step => step.kind === 'ferry')) : [];
+  const crossings = ferryTimetable || open === 'Transitous' ? routes.filter(route => route.steps.some(step => step.kind === 'ferry')) : [];
   modes.ferry = { available: crossings.length ? true : ferryTimetable ? false : null, routes: crossings };
   Object.assign(modes, {
     taxi: { available: drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.taxiRanks },
