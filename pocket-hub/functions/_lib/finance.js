@@ -15,11 +15,16 @@ export const COINBASE = 'https://api.coinbase.com/v2';
 /* English names for every ISO 4217 code, from the runtime's own Intl data; the curated list above wins. */
 let DN = null;
 try { DN = new Intl.DisplayNames(['en'], { type: 'currency' }); } catch {}
-export const currencyName = (c) => CURRENCIES[c] || (DN ? DN.of(c) : '') || c;
+/* Codes the runtime's Intl data leaves unnamed (territorial pounds, offshore yuan, newer codes). */
+const EXTRA_NAMES = { CNH: 'Chinese yuan (offshore)', GGP: 'Guernsey pound', IMP: 'Manx pound', JEP: 'Jersey pound', FOK: 'Faroese króna',
+  KID: 'Kiribati dollar', TVD: 'Tuvaluan dollar', SLE: 'Sierra Leonean leone', XCG: 'Caribbean guilder', ZWG: 'Zimbabwe Gold', CLF: 'Chilean unit of account (UF)' };
+export const currencyName = (c) => CURRENCIES[c] || EXTRA_NAMES[c] || (DN && DN.of(c) !== c ? DN.of(c) : '') || c;
 let ISO = null;
 try { ISO = new Set(Intl.supportedValuesOf('currency')); } catch {}
 /* Codes Coinbase lists that are not national currencies (crypto, metals, special drawing rights). */
 const NOT_FIAT = new Set(['XAU', 'XAG', 'XPT', 'XPD', 'XDR', 'BTC', 'ETH', 'USDC', 'USDT']);
+/* Withdrawn currencies some feeds still list: Croatian kuna (euro since 2023), old leone and Zimbabwe dollar. */
+const WITHDRAWN = new Set(['HRK', 'SLL', 'ZWL']);
 const isFiat = (c) => isCurrency(c) && !NOT_FIAT.has(c) && (!ISO || ISO.has(c));
 
 /* Display currencies offered in the app: major world currencies plus those Aiva customers use most. */
@@ -92,7 +97,7 @@ export async function ratesFor(base, fetcher = fetch) {
   if (lr) {
     for (const [c, v] of Object.entries(lr)) {
       const r = Number(v);
-      if (finite(r) && (known.has(c) || (!known.size && isFiat(c))) && isFiat(c)) { out.rates[c] = r; out.sources[c] = 'live'; }
+      if (finite(r) && !WITHDRAWN.has(c) && (known.has(c) || (!known.size && isFiat(c))) && isFiat(c)) { out.rates[c] = r; out.sources[c] = 'live'; }
     }
     if (Object.keys(out.rates).length) out.live = new Date().toISOString();
   }
@@ -102,7 +107,7 @@ export async function ratesFor(base, fetcher = fetch) {
   }
   if (erOk) {
     out.updated = er.time_last_update_utc || null;
-    for (const [c, r] of Object.entries(er.rates)) if (finite(r) && !(c in out.rates)) { out.rates[c] = r; out.sources[c] = 'er'; }
+    for (const [c, r] of Object.entries(er.rates)) if (finite(r) && !(c in out.rates) && !NOT_FIAT.has(c) && !WITHDRAWN.has(c)) { out.rates[c] = r; out.sources[c] = 'er'; }
   }
   if (!Object.keys(out.rates).length) throw Object.assign(new Error(`No exchange rates are available for ${base} right now`), { status: 502 });
   out.rates[base] = 1; out.sources[base] = 'base';
@@ -113,6 +118,7 @@ export async function fxHandler(request, fetcher = fetch, useCache = true) {
   const url = new URL(request.url);
   const base = (url.searchParams.get('base') || 'GBP').toUpperCase();
   if (!isCurrency(base)) return json({ error: 'Choose a three-letter currency code, for example GBP' }, 400);
+    if (WITHDRAWN.has(base) || NOT_FIAT.has(base)) return json({ error: `${base} is not a current national currency. Choose another, for example GBP`, withdrawn: true }, 400);
   const symbols = (url.searchParams.get('symbols') || '').toUpperCase().split(',').filter(isCurrency);
   try {
     const all = useCache ? await cached(`aiva-fx-v2-${base}`, 300, () => ratesFor(base, fetcher)) : await ratesFor(base, fetcher);

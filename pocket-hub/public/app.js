@@ -67,7 +67,7 @@ function asBaggageHTML(offer) {
   }
   const extras = Array.isArray(bags?.extras) ? bags.extras : [];
   const paid = extras.length
-    ? `<div class="mini" style="margin-top:4px"><b>Add baggage</b> (airline prices, per traveller per flight)</div>${extras.map(b => `<div class="mini">${LABEL[b.kind] || LABEL.other} · ${escapeHTML(b.description)}${b.weightKg && !String(b.description).includes(String(b.weightKg)) ? ' · ' + b.weightKg + ' kg' : ''} · from <b>${escapeHTML(money(b.amount, b.currency))}</b></div>`).join('')}<div class="mini" style="color:var(--muted)">Choose bags after you hold the fare; the airline confirms the exact price before you pay.</div>`
+    ? `<div class="mini" style="margin-top:4px"><b>Add baggage</b> (airline prices, per traveller per flight)</div>${extras.map(b => `<div class="mini">${LABEL[b.kind] || LABEL.other}${LABEL[b.kind] && LABEL[b.kind].toLowerCase().endsWith(String(b.description).toLowerCase()) ? '' : ' · ' + escapeHTML(b.description)}${b.weightKg && !String(b.description).includes(String(b.weightKg)) ? ' · ' + b.weightKg + ' kg' : ''} · from <b>${escapeHTML(money(b.amount, b.currency))}</b></div>`).join('')}<div class="mini" style="color:var(--muted)">Choose bags after you hold the fare; the airline confirms the exact price before you pay.</div>`
     : bags?.paid?.length ? `<div class="mini"><b>Extra baggage</b> · ${escapeHTML(bags.paid.join(', '))}</div>` : '';
   return `<div class="mini"><b>${airline} baggage allowance</b></div>${free}${paid}`;
 }

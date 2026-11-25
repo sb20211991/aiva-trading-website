@@ -135,7 +135,7 @@ export function extraBagOptions(list) {
     const cur = by.get(key);
     if (!cur || amount < cur.amount) by.set(key, { kind, description, weightKg, size: bagSize(b), amount, currency });
   }
-  return [...by.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.amount - b.amount).slice(0, 12);
+  return [...by.values()].sort((a, b) => a.kind.localeCompare(b.kind) || (a.weightKg ?? 0) - (b.weightKg ?? 0) || a.amount - b.amount).slice(0, 12);
 }
 
 export function shapeJourney(j, legs) {

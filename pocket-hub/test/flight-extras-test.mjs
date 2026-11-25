@@ -84,4 +84,13 @@ assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'),
   const on = await (await onRequestPost({ request: req({ action: 'prebook', offerId: 'offer_123', contact, passengers: pax }), env: { ...live, FLIGHT_EXTRAS_LIVE: 'true' } }, f)).json();
   assert.equal(on.services.bags.length, 1);
 }
+// Traveller types are normalised whatever form the provider uses; sandbox diagnostics never include ids.
+{
+  const { paxType, servicesSummary } = await import('../functions/api/travel/flight-book.js');
+  assert.deepEqual(['ADULT', 'ADT', 0, '0', 'CHILD', 'CHD', 1, 'INFANT', 2, 'x'].map(paxType), ['ADT', 'ADT', 'ADT', 'ADT', 'CHD', 'CHD', 'CHD', 'INF', 'INF', '']);
+  const sv = shapeServices({ groups: [{ type: 'SEAT', services: [{ serviceId: 'seat_1A', category: 'seat', passengerType: 'ADULT', metadata: { seat: { seatRow: 1, seatColumn: 'A' } } }] }] });
+  assert.equal(sv.seats[0].passengerType, 'ADT');
+  const sum = JSON.stringify(servicesSummary({ groups: [{ type: 'SEAT', services: [{ serviceId: 'seat_secret_1A', category: 'seat' }] }] }));
+  assert.ok(!sum.includes('seat_secret_1A'));
+}
 console.log('FLIGHT EXTRAS CHECKS PASSED');

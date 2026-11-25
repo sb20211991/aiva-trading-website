@@ -60,12 +60,15 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
 {
   const f = stub([['exchange-rates?currency=GBP', reply({ data: { currency: 'GBP', rates: { USD: '1.2712', EUR: '1.1801', IQD: '1665.2', BTC: '0.0000141', XAU: '0.0004', JPY: '195.3' } } })],
     ['frankfurter', reply({ base: 'GBP', date: '2026-11-25', rates: { USD: 1.27, EUR: 1.18, JPY: 195 } })],
-    ['open.er-api', reply({ result: 'success', rates: { GBP: 1, USD: 1.30, IQD: 1660.5, KMF: 560.2, JPY: 194 } })]]);
+    ['open.er-api', reply({ result: 'success', rates: { GBP: 1, USD: 1.30, IQD: 1660.5, KMF: 560.2, JPY: 194, XDR: 0.9, HRK: 8.9, SLL: 29000 } })]]);
   const d = await (await fxHandler(req('/api/finance/fx?base=GBP'), f, false)).json();
+  assert.ok(!('XDR' in d.rates) && !('HRK' in d.rates) && !('SLL' in d.rates));
   assert.equal(d.rates.USD, 1.2712); assert.equal(d.sources.USD, 'live');
   assert.equal(d.rates.IQD, 1665.2); assert.equal(d.sources.IQD, 'live');
   assert.equal(d.rates.KMF, 560.2); assert.equal(d.sources.KMF, 'er');
   assert.ok(!('BTC' in d.rates) && !('XAU' in d.rates));
+  assert.equal((await fxHandler(req('/api/finance/fx?base=HRK'), f, false)).status, 400);
+  assert.equal(currencyName('GGP'), 'Guernsey pound'); assert.equal(currencyName('CNH'), 'Chinese yuan (offshore)');
   assert.ok(d.live); assert.equal(d.count, Object.keys(d.rates).length);
   // Every returned currency has an English name, not only the curated list.
   assert.equal(d.names.KMF, currencyName('KMF')); assert.notEqual(d.names.KMF, 'KMF');
@@ -85,6 +88,7 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
 {
   const js = readFileSync(new URL('../public/aiva-finance.js', import.meta.url), 'utf8');
   for (const id of ['fxSwap', 'afMulti', 'afCcFrom', 'afCcTo', 'afCcAmount', 'afCryptoSearch']) assert.ok(js.includes(id), id);
+  assert.match(js, /RETIRED\.has\(F\.pref\)/);
 }
 assert.ok(Object.keys(CURRENCIES).length >= 50 && CURRENCIES.IQD && CURRENCIES.TRY && CURRENCIES.CNY);
 assert.deepEqual(COINS.slice(0, 2).map((c) => c.symbol), ['BTC', 'ETH']);
