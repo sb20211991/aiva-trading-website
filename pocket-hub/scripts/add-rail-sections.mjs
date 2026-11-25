@@ -9,7 +9,7 @@ const ICON = {
   tram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16.6V9.4A3.4 3.4 0 0 1 7.4 6h9.2A3.4 3.4 0 0 1 20 9.4v7.2"/><path d="M4 12.6h16"/><path d="M9 6V3.6h6V6M12 3.6V1.8"/><circle cx="8" cy="17.8" r="1.5"/><circle cx="16" cy="17.8" r="1.5"/><path d="M4 16.6h16M9.4 9.4h1.8M12.8 9.4H14.6"/></svg>'
 };
 const card = (mode, label, blurb) => `<div class="as-card rail-card" data-rail-section="${mode}" id="asRail${label}"><div class="as-card-head"><div class="rail-brand"><span class="rail-mark" aria-hidden="true">${ICON[mode]}</span><div><h3>Aiva ${label}</h3><p>${blurb}</p></div></div><span class="rail-tag" id="rail${label}Tag">Live</span></div><div class="as-body rail-body" id="rail${label}Body"></div></div>`;
-const CARDS = card('train', 'Train', 'Live trains, real platforms and times, booked inside Aiva')
+const CARDS = card('train', 'Train', 'Live trains, real platforms and times')
   + card('tram', 'Tram', 'Live trams and light rail, with the exact stop to board');
 const ANCHOR = '<div class="as-card as-review" id="asFReview" hidden></div>';
 const SCRIPTS = '<script src="vendor/qrcode.js" defer></script><script src="aiva-rail.js" defer></script>';

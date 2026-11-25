@@ -46,7 +46,7 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
       }
       return { mode, provider: 'transitous', itineraries, stations: { from: fromStations, to: toStations },
         sales: { ...sales, fares, fareError }, timeZone: fromStations[0]?.tz || '', source: SOURCE, retrieved: new Date().toISOString(),
-        note: itineraries.length ? '' : `No ${mode} journey was found for this route at this time in the open timetable feeds. Open feeds usually cover the next few weeks, so try a closer date. Nothing is estimated.` };
+        note: itineraries.length ? '' : bike ? `No ${mode} journey was found where every operator publishes that bikes are allowed. Many operators do not publish bike rules in open timetable data, so untick “Travelling with a bike” to see all ${mode}s and check bike rules with the operator.` : `No ${mode} journey was found for this route at this time in the open timetable feeds. Open feeds usually cover the next few weeks, so try a closer date. Nothing is estimated.` };
     });
     return json({ ...result, live: result.itineraries.some((i) => i.realtime) }, 200, 20);
   } catch (e) {

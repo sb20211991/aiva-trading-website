@@ -40,7 +40,7 @@
   #travel .asu-more>summary:focus-visible,#travel .asu-filters>summary:focus-visible{outline:3px solid #f3c876}
   #travel .asu-filters{padding:0 14px 6px}
   #travel[data-asu] #asKind,#travel[data-asu] #asTabs{display:none!important}
-  #travel[data-asu]:not([data-asu="flights"]):not([data-asu="hotels"]) :is(#asTripType,#asForm,#asMulti,.asu-more){display:none!important}
+  #travel[data-asu]:not([data-asu="flights"]):not([data-asu="hotels"]) :is(#asTripType,#asForm,#asMulti,.asu-more,#asStatus){display:none!important}
   #travel:is([data-asu="trains"],[data-asu="trams"],[data-asu="car"]) #asGrid{display:none!important}
   #travel[data-asu]:not([data-asu="trains"]) #asRailTrain,#travel[data-asu]:not([data-asu="trams"]) #asRailTram,
   #travel[data-asu]:not([data-asu="car"]) #asCar{display:none!important}
