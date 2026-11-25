@@ -98,3 +98,24 @@ export function createTokenProvider({ tokenUrl, clientId, clientSecret, fetcher 
     return cached.token;
   };
 }
+
+/* Fares on one offer: Offer.fares[] each carry prices[] (Price: amount in cents, currency, scale). Field names
+   are camelCase on the wire, as for the other verified models. Prices that fail validation are dropped, and no
+   refund or condition terms are inferred: those need the AfterSalesConditions model, which is not verified. */
+export function offerFares(offer) {
+  const offerId = String(offer?.offerId || '').slice(0, 200);
+  if (!offerId) return [];
+  const fares = Array.isArray(offer.fares) ? offer.fares : [];
+  return fares.flatMap((fare) => (Array.isArray(fare?.prices) ? fare.prices : []).map((price) => {
+    const money = priceToMajor(price);
+    if (!money) return null;
+    return {
+      offerId,
+      fareId: String(fare.id || '').slice(0, 200),
+      fareType: String(fare.type || '').slice(0, 80),
+      travelClass: String(fare.travelClass || '').slice(0, 40),
+      amount: money.amount,
+      currency: money.currency
+    };
+  })).filter(Boolean);
+}

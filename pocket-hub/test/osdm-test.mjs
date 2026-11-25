@@ -1,6 +1,6 @@
 /* OSDM mapping checks. Offline: no distributor call is made. Field names come from the osdm-sys models. */
 import assert from 'node:assert/strict';
-import { buildOfferCollectionRequest, geoPlace, priceToMajor, bookingToOrder, OSDM_ENDPOINTS, tokenRequestBody, createTokenProvider } from '../functions/_lib/osdm.js';
+import { buildOfferCollectionRequest, geoPlace, priceToMajor, bookingToOrder, OSDM_ENDPOINTS, tokenRequestBody, createTokenProvider, offerFares } from '../functions/_lib/osdm.js';
 
 const LON = { lat: 51.5308, lon: -0.1238 };
 const PAR = { lat: 48.8809, lon: 2.3553 };
@@ -82,6 +82,20 @@ const PAR = { lat: 48.8809, lon: 2.3553 };
   const refused = createTokenProvider({ tokenUrl: 'https://idp.example/token', clientId: 'c1', clientSecret: 'bad',
     fetcher: async () => new Response('{"error":"invalid_client"}', { status: 401 }) });
   await assert.rejects(refused(), /login was refused/);
+}
+
+// ---- Fares on an offer: prices are converted from cents; invalid prices are dropped, not guessed.
+{
+  const fares = offerFares({ offerId: 'o-1', fares: [
+    { id: 'f1', type: 'ADULT', travelClass: '2', prices: [{ amount: 2350, currency: 'EUR' }, { amount: 12.5, currency: 'EUR' }] },
+    { id: 'f2', type: 'CHILD', prices: [{ amount: 1200, currency: 'gbp', scale: 2 }] }
+  ] });
+  assert.deepEqual(fares, [
+    { offerId: 'o-1', fareId: 'f1', fareType: 'ADULT', travelClass: '2', amount: 23.5, currency: 'EUR' },
+    { offerId: 'o-1', fareId: 'f2', fareType: 'CHILD', travelClass: '', amount: 12, currency: 'GBP' }
+  ]);
+  assert.deepEqual(offerFares({ fares: [] }), []);
+  assert.deepEqual(offerFares({ offerId: 'o-2' }), []);
 }
 
 console.log('osdm mapping checks passed');
