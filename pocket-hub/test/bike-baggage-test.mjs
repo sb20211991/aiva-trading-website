@@ -3,7 +3,7 @@
    and never says "no checked bag" when the airline sent no baggage data. */
 import assert from 'node:assert/strict';
 import { normalise, motisPlan } from '../functions/_lib/motis.js';
-import { shapeJourney } from '../functions/_lib/travel.js';
+import { shapeJourney, paidBags } from '../functions/_lib/travel.js';
 
 const leg = (over) => ({ mode: 'REGIONAL_RAIL', from: { name: 'A', departure: '2026-11-27T10:20:00Z', tz: 'Europe/London' },
   to: { name: 'B', arrival: '2026-11-27T11:43:00Z', tz: 'Europe/London' }, duration: 4980, agencyName: 'Thameslink', ...over });
@@ -39,6 +39,15 @@ const leg = (over) => ({ mode: 'REGIONAL_RAIL', from: { name: 'A', departure: '2
   const checked = shapeJourney(journey({ baggage: { hasCheckedBag: true, included: [{ pieces: 1, description: '23kg checked bag' }] } }), legs);
   assert.equal(checked.baggage, '1× 23kg checked bag');
   assert.equal(checked.bags.checked, true);
+}
+
+// ---- Paid bags: grouped by type at the lowest price offered, not 30 near-duplicate lines.
+{
+  const p = (description, amount) => ({ description, pricing: { display: { amount, currency: 'GBP' } } });
+  assert.deepEqual(paidBags([p('Checked bag', 142.43), p('Checked bag', 25.14), p('Cabin bag', 20.04), p('Cabin bag', 19.61), p('Checked bag', 56.67)]),
+    ['Checked bag from 25.14 GBP', 'Cabin bag from 19.61 GBP']);
+  assert.deepEqual(paidBags([{ description: 'Sports bag' }]), ['Sports bag']);
+  assert.deepEqual(paidBags(undefined), []);
 }
 
 console.log('BIKE AND BAGGAGE CHECKS PASSED');
