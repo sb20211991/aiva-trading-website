@@ -54,4 +54,18 @@ assert.equal(selection([], 1), null);
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 assert.ok(html.indexOf('src="aiva-flight-extras.js"') > -1 && html.indexOf('src="aiva-flight-extras.js"') < html.indexOf('src="app.js"'));
 assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), /window\.aivaFlightExtras\(p,box,passengers\)/);
+// With a live key, paid extras stay off (no services offered, attach refused) until FLIGHT_EXTRAS_LIVE is "true".
+{
+  const live = { LITEAPI_KEY: 'prod_live_key', FLIGHT_BOOKING_LIVE: 'true' };
+  const pax = [{ passengerType: 0, firstName: 'Ana', lastName: 'Test', birthday: '1990-01-01', gender: 'F', nationality: 'GB' }];
+  const contact = { firstName: 'Ana', lastName: 'Test', email: 'ana@example.com', phoneCountryCode: '44', phoneNumber: '7700900000' };
+  const calls = [];
+  const f = async (url) => { calls.push(String(url)); return reply({ data: [{ prebookId: 'pb_9999', transactionId: 'tr_9', secretKey: 'sk_9', price: 120, currency: 'GBP', servicesAttachable: attachable }] }); };
+  const p = await (await onRequestPost({ request: req({ action: 'prebook', offerId: 'offer_123', contact, passengers: pax }), env: live }, f)).json();
+  assert.deepEqual(p.services, { seats: [], bags: [] });
+  const s = await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_9999', passengers: 1, selected: [{ passengerIndex: 0, serviceId: 'bag_20', quantity: 1 }] }), env: live }, f);
+  assert.equal(s.status, 403); assert.ok(!calls.some((u) => u.includes('/services')));
+  const on = await (await onRequestPost({ request: req({ action: 'prebook', offerId: 'offer_123', contact, passengers: pax }), env: { ...live, FLIGHT_EXTRAS_LIVE: 'true' } }, f)).json();
+  assert.equal(on.services.bags.length, 1);
+}
 console.log('FLIGHT EXTRAS CHECKS PASSED');

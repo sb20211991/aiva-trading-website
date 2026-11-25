@@ -105,6 +105,9 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
   try { body = JSON.parse((await request.text()).slice(0, 20000)); } catch { return json({ error: 'Invalid request' }, 400); }
   if (!testMode && env.FLIGHT_BOOKING_LIVE !== 'true' && !(body?.action === 'verify' && readinessCheck(request, env)))
     return json({ error: 'Real flight tickets are waiting for the owner\'s approval with Nuitee to take live payments. Nothing was booked or charged.', blocked: 'approval' }, 403);
+  /* Paid seats and extra bags change the amount charged, so with a live key they stay off until the attach flow has
+     passed a Nuitee sandbox run and the owner sets FLIGHT_EXTRAS_LIVE = "true". Sandbox previews always offer them. */
+  const extrasOn = testMode || env.FLIGHT_EXTRAS_LIVE === 'true';
   try {
     if (body?.action === 'verify') {
       const offerId = id(body.offerId);
@@ -122,9 +125,10 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!p?.prebookId || !p.transactionId || !p.secretKey) return json({ error: 'This fare is no longer available. Please choose another flight.' }, 409);
       const d = p.booking?.journey?.pricing?.display || {};
       return json({ prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, price: Number(p.price ?? d.total), currency: p.currency || d.currency || '',
-        segments: segs(p.booking?.journey), services: shapeServices(p.servicesAttachable), passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [] }, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
     }
     if (body?.action === 'services') {
+      if (!extrasOn) return json({ error: 'Seat and bag add-ons are not available yet. Your fare is unchanged; continue to payment.', blocked: 'extras' }, 403);
       const prebookId = id(body.prebookId), chosen = selection(body.selected, Math.min(9, Math.max(1, Number(body.passengers) || 1)));
       if (!prebookId) return json({ error: 'Booking reference missing. Please start again.' }, 400);
       if (!chosen) return json({ error: 'Choose seats or bags for the listed travellers.' }, 400);

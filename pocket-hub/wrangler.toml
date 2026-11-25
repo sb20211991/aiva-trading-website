@@ -16,3 +16,5 @@ WEBSITE_ORIGIN = "https://aiva-trading.pages.dev"
 WEBSITE_ORIGIN = "https://aiva-trading.pages.dev"
 HOTEL_BOOKING_LIVE = "true"
 FLIGHT_BOOKING_LIVE = "true"
+# Paid seats and extra bags with the live key: off until a Nuitee sandbox run of the attach flow passes.
+FLIGHT_EXTRAS_LIVE = "false"
