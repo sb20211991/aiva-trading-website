@@ -22,13 +22,14 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
   const mode = u.get('mode') === 'tram' ? 'tram' : 'train';
   const arriveBy = u.get('arriveBy') === '1' || u.get('arriveBy') === 'true';
   const pax = Math.min(9, Math.max(1, Number(u.get('pax')) || 1));
+  const bike = u.get('bike') === '1';
   const at = Date.parse(u.get('time') || '');
   const time = Number.isFinite(at) ? new Date(at).toISOString() : new Date(Date.now() + 30 * 60000).toISOString();
   const fromName = name(u.get('fromName')), toName = name(u.get('toName'));
-  const key = `rail-${mode}-${from.lat},${from.lon}-${to.lat},${to.lon}-${time}-${arriveBy ? 1 : 0}-${pax}`;
+  const key = `rail-${mode}-${from.lat},${from.lon}-${to.lat},${to.lon}-${time}-${arriveBy ? 1 : 0}-${pax}-${bike ? 'bike' : ''}`;
   try {
     const result = await cached(key, 20, async () => {
-      const itineraries = await planRail({ from, to, mode, time, arriveBy, fetcher, results: 6 });
+      const itineraries = await planRail({ from, to, mode, time, arriveBy, fetcher, results: 6, requireBikes: bike });
       /* Nearby stations make it obvious where the journey actually starts and ends. A station lookup failure
          must never blank the journey itself. */
       const [fromStations, toStations] = await Promise.all([

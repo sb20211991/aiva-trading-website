@@ -15,6 +15,9 @@ export const FERRY_DISTRIBUTORS = [
   { name: 'Direct Ferries Connect', product: 'Partner API and agent portal', scope: '230 operators and 4,000+ routes', url: 'https://fca.directferries.com/affiliate.htm' }
 ];
 
+/* What a ferry distributor must return before Aiva sells a crossing, so the traveller sees the real terms before paying. */
+export const FERRY_REQUIRED_DATA = ['price and currency per passenger type', 'live availability', 'luggage and baggage allowance', 'vehicle options and prices', 'cabin and seat options', 'ticket conditions (changes, cancellation, refund)', 'ticket or boarding pass delivery'];
+
 export function salesStatus(env) {
   const url = String(env?.FERRY_SALES_GATEWAY_URL || '').trim();
   const key = String(env?.FERRY_SALES_GATEWAY_KEY || '').trim();
@@ -25,6 +28,6 @@ export function salesStatus(env) {
     available: false, provider: '', paymentMethods: [],
     reason: 'Ferry prices and sales need an authorised ferry distributor. Aiva shows ferry times without a price until that agreement and its API credentials exist.',
     requirement: 'A signed B2B agreement and its API credentials, set as FERRY_SALES_GATEWAY_URL and the FERRY_SALES_GATEWAY_KEY secret.',
-    distributors: FERRY_DISTRIBUTORS
+    distributors: FERRY_DISTRIBUTORS, requiredData: FERRY_REQUIRED_DATA
   };
 }

@@ -1,6 +1,6 @@
 /* Aiva Ferry sales gate. Offline: no distributor is contacted. */
 import assert from 'node:assert/strict';
-import { salesStatus, FERRY_DISTRIBUTORS } from '../functions/_lib/ferry-sales.js';
+import { salesStatus, FERRY_DISTRIBUTORS, FERRY_REQUIRED_DATA } from '../functions/_lib/ferry-sales.js';
 
 // No contract: unavailable, no price or payment is offered, and both official partner programmes are named.
 {
@@ -19,4 +19,6 @@ assert.equal(salesStatus({ FERRY_SALES_GATEWAY_URL: 'http://gw.example', FERRY_S
   assert.equal(s.provider, 'Ferryhopper');
 }
 assert.equal(FERRY_DISTRIBUTORS.length, 2);
+assert.ok(FERRY_REQUIRED_DATA.includes('luggage and baggage allowance'));
+assert.deepEqual(salesStatus({}).requiredData, FERRY_REQUIRED_DATA);
 console.log('FERRY SALES GATE CHECKS PASSED');

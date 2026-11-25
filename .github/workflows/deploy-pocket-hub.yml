@@ -64,7 +64,7 @@ jobs:
             git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
           fi
       - name: Test
-        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs
+        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
       # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
       # frequently over it, so a free TfL app key is what makes London live boards reliable. The car rental gateway is
