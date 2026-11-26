@@ -30,6 +30,12 @@ The preserved Square integration uses the following (never commit values):
 
 Optional: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENVIRONMENT`.
 
+## Cryptocurrency (Aiva Crypto Pay)
+
+A "₿ Pay with Cryptocurrency" button (BTC, ETH, USDT, USDC, LTC, SOL via BitPay, GBP settlement) is shared by this
+website and the Super App through one backend (`functions/_lib/crypto-pay.js`). Off until the `BITPAY_TOKEN` secret is
+set; live only with `BITPAY_ENV="prod"` and `CRYPTO_LIVE_PAYMENTS_APPROVED="true"`. See `CRYPTO-PAYMENTS.md`.
+
 ## Hardware
 
 Website Payment Links do **not** require a physical Square card reader. In-person Tap to Pay / terminals are separate and are not part of this deploy.

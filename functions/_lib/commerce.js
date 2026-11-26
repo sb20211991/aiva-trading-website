@@ -48,7 +48,7 @@ function withSquareCredentials(env) {
 function squareConfigured(env) {
   return !!(str(env.SQUARE_ACCESS_TOKEN) && str(env.SQUARE_LOCATION_ID) && squareEnvName(env));
 }
-function hasDb(env) {
+export function hasDb(env) {
   return !!env.ORDERS_DB && typeof env.ORDERS_DB.prepare === 'function';
 }
 /* Self-migrating schema: older order tables (no payment_id, payment_status CHECK without 'refunded')
@@ -63,7 +63,7 @@ const ORDER_COLUMNS = `session_id TEXT PRIMARY KEY, last_event_id TEXT NOT NULL,
 const ORDER_COLUMN_NAMES = ORDER_COLUMNS.split(/,\s*(?![^()]*\))/).map((c) => c.trim().split(/\s+/)[0]);
 const EXTRA_ORDER_COLUMNS = [['provider', 'TEXT'], ['provider_order_ref', 'TEXT'], ['test_order', 'INTEGER']];
 const schemaReady = new WeakSet();
-async function ensureSchema(env) {
+export async function ensureSchema(env) {
   const db = env.ORDERS_DB;
   if (schemaReady.has(db)) return;
   await db.batch([
@@ -159,7 +159,7 @@ async function liveLocationReady(env) {
   }
 }
 
-function validPolicy(c) {
+export function validPolicy(c) {
   return (
     c && c.shopEnabled === true && c.currency === 'GBP' && Array.isArray(c.products) &&
     str(c.businessAddress).length >= 8 && str(c.deliveryPolicy).length >= 15 && str(c.returnsPolicy).length >= 15 &&
@@ -207,7 +207,7 @@ async function rawCatalogue(env, origin) {
   if (!r.ok) throw Error('CATALOGUE_UNAVAILABLE');
   return r.json();
 }
-async function getCatalogue(request, env) {
+export async function getCatalogue(request, env) {
   const cat = normaliseCatalogue(await rawCatalogue(env, new URL(request.url).origin));
   const overrides = await stockOverrides(env);
   cat.products = cat.products.map((p) => (overrides.has(p.sku) ? { ...p, stock: Math.max(0, overrides.get(p.sku)) } : p));
@@ -227,7 +227,7 @@ function isTrustedCheckoutUrl(value) {
   }
 }
 
-function parseBasket(data, cat, env) {
+export function parseBasket(data, cat, env) {
   if (!data || !Array.isArray(data.items) || data.items.length < 1 || data.items.length > 20) {
     return { error: 'Choose 1–20 products.' };
   }
@@ -454,7 +454,7 @@ function squarePaid(payment) {
   };
 }
 /* `amount` must equal expected_total; `amountTotal` (defaults to amount) is what the customer paid in total. */
-async function applyPaid(env, origin, orderId, paid, eventId) {
+export async function applyPaid(env, origin, orderId, paid, eventId) {
   const db = env.ORDERS_DB;
   const row = await db.prepare('SELECT payment_status, expected_total, line_items_json, stock_applied FROM orders WHERE session_id=?').bind(orderId).first();
   if (!row) return { ignored: 'unknown_order' };
