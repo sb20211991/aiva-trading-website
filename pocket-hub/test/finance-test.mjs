@@ -106,9 +106,17 @@ assert.match(readFileSync(new URL('../public/service-worker.js', import.meta.url
   const f = stub([['exchange-rates?currency=GBP', reply({ data: { currency: 'GBP', rates: live } })], ['frankfurter', reply({}, 500)],
     ['open.er-api', reply({ result: 'success', rates: er })]]);
   const d = await (await fxHandler(req('/api/finance/fx?base=GBP'), f, false)).json();
-  assert.equal(d.counts.metal, 4); assert.equal(d.counts.crypto, 10);
-  assert.equal(d.count, d.counts.fiat + 14); assert.ok(d.count >= 170, String(d.count));
-  assert.deepEqual(Object.keys(d.kinds).filter((c) => d.kinds[c] === 'crypto'), COINS.slice(0, 10).map((c) => c.symbol));
+  assert.equal(d.counts.metal, 4); assert.equal(d.counts.crypto, Math.max(10, 180 - d.counts.fiat - 4));
+  assert.equal(d.count, Math.max(180, d.counts.fiat + 14)); assert.ok(d.count >= 180, String(d.count));
+  assert.deepEqual(Object.keys(d.kinds).filter((c) => d.kinds[c] === 'crypto'), COINS.slice(0, d.counts.crypto).map((c) => c.symbol));
+  // As live: no metals in the feed -> more live-priced coins fill the options up to 180.
+  const live2 = Object.fromEntries(Object.keys(d.kinds).filter((c) => d.kinds[c] === 'fiat').map((c) => [c, '1.5']));
+  const er2 = Object.fromEntries(Object.keys(live2).map((c) => [c, 2]));
+  for (const c of COINS) live2[c.symbol] = '0.001';
+  const g = stub([['exchange-rates?currency=GBP', reply({ data: { currency: 'GBP', rates: live2 } })], ['frankfurter', reply({}, 500)], ['open.er-api', reply({ result: 'success', rates: er2 })]]);
+  const d2 = await (await fxHandler(req('/api/finance/fx?base=GBP'), g, false)).json();
+  assert.equal(d2.counts.metal, 0); assert.equal(d2.count, d2.counts.fiat + d2.counts.crypto);
+  assert.equal(d2.count, Math.max(180, d2.counts.fiat + 10));
   // Four- and five-letter coin codes can be asked for by symbol.
   const one = await (await fxHandler(req('/api/finance/fx?base=GBP&symbols=USDT,XAU'), f, false)).json();
   assert.deepEqual(Object.keys(one.rates).sort(), ['USDT', 'XAU']);

@@ -15,7 +15,8 @@ export const COINBASE = 'https://api.coinbase.com/v2';
 /* English names for every ISO 4217 code, from the runtime's own Intl data; the curated list above wins. */
 let DN = null;
 try { DN = new Intl.DisplayNames(['en'], { type: 'currency' }); } catch {}
-export const currencyName = (c) => CURRENCIES[c] || (DN ? DN.of(c) : '') || c;
+const dn = (c) => { try { return DN ? DN.of(c) : ''; } catch { return ''; } };
+export const currencyName = (c) => CURRENCIES[c] || dn(c) || c;
 export const unitName = (c, kind) => kind === 'metal' ? METALS[c] || c
   : kind === 'crypto' ? `${COINS.find((x) => x.symbol === c)?.name || c} (cryptocurrency)` : currencyName(c);
 let ISO = null;
@@ -42,10 +43,11 @@ export const isCurrency = (c) => /^[A-Z]{3}$/.test(c || '');
 
 /* Beyond the world's national currencies (about 160 are in circulation, and every one the feeds publish is offered),
    Aiva Finance offers the four ISO 4217 precious-metal units and the ten largest cryptocurrencies, so the converter
-   reaches 180 options. Both come from the same live Coinbase exchange-rate reply as the currencies; nothing is
+   reaches 180 options (where the feed lacks a metal, a further live-priced coin takes its place). Both come from the same live Coinbase exchange-rate reply as the currencies; nothing is
    estimated. Each code is tagged in `kinds` ('fiat', 'metal' or 'crypto') so the app can label it. */
 export const METALS = { XAU: 'Gold (troy ounce)', XAG: 'Silver (troy ounce)', XPT: 'Platinum (troy ounce)', XPD: 'Palladium (troy ounce)' };
 export const CRYPTO_UNITS = 10;
+export const TARGET_OPTIONS = 180;
 export const isUnit = (c) => isCurrency(c) || /^[A-Z0-9]{2,6}$/.test(c || '');
 
 export const COINS = [
@@ -123,9 +125,11 @@ export async function ratesFor(base, fetcher = fetch) {
       const r = Number(lr[c]);
       if (finite(r) && !(c in out.rates)) { out.rates[c] = r; out.sources[c] = 'live'; out.kinds[c] = 'metal'; }
     }
+    /* At least the ten largest coins; where the feed lacks metals, further priced coins fill up to 180 options. */
+    const want = Math.max(CRYPTO_UNITS, TARGET_OPTIONS - Object.keys(out.rates).length);
     let n = 0;
     for (const coin of COINS) {
-      if (n >= CRYPTO_UNITS) break;
+      if (n >= want) break;
       const r = Number(lr[coin.symbol]);
       if (finite(r) && !(coin.symbol in out.rates)) { out.rates[coin.symbol] = r; out.sources[coin.symbol] = 'live'; out.kinds[coin.symbol] = 'crypto'; n++; }
     }
