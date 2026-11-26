@@ -74,6 +74,20 @@ export function normalise(itinerary) {
   };
 }
 
+/* Transitous is a community service: an occasional request times out or drops while the next one answers at once.
+   One quick retry on a timeout, a dropped connection, 429 or 5xx keeps a single blip from blanking the timetables.
+   Real answers (including 4xx such as a bad request) are never retried. */
+export const transientError = (e) => !e?.status || e.status === 429 || (Number(e.status) >= 500 && Number(e.status) <= 599);
+export async function planWithRetry(url, fetcher, wait = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  try {
+    return await fetchJSON(url, {}, fetcher, 10000);
+  } catch (e) {
+    if (!transientError(e)) throw e;
+    await wait(600);
+    return fetchJSON(url, {}, fetcher, 12000);
+  }
+}
+
 export async function motisPlan(from, to, { fetcher = fetch, time, arriveBy = false, modes = [], numItineraries = 5, maxTransfers = 4, directOnly = false, requireBikes = false } = {}) {
   const transit = directOnly ? [] : modes.length ? [...new Set(modes.flatMap((m) => GROUPS[m] || []))] : ALL_MODES;
   const q = new URLSearchParams({
@@ -88,7 +102,7 @@ export async function motisPlan(from, to, { fetcher = fetch, time, arriveBy = fa
   /* Walking-only request: an empty transitModes tells MOTIS to consider no transit at all, so the whole
      journey is walked. Without it MOTIS falls back to every mode and returns train/bus itineraries. */
   else { q.set('transitModes', ''); q.set('directModes', 'WALK'); }
-  const data = await fetchJSON(`${TRANSITOUS}/plan?${q}`, {}, fetcher, 15000);
+  const data = await planWithRetry(`${TRANSITOUS}/plan?${q}`, fetcher);
   if (data?.error) throw Object.assign(new Error(String(data.error).slice(0, 140)), { status: 'motis-error' });
   const raw = [...(data?.itineraries || []), ...(transit.length ? [] : data?.direct || [])];
   return raw.map(normalise).filter((i) => i.legs.length).sort((a, b) => Date.parse(a.departs) - Date.parse(b.departs));

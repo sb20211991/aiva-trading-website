@@ -59,7 +59,7 @@ function upstream(handler) {
   // Premium voice: OpenAI speech with natural-voice instructions for Kurdish Sorani.
   up = upstream(() => mp3('CKB'));
   r = await tts({ request: req('lang=ckb&text=' + encodeURIComponent('سڵاو، چۆنی؟')), env: { OPENAI_API_KEY: 'sk-test' } }, up);
-  assert.equal(r.status, 200); assert.equal(r.headers.get('X-Aiva-Voice'), 'premium');
+  assert.equal(r.status, 200); assert.equal(r.headers.get('X-Aiva-Voice'), 'openai');
   assert.equal(up.calls[0].url, 'https://api.openai.com/v1/audio/speech');
   const body = JSON.parse(up.calls[0].init.body);
   assert.equal(body.model, 'gpt-4o-mini-tts'); assert.equal(body.input, 'سڵاو، چۆنی؟');
@@ -72,6 +72,39 @@ function upstream(handler) {
   assert.equal(r.status, 200); assert.equal(r.headers.get('X-Aiva-Voice'), 'google');
   r = await tts({ request: req('lang=ckb&text=hi'), env: { OPENAI_API_KEY: 'sk-test' } }, up);
   assert.equal(r.status, 502); assert.equal((await r.json()).fallback, 'device');
+
+  // Google Cloud Text-to-Speech (official): Chirp 3 HD voice first, language default if that voice is not offered.
+  const b64 = (t) => Buffer.from(t).toString('base64');
+  up = upstream((u, init) => {
+    if (u.startsWith('https://texttospeech.googleapis.com/')) return Response.json({ audioContent: b64('CLOUD') });
+    return mp3('OTHER');
+  });
+  r = await tts({ request: req('lang=ar&text=' + encodeURIComponent('أهلاً')), env: { GOOGLE_TTS_API_KEY: 'g-key', OPENAI_API_KEY: 'sk' } }, up);
+  assert.equal(r.headers.get('X-Aiva-Voice'), 'google-cloud');
+  assert.equal(new TextDecoder().decode(await r.arrayBuffer()), 'CLOUD');
+  assert.match(up.calls[0].url, /text:synthesize\?key=g-key$/);
+  let cb = JSON.parse(up.calls[0].init.body);
+  assert.deepEqual([cb.voice.languageCode, cb.voice.name, cb.audioConfig.audioEncoding], ['ar-XA', 'ar-XA-Chirp3-HD-Aoede', 'MP3']);
+  up = upstream((u, init) => JSON.parse(init.body || '{}').voice?.name ? new Response('{}', { status: 400 }) : Response.json({ audioContent: b64('DEFAULT') }));
+  r = await tts({ request: req('lang=tr&text=Merhaba'), env: { GOOGLE_TTS_API_KEY: 'g-key' } }, up);
+  assert.equal(new TextDecoder().decode(await r.arrayBuffer()), 'DEFAULT');
+  assert.equal(JSON.parse(up.calls[1].init.body).voice.name, undefined);
+  // Automatic fallback: Google Cloud down -> OpenAI -> keyless voice.
+  up = upstream((u) => u.includes('texttospeech') ? new Response('', { status: 503 }) : u.includes('openai') ? mp3('OAI') : mp3('FREE'));
+  r = await tts({ request: req('lang=fr&text=Bonjour'), env: { GOOGLE_TTS_API_KEY: 'g', OPENAI_API_KEY: 'sk' } }, up);
+  assert.deepEqual([r.headers.get('X-Aiva-Voice'), new TextDecoder().decode(await r.arrayBuffer())], ['openai', 'OAI']);
+  up = upstream((u) => u.includes('texttospeech') || u.includes('openai') ? new Response('', { status: 500 }) : mp3('FREE'));
+  r = await tts({ request: req('lang=fr&text=Bonjour'), env: { GOOGLE_TTS_API_KEY: 'g', OPENAI_API_KEY: 'sk' } }, up);
+  assert.deepEqual([r.headers.get('X-Aiva-Voice'), new TextDecoder().decode(await r.arrayBuffer())], ['google', 'FREE']);
+  // Kurdish Sorani skips Google Cloud (no Sorani voice there) and goes straight to OpenAI.
+  up = upstream((u) => u.includes('openai') ? mp3('CKB') : mp3('WRONG'));
+  r = await tts({ request: req('lang=ckb&text=' + encodeURIComponent('سڵاو')), env: { GOOGLE_TTS_API_KEY: 'g', OPENAI_API_KEY: 'sk' } }, up);
+  assert.equal(up.calls.length, 1); assert.equal(r.headers.get('X-Aiva-Voice'), 'openai');
+  d = await (await tts({ request: req('info=1'), env: { GOOGLE_TTS_API_KEY: 'g', OPENAI_API_KEY: 'sk' } })).json();
+  assert.deepEqual(d.providers.ar, ['google-cloud', 'openai', 'google']); assert.deepEqual(d.providers.ckb, ['openai']);
+  assert.equal(d.premiumVoices.length, TARGETS.size);
+  d = await (await tts({ request: req('info=1'), env: { GOOGLE_TTS_API_KEY: 'g' } })).json();
+  assert.ok(!d.voices.includes('ckb')); assert.deepEqual(d.providers.en, ['google-cloud', 'google']);
 
   // Validation and abuse protection.
   assert.equal((await tts({ request: req('lang=xx&text=hi'), env: {} }, upstream(() => mp3('')))).status, 400);
@@ -132,6 +165,20 @@ function browser({ unprefixed = false } = {}) {
   const ctx = vm.createContext({ window: win, Date: { now: () => now }, console, Math, Number, String, Array, Object, Set, Map, Promise, Uint8Array, DataView, encodeURIComponent, JSON });
   vm.runInContext(readFileSync(pub('aiva-voice.js'), 'utf8'), ctx, { filename: 'aiva-voice.js' });
   return { AV: win.AivaVoice, clock, recs, win };
+}
+
+for (const lang of ['en-GB', 'ckb-IQ', 'ar-SA']) {
+  // Same 2-minute session in each direction / language a conversation uses.
+  const { AV, clock, recs } = browser();
+  let ended = null;
+  const rec = AV.createRecorder({ onEnd: (r) => { ended = r; } });
+  await rec.start({ lang }); clock.advance(10);
+  for (let t = 0; t < 115000; t += 23000) { const r = recs.at(-1); r.say(`part ${t / 1000}`, true); clock.advance(12000); r.error('no-speech'); r.end(); clock.advance(11000); }
+  assert.equal(rec.state(), 'listening', `${lang}: still recording at ${clock.now() - 1_000_010} ms`);
+  clock.advance(6000);
+  assert.ok(ended && ended.limit && ended.ms === 120000, `${lang}: stopped at 2:00`);
+  assert.ok(recs.every((r) => r.lang === lang));
+  console.log(`120-second recording in ${lang}: ${recs.length} sessions, stopped at ${ended.ms / 1000}s, text "${ended.text.slice(0, 40)}…"`);
 }
 
 {
