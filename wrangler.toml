@@ -21,6 +21,11 @@ SHOPIFY_LIVE_PAYMENTS_APPROVED = "false"
 SHOPIFY_TEST_GATEWAY_CONFIRMED = "false"
 SQUARE_WEBHOOK_NOTIFICATION_URL = "https://app.aivatrading.uk/api/square-webhook"
 MERCHANT_SUPPORT_EMAIL = "Aivatradingltd2026@gmail.com"
+# Aiva Crypto Pay (BTC, ETH, USDT, USDC, LTC, SOL via BitPay), shared by aivatrading.uk and app.aivatrading.uk.
+# Secret (Pages, never committed): BITPAY_TOKEN (BitPay POS-facade API token). "test" = test.bitpay.com, no real money.
+# Live: BITPAY_ENV = "prod" plus CRYPTO_LIVE_PAYMENTS_APPROVED = "true", only after BitPay merchant approval and a passed test run.
+BITPAY_ENV = "test"
+CRYPTO_LIVE_PAYMENTS_APPROVED = "false"
 
 [[d1_databases]]
 binding = "ORDERS_DB"
