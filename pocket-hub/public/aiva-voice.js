@@ -277,8 +277,8 @@
       if (my !== seq) return 'stopped';
       const { voice, approx } = pickVoice(s.getVoices(), lang);
       const label = o.langName ? o.langName(lang) : lang;
-      if (approx) o.onStatus?.('busy', `This device has no ${label} voice, so Aiva is using the closest voice available. Pronunciation is approximate.`);
-      else if (!voice && lang) o.onStatus?.('busy', `This device has no ${label} voice installed. Playback may not sound right.`);
+      if (approx) o.onStatus?.('', `This device has no ${label} voice, so Aiva is using the closest voice available. Pronunciation is approximate.`);
+      else if (!voice && lang) o.onStatus?.('', `This device has no ${label} voice installed. Playback may not sound right.`);
       const parts = splitText(text, 180);
       try { s.cancel(); } catch {}
       return new Promise((resolve) => {
