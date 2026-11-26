@@ -1,6 +1,6 @@
 """Aiva Search health check: fails (non-zero exit) when a travel endpoint errors or returns no results.
 Providers without credentials are warnings; a configured provider that errors or returns nothing fails. U = base URL to check."""
-import json, os, sys, time, urllib.request, datetime
+import json, os, sys, urllib.request, datetime
 
 U = os.environ.get('U', 'https://app.aivatrading.uk').rstrip('/')
 d = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
@@ -12,20 +12,13 @@ def get(path, timeout=90):
     with urllib.request.urlopen(req, timeout=timeout) as res:
         return json.load(res)
 
-def check(name, path, test, attempts=1):
-    # Third-party feeds occasionally drop one request; a provider is only reported broken when it fails every attempt.
-    for i in range(1, attempts + 1):
-        try:
-            out = test(get(path))
-            print(f'OK   {name}: {out}' + (f' (attempt {i})' if i > 1 else ''))
-            return
-        except Exception as e:
-            if i < attempts:
-                print(f'RETRY {name}: {e}')
-                time.sleep(10)
-                continue
-            fail.append(f'{name}: {e}')
-            print(f'FAIL {name}: {e}')
+def check(name, path, test):
+    try:
+        out = test(get(path))
+        print(f'OK   {name}: {out}')
+    except Exception as e:
+        fail.append(f'{name}: {e}')
+        print(f'FAIL {name}: {e}')
 
 def place(j):
     iatas = {a['iata'] for a in j.get('airports') or []}
@@ -61,6 +54,6 @@ check('flights', f'/api/travel/flights?from=LON&to=PAR&depart={d}&return={r}&adu
 # Timetables are checked a few days out: open GTFS feeds publish a few weeks ahead at most, so a 30-day date would test
 # the feed horizon rather than the planner.
 near = (datetime.date.today() + datetime.timedelta(days=3)).isoformat()
-check('transfers', f'/api/travel/transfers?from=49.009,2.5541&to=48.8566,2.3522&time={near}T12:00&tz=Europe/Paris', transfers, attempts=3)
+check('transfers', f'/api/travel/transfers?from=49.009,2.5541&to=48.8566,2.3522&time={near}T12:00&tz=Europe/Paris', transfers)
 for w in warn: print('WARN ' + w)
 if fail: sys.exit('Aiva Search health check failed: ' + '; '.join(fail))
