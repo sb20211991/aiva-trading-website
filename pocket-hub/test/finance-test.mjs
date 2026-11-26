@@ -65,7 +65,10 @@ const req = (q) => new Request('https://app.aivatrading.uk' + q);
   assert.equal(d.rates.USD, 1.2712); assert.equal(d.sources.USD, 'live');
   assert.equal(d.rates.IQD, 1665.2); assert.equal(d.sources.IQD, 'live');
   assert.equal(d.rates.KMF, 560.2); assert.equal(d.sources.KMF, 'er');
-  assert.ok(!('BTC' in d.rates) && !('XAU' in d.rates));
+  // Metals and the largest coins in the same live feed are offered, but labelled: never mixed up with currencies.
+  assert.equal(d.kinds.BTC, 'crypto'); assert.equal(d.kinds.XAU, 'metal'); assert.equal(d.kinds.USD, 'fiat');
+  assert.equal(d.rates.BTC, 0.0000141); assert.equal(d.names.XAU, 'Gold (troy ounce)'); assert.match(d.names.BTC, /Bitcoin \(cryptocurrency\)/);
+  assert.deepEqual(d.counts, { fiat: 6, metal: 1, crypto: 1 });
   assert.ok(d.live); assert.equal(d.count, Object.keys(d.rates).length);
   // Every returned currency has an English name, not only the curated list.
   assert.equal(d.names.KMF, currencyName('KMF')); assert.notEqual(d.names.KMF, 'KMF');
@@ -93,4 +96,21 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 assert.ok(html.indexOf('src="aiva-finance.js"') > -1 && html.indexOf('src="aiva-finance.js"') < html.indexOf('src="app.js"'));
 assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), /window\.aivaFxSuffix/);
 assert.match(readFileSync(new URL('../public/service-worker.js', import.meta.url), 'utf8'), /aiva-finance\.js/);
+// 180 options: every world currency the feeds publish, four precious metals and ten cryptocurrencies, all live.
+{
+  const fiat = Intl.supportedValuesOf('currency').filter((c) => !/^X/.test(c) || ['XAF', 'XCD', 'XOF', 'XPF', 'XDR'].includes(c)).slice(0, 166);
+  const live = Object.fromEntries(fiat.map((c, i) => [c, String(1 + i / 10)]));
+  for (const c of ['XAU', 'XAG', 'XPT', 'XPD']) live[c] = '0.0004';
+  for (const c of COINS) live[c.symbol] = '0.001';
+  const er = Object.fromEntries(fiat.map((c) => [c, 2]));
+  const f = stub([['exchange-rates?currency=GBP', reply({ data: { currency: 'GBP', rates: live } })], ['frankfurter', reply({}, 500)],
+    ['open.er-api', reply({ result: 'success', rates: er })]]);
+  const d = await (await fxHandler(req('/api/finance/fx?base=GBP'), f, false)).json();
+  assert.equal(d.counts.metal, 4); assert.equal(d.counts.crypto, 10);
+  assert.equal(d.count, d.counts.fiat + 14); assert.ok(d.count >= 170, String(d.count));
+  assert.deepEqual(Object.keys(d.kinds).filter((c) => d.kinds[c] === 'crypto'), COINS.slice(0, 10).map((c) => c.symbol));
+  // Four- and five-letter coin codes can be asked for by symbol.
+  const one = await (await fxHandler(req('/api/finance/fx?base=GBP&symbols=USDT,XAU'), f, false)).json();
+  assert.deepEqual(Object.keys(one.rates).sort(), ['USDT', 'XAU']);
+}
 console.log('FINANCE CHECKS PASSED');

@@ -16,6 +16,8 @@ export const COINBASE = 'https://api.coinbase.com/v2';
 let DN = null;
 try { DN = new Intl.DisplayNames(['en'], { type: 'currency' }); } catch {}
 export const currencyName = (c) => CURRENCIES[c] || (DN ? DN.of(c) : '') || c;
+export const unitName = (c, kind) => kind === 'metal' ? METALS[c] || c
+  : kind === 'crypto' ? `${COINS.find((x) => x.symbol === c)?.name || c} (cryptocurrency)` : currencyName(c);
 let ISO = null;
 try { ISO = new Set(Intl.supportedValuesOf('currency')); } catch {}
 /* Codes Coinbase lists that are not national currencies (crypto, metals, special drawing rights). */
@@ -37,6 +39,14 @@ export const CURRENCIES = {
   GEL: 'Georgian lari', AZN: 'Azerbaijani manat', KZT: 'Kazakhstani tenge'
 };
 export const isCurrency = (c) => /^[A-Z]{3}$/.test(c || '');
+
+/* Beyond the world's national currencies (about 160 are in circulation, and every one the feeds publish is offered),
+   Aiva Finance offers the four ISO 4217 precious-metal units and the ten largest cryptocurrencies, so the converter
+   reaches 180 options. Both come from the same live Coinbase exchange-rate reply as the currencies; nothing is
+   estimated. Each code is tagged in `kinds` ('fiat', 'metal' or 'crypto') so the app can label it. */
+export const METALS = { XAU: 'Gold (troy ounce)', XAG: 'Silver (troy ounce)', XPT: 'Platinum (troy ounce)', XPD: 'Palladium (troy ounce)' };
+export const CRYPTO_UNITS = 10;
+export const isUnit = (c) => isCurrency(c) || /^[A-Z0-9]{2,6}$/.test(c || '');
 
 export const COINS = [
   { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin' },
@@ -106,6 +116,20 @@ export async function ratesFor(base, fetcher = fetch) {
   }
   if (!Object.keys(out.rates).length) throw Object.assign(new Error(`No exchange rates are available for ${base} right now`), { status: 502 });
   out.rates[base] = 1; out.sources[base] = 'base';
+  out.kinds = Object.fromEntries(Object.keys(out.rates).map((c) => [c, 'fiat']));
+  /* Precious metals and the largest cryptocurrencies, only as the live feed prices them (units per 1 `base`). */
+  if (lr) {
+    for (const c of Object.keys(METALS)) {
+      const r = Number(lr[c]);
+      if (finite(r) && !(c in out.rates)) { out.rates[c] = r; out.sources[c] = 'live'; out.kinds[c] = 'metal'; }
+    }
+    let n = 0;
+    for (const coin of COINS) {
+      if (n >= CRYPTO_UNITS) break;
+      const r = Number(lr[coin.symbol]);
+      if (finite(r) && !(coin.symbol in out.rates)) { out.rates[coin.symbol] = r; out.sources[coin.symbol] = 'live'; out.kinds[coin.symbol] = 'crypto'; n++; }
+    }
+  }
   return out;
 }
 
@@ -113,15 +137,17 @@ export async function fxHandler(request, fetcher = fetch, useCache = true) {
   const url = new URL(request.url);
   const base = (url.searchParams.get('base') || 'GBP').toUpperCase();
   if (!isCurrency(base)) return json({ error: 'Choose a three-letter currency code, for example GBP' }, 400);
-  const symbols = (url.searchParams.get('symbols') || '').toUpperCase().split(',').filter(isCurrency);
+  const symbols = (url.searchParams.get('symbols') || '').toUpperCase().split(',').filter(isUnit);
   try {
-    const all = useCache ? await cached(`aiva-fx-v2-${base}`, 300, () => ratesFor(base, fetcher)) : await ratesFor(base, fetcher);
+    const all = useCache ? await cached(`aiva-fx-v3-${base}`, 300, () => ratesFor(base, fetcher)) : await ratesFor(base, fetcher);
     const pick = symbols.length ? symbols : Object.keys(all.rates);
-    const rates = {}, sources = {};
-    for (const c of pick) if (c in all.rates) { rates[c] = all.rates[c]; sources[c] = all.sources[c]; }
+    const rates = {}, sources = {}, kinds = {};
+    for (const c of pick) if (c in all.rates) { rates[c] = all.rates[c]; sources[c] = all.sources[c]; kinds[c] = all.kinds?.[c] || 'fiat'; }
     const missing = pick.filter((c) => !(c in rates));
-    const names = Object.fromEntries(Object.keys(all.rates).sort().map((c) => [c, currencyName(c)]));
-    return json({ base, rates, sources, missing, date: all.date, updated: all.updated, live: all.live, names, count: Object.keys(all.rates).length,
+    const names = Object.fromEntries(Object.keys(all.rates).sort().map((c) => [c, unitName(c, all.kinds?.[c])]));
+    const tally = (k) => Object.values(all.kinds || {}).filter((v) => v === k).length;
+    return json({ base, rates, sources, kinds, missing, date: all.date, updated: all.updated, live: all.live, names, count: Object.keys(all.rates).length,
+      counts: { fiat: tally('fiat'), metal: tally('metal'), crypto: tally('crypto') },
       source: 'Live mid-market rates from Coinbase; European Central Bank reference rates via Frankfurter and open.er-api.com (ExchangeRate-API) for the rest. Indicative, not a dealing rate.' }, 200, 120);
   } catch (err) {
     return json({ error: err.message || 'Exchange rates are unavailable right now' }, err.status || 502);

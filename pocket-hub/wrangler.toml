@@ -18,3 +18,6 @@ HOTEL_BOOKING_LIVE = "true"
 FLIGHT_BOOKING_LIVE = "true"
 # Paid seats and extra bags with the live key: off until a Nuitee sandbox run of the attach flow passes.
 FLIGHT_EXTRAS_LIVE = "false"
+# Aiva Pay (card, Apple Pay, Google Pay, Alipay, WeChat Pay via Stripe; crypto via BitPay): live keys take real payments
+# only here. Preview deployments never set this, so a live key there stays closed.
+AIVA_PAY_LIVE = "true"

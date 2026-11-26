@@ -9,7 +9,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const F = { pref: 'GBP', rates: null, names: {}, base: null, meta: null, cache: {}, coins: [], crypto: null, multi: ['USD', 'EUR', 'IQD', 'TRY', 'AED', 'SAR', 'CNY', 'JPY'] };
   try { F.pref = localStorage.getItem(KEY) || 'GBP'; } catch {}
-  try { const m = JSON.parse(localStorage.getItem(MULTI_KEY) || 'null'); if (Array.isArray(m) && m.length) F.multi = m.filter((c) => /^[A-Z]{3}$/.test(c)).slice(0, 20); } catch {}
+  try { const m = JSON.parse(localStorage.getItem(MULTI_KEY) || 'null'); if (Array.isArray(m) && m.length) F.multi = m.filter((c) => /^[A-Z0-9]{2,6}$/.test(c)).slice(0, 20); } catch {}
 
   const money = (n, c, digits) => {
     try { return new Intl.NumberFormat('en-GB', { style: 'currency', currency: c, maximumFractionDigits: digits ?? (n >= 100 ? 2 : n >= 1 ? 4 : 8) }).format(n); }
@@ -27,6 +27,8 @@
     const d = await get(`/api/finance/fx?base=${encodeURIComponent(base)}`);
     F.cache[base] = { at: Date.now(), d };
     if (d.names) F.names = { ...F.names, ...d.names };
+    if (d.kinds) F.kinds = { ...(F.kinds || {}), ...d.kinds };
+    if (d.counts) F.counts = d.counts;
     return d;
   }
   async function loadRates() {
@@ -44,7 +46,16 @@
   };
 
   const order = (a, b) => a === 'GBP' ? -1 : b === 'GBP' ? 1 : a.localeCompare(b);
-  const options = (names, sel) => Object.keys(names).sort(order).map((c) => `<option value="${c}"${c === sel ? ' selected' : ''}>${c} — ${esc(names[c])}</option>`).join('');
+  const opt = (names, sel) => (c) => `<option value="${esc(c)}"${c === sel ? ' selected' : ''}>${esc(c)} — ${esc(names[c])}</option>`;
+  /* World currencies first, then precious metals and cryptocurrencies in their own labelled groups. */
+  const kindOf = (c) => (F.kinds || {})[c] || 'fiat';
+  const options = (names, sel, fiatOnly) => {
+    const codes = Object.keys(names).sort(order), o = opt(names, sel);
+    const fiat = codes.filter((c) => kindOf(c) === 'fiat').map(o).join('');
+    if (fiatOnly) return fiat;
+    const group = (k, label) => { const g = codes.filter((c) => kindOf(c) === k); return g.length ? `<optgroup label="${label}">${g.map(o).join('')}</optgroup>` : ''; };
+    return (codes.some((c) => kindOf(c) !== 'fiat') ? `<optgroup label="World currencies">${fiat}</optgroup>` : fiat) + group('metal', 'Precious metals') + group('crypto', 'Cryptocurrencies');
+  };
 
   function fillSelects() {
     const names = F.names;
@@ -52,9 +63,12 @@
     for (const [id, val] of [['fxBase', $('fxBase')?.value || 'GBP'], ['fxTarget', $('fxTarget')?.value || 'USD'], ['afPref', F.pref], ['afMultiAdd', '']]) {
       const el = $(id); if (!el) continue;
       const extra = { ...names }; if (val && !(val in extra)) extra[val] = val;
-      el.innerHTML = (id === 'afMultiAdd' ? '<option value="">+ Add a currency…</option>' : '') + options(extra, val);
+      el.innerHTML = (id === 'afMultiAdd' ? '<option value="">+ Add a currency…</option>' : '') + options(extra, val, id === 'afPref');
     }
-    const n = $('afCount'); if (n) n.textContent = `${Object.keys(names).length} currencies available`;
+    const n = $('afCount'), k = F.counts;
+    if (n) n.textContent = k && (k.metal || k.crypto)
+      ? `${Object.keys(names).length} currency options: ${k.fiat} world currencies, ${k.metal} precious metals, ${k.crypto} cryptocurrencies`
+      : `${Object.keys(names).length} currencies available`;
   }
 
   async function convert() {
@@ -62,8 +76,10 @@
     if (!Number.isFinite(amount) || amount < 0) { out.textContent = 'Enter a valid amount.'; return; }
     out.textContent = 'Loading rate…';
     try {
-      const d = await ratesOf(base);
-      const rate = d.rates?.[target];
+      /* Coins and metals are priced in the GBP feed, so a conversion from one of them crosses through GBP. */
+      const cross = kindOf(base) !== 'fiat' || !/^[A-Z]{3}$/.test(base);
+      const d = await ratesOf(cross ? 'GBP' : base);
+      const rate = cross ? d.rates?.[target] / d.rates?.[base] : d.rates?.[target];
       if (!Number.isFinite(rate)) throw new Error(`${target} is not published against ${base}`);
       out.textContent = `${num(amount, 4)} ${base} ≈ ${num(amount * rate, 4)} ${target}\n1 ${base} ≈ ${num(rate)} ${target} · 1 ${target} ≈ ${num(1 / rate)} ${base}\nSource: ${srcLabel(d.sources?.[target], d)}. Indicative only, not a dealing rate.`;
     } catch (err) { out.textContent = `Could not load this rate. ${err.message}.`; }
@@ -74,7 +90,8 @@
     const el = $('afMulti'); if (!el) return;
     const base = $('fxBase')?.value || F.pref, amount = Number($('fxAmount')?.value) || 0;
     try {
-      const d = await ratesOf(base);
+      const cross = kindOf(base) !== 'fiat' || !/^[A-Z]{3}$/.test(base), g = await ratesOf(cross ? 'GBP' : base);
+      const d = cross ? { ...g, rates: Object.fromEntries(Object.entries(g.rates || {}).map(([c, r]) => [c, r / g.rates[base]])) } : g;
       el.innerHTML = F.multi.filter((c) => c !== base).map((c) => {
         const r = d.rates?.[c];
         return `<div class="item row"><span><b>${esc(c)}</b> <span class="mini">${esc(F.names[c] || c)}</span></span><span>${Number.isFinite(r) ? `<b>${esc(money(amount * r, c))}</b> <span class="mini">${d.sources?.[c] === 'live' ? 'live' : d.sources?.[c] === 'ecb' ? 'ECB' : 'daily'}</span>` : '<span class="mini">not published</span>'} <button type="button" class="btn light" style="padding:2px 8px" data-af-rm="${esc(c)}" aria-label="Remove ${esc(c)}">✕</button></span></div>`;

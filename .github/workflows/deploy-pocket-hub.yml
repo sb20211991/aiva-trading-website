@@ -52,7 +52,7 @@ jobs:
             git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
           fi
       - name: Test
-        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs
+        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs && node test/pay-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
       # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
       # frequently over it, so a free TfL app key is what makes London live boards reliable. The car rental gateway is
@@ -66,9 +66,13 @@ jobs:
           CAR_RENTAL_GATEWAY_KEY: ${{ secrets.CAR_RENTAL_GATEWAY_KEY }}
           CAR_RENTAL_PROVIDER: ${{ secrets.CAR_RENTAL_PROVIDER }}
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+          # Aiva Pay: Stripe (card, Apple Pay, Google Pay, Alipay, WeChat Pay) and BitPay (Bitcoin and crypto).
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          BITPAY_TOKEN: ${{ secrets.BITPAY_TOKEN }}
+          BITPAY_ENV: ${{ secrets.BITPAY_ENV }}
         run: |
           set -euo pipefail
-          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER COINGECKO_API_KEY; do
+          for name in TFL_APP_KEY RAIL_DATA_LDB_KEY CAR_RENTAL_GATEWAY_URL CAR_RENTAL_GATEWAY_KEY CAR_RENTAL_PROVIDER COINGECKO_API_KEY STRIPE_SECRET_KEY BITPAY_TOKEN BITPAY_ENV; do
             value="${!name:-}"
             if [ -z "$value" ]; then echo "$name: not set in repository secrets, skipping"; continue; fi
             printf '%s' "$value" | npx --yes wrangler@4 pages secret put "$name" --project-name="$PROJECT" > /dev/null
@@ -135,7 +139,33 @@ jobs:
           }
           retry 'finance crypto api' 4 crypto_api
           curl -sf -m 30 -o "$RUNNER_TEMP/aiva-finance.js" "$U/aiva-finance.js" && grep -q 'afCcFrom' "$RUNNER_TEMP/aiva-finance.js"
+          python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('fx options:',d['count'],d.get('counts'))" "$RUNNER_TEMP/fx.json"
+          # Aiva Pay: the checkout script is served and every method reports its real state (never an error page).
+          curl -sf -m 30 -o "$RUNNER_TEMP/aiva-pay.js" "$U/aiva-pay.js" && grep -q 'data-ap-method' "$RUNNER_TEMP/aiva-pay.js"
+          pay_api() {
+            curl -sf -m 30 -o "$RUNNER_TEMP/pay.json" "$U/api/pay/methods" || return 1
+            python3 -c "import json,sys;d=json.load(open(sys.argv[1]));m=d['methods'];print('pay: open',d['open'],'products',len(d['products']));[print(' ',x['id'],'available' if x['available'] else 'off: '+x['reason']) for x in m];sys.exit(0 if len(m)==6 else 1)" "$RUNNER_TEMP/pay.json"
+          }
+          retry 'aiva pay methods api' 4 pay_api
           U="$U" python3 ../scripts/pocket-hub-health.py
+      # Apple Pay on Aiva's own Stripe account: register app.aivatrading.uk as a payment method domain (Stripe serves
+      # the Apple Pay domain verification itself; the association file is also hosted under /.well-known). Idempotent,
+      # skipped without a Stripe key, and never fails the release.
+      - name: Register app.aivatrading.uk for Apple Pay with Stripe
+        if: github.event_name != 'pull_request'
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${STRIPE_SECRET_KEY:-}" ]; then echo "STRIPE_SECRET_KEY not set: Apple Pay domain registration skipped"; exit 0; fi
+          A=(-s -m 30 -u "$STRIPE_SECRET_KEY:" -H 'Stripe-Version: 2024-06-20')
+          id=$(curl "${A[@]}" "https://api.stripe.com/v1/payment_method_domains?domain_name=app.aivatrading.uk" | python3 -c "import json,sys;d=json.load(sys.stdin).get('data') or [];print(d[0]['id'] if d else '')")
+          if [ -z "$id" ]; then
+            id=$(curl "${A[@]}" -X POST https://api.stripe.com/v1/payment_method_domains -d domain_name=app.aivatrading.uk -d enabled=true | python3 -c "import json,sys;print(json.load(sys.stdin).get('id',''))")
+          fi
+          [ -n "$id" ] || { echo "Stripe did not register the domain (check the Stripe Dashboard)"; exit 0; }
+          curl "${A[@]}" -X POST "https://api.stripe.com/v1/payment_method_domains/$id/validate" | python3 -c "import json,sys;d=json.load(sys.stdin);print('Apple Pay domain:',d.get('domain_name'),(d.get('apple_pay') or {}).get('status'),(d.get('apple_pay') or {}).get('status_details') or '');print('Google Pay:',(d.get('google_pay') or {}).get('status'))"
+          exit 0
       - name: Move app.aivatrading.uk to Pocket Hub (with rollback)
         if: github.event_name != 'pull_request'
         run: python3 scripts/move-app-domain.py
