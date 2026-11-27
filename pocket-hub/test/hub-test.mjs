@@ -54,6 +54,12 @@ assert.equal((await hubTranslate({ request: tReq({ text: 'hi', target: 'ar' }) }
 const app = readFileSync(pub('app.js'), 'utf8');
 assert.doesNotMatch(app + html, /translate\.google\.com/);
 assert.match(app, /fetch\('\/api\/hub-translate'/);
+// Aiva Trading Website tab: a plain link to the unchanged website (it forbids framing), plus a way back to the dashboard.
+assert.match(app, /\['website','🏢','Aiva Trading Website',/);
+assert.match(html, /<section id="website" class="panel">/);
+assert.match(html, /<a class="btn gold" id="openWebsite" href="https:\/\/aivatrading\.uk" target="_blank" rel="noopener">/);
+assert.match(html, /id="website"[^]*?data-go="home">← Back to dashboard</);
+assert.doesNotMatch(html, /<iframe[^>]*aivatrading\.uk/);
 const appLangs = [...app.match(/const LANG=\[(.*?)\];/)[1].matchAll(/\['([^']+)'/g)].map((m) => m[1]);
 assert.deepEqual(appLangs.sort(), ['auto', ...CORE_CODES].sort()); // the original 14; the rest load from /api/hub-languages
 for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate', 'speakInput', 'voiceStatus', 'translationOutput']) assert.match(html, new RegExp(`id="${id}"`));
