@@ -58,7 +58,7 @@ jobs:
         run: |
           node scripts/verify-languages.mjs || echo "Language check unavailable, deploying with the original 14 languages"
       - name: Test
-        run: node test/translate-world-test.mjs && node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs && node test/pay-test.mjs && node test/voice-test.mjs && node test/transit-retry-test.mjs
+        run: node test/flight-calendar-test.mjs && node test/translate-world-test.mjs && node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs && node test/pay-test.mjs && node test/voice-test.mjs && node test/transit-retry-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
       # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
       # frequently over it, so a free TfL app key is what makes London live boards reliable. The car rental gateway is
@@ -161,6 +161,11 @@ jobs:
           curl -sf -m 30 -o "$RUNNER_TEMP/tts.json" "$U/api/hub-tts?info=1" && python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('voice: premium',d['premium'],'natural voices',d['voices'],'premium voices',d.get('premiumVoices'))" "$RUNNER_TEMP/tts.json"
           tts_api() { curl -sf -m 30 -o "$RUNNER_TEMP/tts.mp3" -w 'voice audio %{http_code} %{content_type} %{size_download} bytes\n' "$U/api/hub-tts?lang=en&text=Hello%20from%20Aiva" && [ "$(stat -c%s "$RUNNER_TEMP/tts.mp3")" -gt 1000 ]; }
           retry 'natural voice api' 3 tts_api || echo 'natural voice provider unreachable from the edge right now: the app falls back to device voices'
+          # Aiva six-month price calendar: the script is served and one real calendar day answers honestly (a live price,
+          # "none" or "unavailable"; never an invented fare).
+          code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U/aiva-fare-calendar.js"); echo "/aiva-fare-calendar.js $code"; [ "$code" = '200' ] || exit 1
+          D=$(date -u -d '+45 days' +%F)
+          curl -s -m 60 "$U/api/travel/flight-calendar?from=LHR&to=DUB&dates=$D" | python3 -c "import json,sys;d=json.load(sys.stdin);print('calendar:',d.get('provider'),[(x['date'],x['status'],x.get('price')) for x in d.get('days',[])]);sys.exit(0 if all(x['status'] in ('live','none','unavailable') for x in d.get('days',[])) else 1)" || echo 'calendar check could not reach the flight provider'
           # Aiva Translate world languages: the list endpoint, the new scripts and the speech recogniser state.
           curl -sf -m 30 -o "$RUNNER_TEMP/langs.json" "$U/api/hub-languages" && python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['counts'];print('languages:',c,'providers',d['providers'],'verified',d['verifiedAt']);sys.exit(0 if c['text']>=14 and not d['signLanguage'] else 1)" "$RUNNER_TEMP/langs.json"
           for p in /aiva-langs.js /aiva-video.js; do code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p"); printf '%s %s\n' "$p" "$code"; [ "$code" = '200' ] || exit 1; done

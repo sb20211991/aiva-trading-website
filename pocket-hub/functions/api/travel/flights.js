@@ -3,6 +3,18 @@
    Airline offers from Duffel (DUFFEL_ACCESS_TOKEN) or Nuitee/LiteAPI flights (LITEAPI_KEY). Without either: {configured:false}.
    testMode=true while LITEAPI_KEY is a sandbox key (non-production fares). */
 import { json, iata, isDate, clampInt, duffelFlights, nuiteeFlights, isSandboxKey } from '../../_lib/travel.js';
+import { dayFromOffers, remember } from './flight-calendar.js';
+
+/* The same flights sold twice in one reply (same flight numbers and times, same cabin and fare) are shown once,
+   keeping the cheaper copy. Offers stay sorted cheapest first. */
+export function dedupeOffers(offers = []) {
+  const seen = new Set();
+  return offers.filter((o) => {
+    const key = [(o.slices || []).map((s) => `${(s.flights || []).join('+')}@${s.departing}`).join('|'), o.cabin || '', o.refundable, o.changeable, o.baggage || ''].join('#');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+}
 
 const CABINS = ['economy', 'premium_economy', 'business', 'first'];
 export async function onRequestGet({ request, env }, fetcher = fetch) {
@@ -28,6 +40,12 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     : { provider: 'Nuitee', source: 'Flight offers by Nuitee (LiteAPI)', testMode: isSandboxKey(env.LITEAPI_KEY) };
   try {
     const r = await (duffel ? duffelFlights : nuiteeFlights)(q, env, fetcher);
+    r.offers = dedupeOffers((r.offers || []).slice().sort((a, b) => a.price - b.price));
+    // A real search also refreshes that day in the six-month price calendar (one way or the matching round trip).
+    if (q.trip !== 'multi' && !meta.testMode) {
+      const stay = q.ret ? Math.round((Date.parse(q.ret) - Date.parse(q.depart)) / 864e5) : 0;
+      try { await remember({ ...q, stay }, dayFromOffers(q.depart, r.offers, meta.provider), arguments[0]); } catch {}
+    }
     return json({ configured: true, ...r, query: q, ...meta, retrieved: new Date().toISOString() });
   } catch (e) {
     const none = e.status === 422 || e.status === 400 || e.status === 404;
