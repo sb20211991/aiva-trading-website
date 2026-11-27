@@ -166,6 +166,10 @@ jobs:
           code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U/aiva-fare-calendar.js"); echo "/aiva-fare-calendar.js $code"; [ "$code" = '200' ] || exit 1
           D=$(date -u -d '+45 days' +%F)
           curl -s -m 60 "$U/api/travel/flight-calendar?from=LHR&to=DUB&dates=$D" | python3 -c "import json,sys;d=json.load(sys.stdin);print('calendar:',d.get('provider'),[(x['date'],x['status'],x.get('price')) for x in d.get('days',[])]);sys.exit(0 if all(x['status'] in ('live','none','unavailable') for x in d.get('days',[])) else 1)" || echo 'calendar check could not reach the flight provider'
+          # Aiva Ferry: a ferry-only search of the open feeds (Helsinki - Tallinn, Fintraffic GTFS). Informational: the open
+          # feeds can be slow, and an empty reply is reported, never invented.
+          D=$(date -u -d '+3 days' +%F)
+          curl -s -m 90 "$U/api/travel/transfers?from=60.1652,24.9551&to=59.4442,24.7658&day=$D&ferry=1" | python3 -c "import json,sys;d=json.load(sys.stdin)['modes']['ferry'];print('ferry:',d.get('available'),len(d.get('routes',[])),'crossings',[s.get('operator') for r in d.get('routes',[]) for s in r['steps'] if s['kind']=='ferry'][:3])" || echo 'ferry check could not reach the open feeds'
           # Aiva Translate world languages: the list endpoint, the new scripts and the speech recogniser state.
           curl -sf -m 30 -o "$RUNNER_TEMP/langs.json" "$U/api/hub-languages" && python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['counts'];print('languages:',c,'providers',d['providers'],'verified',d['verifiedAt']);sys.exit(0 if c['text']>=14 and not d['signLanguage'] else 1)" "$RUNNER_TEMP/langs.json"
           for p in /aiva-langs.js /aiva-video.js; do code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p"); printf '%s %s\n' "$p" "$code"; [ "$code" = '200' ] || exit 1; done

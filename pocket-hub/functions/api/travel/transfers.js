@@ -6,6 +6,16 @@ import { json, point, localToUTC, googleRoutes, osrm, airportServices, cached } 
 import { openTransit, transitZone, lateSummary } from '../../_lib/transit.js';
 import { rideHailing } from '../../_lib/rides.js';
 import { transportLinks } from '../../_lib/transport-links.js';
+import { motisPlan, asRoutes } from '../../_lib/motis.js';
+
+/* Ferry crossings from the open timetable feeds (Transitous / MOTIS, ferry mode only). Itineraries far slower than the
+   quickest one (for example a detour through a third port) are dropped, and nothing is returned beyond 48 hours. */
+export async function ferryCrossings(from, to, fetcher, time) {
+  const its = await motisPlan(from, to, { fetcher, time, modes: ['ferry'], numItineraries: 6, maxTransfers: 2 });
+  const routes = asRoutes(its).filter((r) => r.steps.some((s) => s.kind === 'ferry') && r.minutes > 0 && r.minutes <= 48 * 60);
+  const quickest = Math.min(...routes.map((r) => r.minutes));
+  return routes.filter((r) => r.minutes <= Math.max(quickest * 2, quickest + 120)).slice(0, 5);
+}
 
 /* Open transport feeds publish a few weeks ahead at most, so "no journey" a long way out is a data horizon, not a missing
    route or an outage. Say which one it is instead of leaving the traveller guessing. */
@@ -62,9 +72,16 @@ export async function onRequestGet({ request, env }, fetcher = fetch) {
     const places = k === 'bus' ? s.busStations : k === 'train' || k === 'metro' || k === 'tram' ? s.stations : [];
     modes[k] = { available: rs.length ? true : timetabled ? false : null, routes: rs, places, late: lateBy[k] || null };
   }
+  /* Ferries: crossings found by the main search, plus (for a ferry search, ferry=1) a ferry-only search of the open feeds,
+     because a mixed search prefers a train or bus when one exists. Absence from open data is reported as unknown (null)
+     for routes the open feeds do not cover, never as "no ferry". */
   const ferryTimetable = google ? Array.isArray(transit) : !!open && open !== 'Transitous';
-  const crossings = ferryTimetable ? routes.filter(route => route.steps.some(step => step.kind === 'ferry')) : [];
-  modes.ferry = { available: crossings.length ? true : ferryTimetable ? false : null, routes: crossings };
+  const found = routes.filter((route) => route.steps.some((step) => step.kind === 'ferry'));
+  let openFerries = null;
+  if (u.get('ferry') === '1' && !google) openFerries = await ferryCrossings(start, to, fetcher, time).catch(soft('open-ferry'));
+  const seen = new Set(), crossings = [...found, ...(openFerries || [])].filter((r) => { const k = r.steps.map((x) => `${x.kind}${x.line}${x.departs}`).join('|'); return !seen.has(k) && seen.add(k); })
+    .sort((a, b) => String(a.steps.find((x) => x.kind === 'ferry')?.departs || '').localeCompare(String(b.steps.find((x) => x.kind === 'ferry')?.departs || '')));
+  modes.ferry = { available: crossings.length ? true : ferryTimetable ? false : null, routes: crossings, source: openFerries?.length ? 'Transitous (MOTIS) · open GTFS ferry timetables' : '' };
   Object.assign(modes, {
     taxi: { available: drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.taxiRanks },
     car: { available: s.carRental.length || drive ? true : null, minutes: drive?.minutes ?? null, distance: drive?.distance ?? null, places: s.carRental },
