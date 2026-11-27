@@ -31,17 +31,26 @@ const findKey = (o, k, depth = 0) => {
 };
 const segs = (j) => (j?.segments || []).map((s) => ({ from: s.originCode, to: s.destinationCode, departing: s.departureTime, arriving: s.arrivalTime,
   airline: s.carrier?.marketingName || '', flight: `${s.carrier?.marketingCode || ''}${s.flight?.marketingNumber || ''}` }));
+/* Seats, bags and other services the airline confirmed in the booking (as Nuitee returns them), for the confirmation page. */
+export function bookedServices(b) {
+  const list = [b?.services, b?.selectedServices, b?.ancillaries, b?.journey?.services].find(Array.isArray) || [];
+  return list.map((x) => ({ name: String(x?.name || x?.description || x?.category || x?.type || '').slice(0, 80), quantity: Number(x?.quantity) || 1,
+    passengerIndex: Number.isInteger(x?.passengerIndex) ? x.passengerIndex : null, segmentKey: String(x?.segmentKey || '').slice(0, 80),
+    price: (() => { const d = x?.pricing?.display || x?.price || {}; const a = Number(d.amount ?? d.total); return Number.isFinite(a) ? { amount: a, currency: String(d.currency || '').slice(0, 3) } : null; })() }))
+    .filter((x) => x.name).slice(0, 60);
+}
 export const shapeFlightBooking = (raw) => {
   const b = raw?.booking || raw || {}, p = b.journey?.pricing?.display || b.pricing?.display || {};
   return { bookingId: b.bookingId || '', bookingRef: b.bookingRef || '', status: b.status || '', pnr: b.pnr || findKey(b, 'pnr'),
-    price: Number(p.total ?? b.price), currency: p.currency || b.currency || '', segments: segs(b.journey), paymentScheduledAt: b.paymentScheduledAt || '' };
+    price: Number(p.total ?? b.price), currency: p.currency || b.currency || '', segments: segs(b.journey), paymentScheduledAt: b.paymentScheduledAt || '',
+    services: bookedServices(b) };
 };
 /* Seats and extra bags the airline offers for this prebook (Nuitee servicesAttachable). Only what the airline returned
    is shown, with its own price; an empty list means the airline offers no paid extras through this channel. */
 const money = (pr) => { const d = pr?.display || pr || {}; const a = Number(d.amount ?? d.total ?? d.price); return Number.isFinite(a) && a >= 0 ? { amount: a, currency: String(d.currency || '').slice(0, 3) } : null; };
 export function shapeServices(raw) {
   const groups = Array.isArray(raw?.groups) ? raw.groups : Array.isArray(raw) ? raw : [];
-  const seats = [], bags = [];
+  const seats = [], bags = [], others = [];
   for (const g of groups) {
     const kind = String(g?.type || g?.category || '').toLowerCase();
     for (const sv of (Array.isArray(g?.services) ? g.services : Array.isArray(g?.items) ? g.items : [])) {
@@ -56,13 +65,26 @@ export function shapeServices(raw) {
         seats.push({ serviceId, segmentKey, passengerType, row, col, number: clean(m.seatNumber || `${row}${col}`, 5), type: clean(m.seatType || '', 20),
           position: clean(m.position || '', 10), available: m.available !== false, price });
       } else if (cat.includes('bag') || cat.includes('lugg')) {
-        const m = sv?.metadata?.baggage || sv?.baggage || {};
-        bags.push({ serviceId, segmentKey, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80), kind: /cabin|carry|hand|overhead|personal/i.test(`${sv?.name || ''} ${sv?.description || ''} ${m.bagType || m.type || ''}`) ? 'cabin' : 'checked',
-          weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) ? Number(m.weight ?? m.weightKg) : null, quantityMax: Math.min(3, Math.max(1, Number(m.maxQuantity || sv?.maxQuantity) || 1)), price });
+        const m = sv?.metadata?.baggage || sv?.baggage || {}, text = `${sv?.name || ''} ${sv?.description || ''} ${m.bagType || m.type || ''}`;
+        const dims = m.dimensions || m.size || {}, size = typeof dims === 'string' ? clean(dims, 40)
+          : [dims.length, dims.width, dims.height].every((v) => Number.isFinite(Number(v))) ? `${dims.length} × ${dims.width} × ${dims.height} ${clean(dims.unit || 'cm', 4)}` : '';
+        bags.push({ serviceId, segmentKey, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80),
+          kind: /sport|ski|snowboard|golf|bike|bicycle|surf|instrument|special|pram|stroller|wheelchair/i.test(text) ? 'special' : /personal|under.?seat|small bag/i.test(text) ? 'personal' : /cabin|carry|hand|overhead/i.test(text) ? 'cabin' : 'checked',
+          weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) ? Number(m.weight ?? m.weightKg) : null, size,
+          quantityMax: Math.min(3, Math.max(1, Number(m.maxQuantity || sv?.maxQuantity) || 1)), price });
+      } else if (price) {
+        /* Any other paid service the airline offers for this fare (priority boarding, meals, fast track, lounge, insurance,
+           flexibility...): shown with the airline's own name and price, attached the same way. Unpriced items are skipped. */
+        const name = clean(sv?.name || sv?.description || '', 80);
+        if (!name) continue;
+        const kindOf = /priority|boarding/i.test(name + cat) ? 'priority' : /meal|food|drink|snack/i.test(name + cat) ? 'meal' : /insur/i.test(name + cat) ? 'insurance'
+          : /flex|change|refund|cancel/i.test(name + cat) ? 'flexibility' : /lounge|fast.?track/i.test(name + cat) ? 'airport' : 'other';
+        others.push({ serviceId, segmentKey, passengerType, name, kind: kindOf, description: clean(sv?.description && sv.description !== sv?.name ? sv.description : '', 160),
+          quantityMax: Math.min(3, Math.max(1, Number(sv?.maxQuantity || sv?.metadata?.maxQuantity) || 1)), price });
       }
     }
   }
-  return { seats: seats.slice(0, 1500), bags: bags.slice(0, 60) };
+  return { seats: seats.slice(0, 1500), bags: bags.slice(0, 60), others: others.slice(0, 40) };
 }
 export function selection(list, paxCount) {
   if (!Array.isArray(list) || !list.length || list.length > 40) return null;
@@ -131,7 +153,7 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!p?.prebookId || !p.transactionId || !p.secretKey) return json({ error: 'This fare is no longer available. Please choose another flight.' }, 409);
       const d = p.booking?.journey?.pricing?.display || {};
       return json({ prebookId: p.prebookId, transactionId: p.transactionId, secretKey: p.secretKey, price: Number(p.price ?? d.total), currency: p.currency || d.currency || '',
-        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [] }, extrasToken: extrasOn ? await extrasToken(p.prebookId, env) : undefined, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
+        segments: segs(p.booking?.journey), services: extrasOn ? shapeServices(p.servicesAttachable) : { seats: [], bags: [], others: [] }, extrasToken: extrasOn ? await extrasToken(p.prebookId, env) : undefined, passengers: pax.length, testMode, paymentEnv: testMode ? 'sandbox' : 'live' });
     }
     if (body?.action === 'services') {
       if (!extrasOn) return json({ error: 'Seat and bag add-ons are not available yet. Your fare is unchanged; continue to payment.', blocked: 'extras' }, 403);
