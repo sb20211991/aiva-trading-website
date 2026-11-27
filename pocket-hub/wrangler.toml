@@ -9,6 +9,11 @@ pages_build_output_dir = "public"
 # Website API paths that still arrive on app.aivatrading.uk (e.g. the Square webhook) are forwarded here.
 WEBSITE_ORIGIN = "https://aiva-trading.pages.dev"
 
+# Aiva Translate video and live speech recognition: OpenAI Whisper large-v3-turbo on Cloudflare Workers AI.
+# Usage is metered by Cloudflare (free daily allocation, then about $0.0005 per audio minute on a paid Workers plan).
+# Pages does not inherit bindings into env sections, so it is repeated below. Set AIVA_STT_ENABLED = "false" to turn it off.
+[ai]
+binding = "AI"
 
 # Production only: real Nuitee bookings and card payments. Previews keep the sandbox key, which never charges.
 # Pages does not inherit top-level [vars] into env sections, so WEBSITE_ORIGIN is repeated.
@@ -21,3 +26,6 @@ FLIGHT_EXTRAS_LIVE = "false"
 # Aiva Pay (card, Apple Pay, Google Pay, Alipay, WeChat Pay via Stripe; crypto via BitPay): live keys take real payments
 # only here. Preview deployments never set this, so a live key there stays closed.
 AIVA_PAY_LIVE = "true"
+
+[env.production.ai]
+binding = "AI"

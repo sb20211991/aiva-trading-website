@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { onRequest as forward } from '../functions/api/[[path]].js';
 import { onRequestPost as hubTranslate } from '../functions/api/hub-translate.js';
-import { SOURCES } from '../functions/_lib/languages.js';
+import { CORE_CODES } from '../functions/_lib/languages.js';
 
 const realFetch = globalThis.fetch;
 let seen;
@@ -36,11 +36,11 @@ const tReq = (body, origin = 'https://app.aivatrading.uk') => new Request('https
 let call;
 const engine = (reply, ok = true) => async (url, init) => { call = { url, body: String(init.body) }; return new Response(JSON.stringify(reply), { status: ok ? 200 : 503 }); };
 let r = await hubTranslate({ request: tReq({ text: ' Hello ', source: 'auto', target: 'ckb' }) }, engine([['سڵاو', 'en']]));
-assert.equal(r.status, 200); assert.deepEqual(await r.json(), { translation: 'سڵاو', detected: 'en' });
+assert.equal(r.status, 200); assert.deepEqual(await r.json(), { translation: 'سڵاو', detected: 'en', provider: 'google' });
 assert.match(call.url, /^https:\/\/translate\.googleapis\.com\/translate_a\/t\?client=gtx&sl=auto&tl=ckb&format=text$/);
 assert.equal(new URLSearchParams(call.body).get('q'), 'Hello');
 r = await hubTranslate({ request: tReq({ text: 'كم السعر؟', source: 'ar', target: 'en' }) }, engine(['How much is the price?']));
-assert.deepEqual(await r.json(), { translation: 'How much is the price?', detected: 'ar' });
+assert.deepEqual(await r.json(), { translation: 'How much is the price?', detected: 'ar', provider: 'google' });
 assert.equal((await hubTranslate({ request: tReq({ text: 'x', source: 'en', target: 'xx' }) }, engine([]))).status, 400);
 assert.equal((await hubTranslate({ request: tReq({ text: '   ', target: 'ar' }) }, engine([]))).status, 400);
 assert.equal((await hubTranslate({ request: tReq({ text: 'a'.repeat(5001), target: 'ar' }) }, engine([]))).status, 413);
@@ -55,7 +55,7 @@ const app = readFileSync(pub('app.js'), 'utf8');
 assert.doesNotMatch(app + html, /translate\.google\.com/);
 assert.match(app, /fetch\('\/api\/hub-translate'/);
 const appLangs = [...app.match(/const LANG=\[(.*?)\];/)[1].matchAll(/\['([^']+)'/g)].map((m) => m[1]);
-assert.deepEqual(appLangs.sort(), [...SOURCES].sort());
+assert.deepEqual(appLangs.sort(), ['auto', ...CORE_CODES].sort()); // the original 14; the rest load from /api/hub-languages
 for (const id of ['langFrom', 'langTo', 'swapLang', 'sourceText', 'openTranslate', 'speakInput', 'voiceStatus', 'translationOutput']) assert.match(html, new RegExp(`id="${id}"`));
 
 // Emergency section: opening hours, places, live TfL transport, timetables. All upstream calls are mocked.

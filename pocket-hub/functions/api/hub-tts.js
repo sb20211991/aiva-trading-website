@@ -10,19 +10,31 @@
    3. Google's keyless neural voice (the same engine family as the translation endpoint) for the languages it voices.
    Languages neither provider can voice answer 404 {fallback:'device'}, and the app uses the best voice on the device.
    Keys never reach the browser. Replies are cached at the edge so a repeated phrase is not generated twice. */
-import { TARGETS } from '../_lib/languages.js';
+import { TARGETS, CORE_CODES, LANGUAGES, WHISPER, STATUS, engineCode } from '../_lib/languages.js';
 
 export const MAX_CHARS = 600;
 const GOOGLE = 'https://translate.googleapis.com/translate_tts';
 // Languages Google's keyless voice answers (checked: Kurdish Sorani and Persian return 400).
 export const GOOGLE_VOICES = new Set(['en', 'ar', 'tr', 'fr', 'de', 'es', 'it', 'zh-CN', 'pt', 'ru', 'ja', 'hi']);
-const NAMES = { en: 'British English', ckb: 'Central Kurdish (Sorani), as spoken in Sulaymaniyah and Erbil', ar: 'Arabic',
+const BASE_NAMES = { en: 'British English', ckb: 'Central Kurdish (Sorani), as spoken in Sulaymaniyah and Erbil', ar: 'Arabic',
   tr: 'Turkish', fa: 'Persian (Farsi)', fr: 'French', de: 'German', es: 'Spanish', it: 'Italian', 'zh-CN': 'Mandarin Chinese',
   pt: 'Portuguese', ru: 'Russian', ja: 'Japanese', hi: 'Hindi' };
+const NAMES = { ...Object.fromEntries(LANGUAGES.map((l) => [l.engine, l.name])), ...BASE_NAMES };
+// Keyless voice: the original set plus every language the pre-deploy check heard real audio for.
+const KEYLESS = new Set([...GOOGLE_VOICES, ...(Array.isArray(STATUS.voice) ? STATUS.voice : [])]);
+// OpenAI speech: the original 14 Aiva languages (as before) plus the languages OpenAI lists for its speech models.
+export const OPENAI_VOICES = new Set([...CORE_CODES, ...Object.values(WHISPER)]);
 const CACHE_VERSION = 'v2';
 // Google Cloud language codes and the Chirp 3 HD voice tried first; without that voice the language default is used.
 export const CLOUD_VOICES = { en: 'en-GB', ar: 'ar-XA', tr: 'tr-TR', fr: 'fr-FR', de: 'de-DE', es: 'es-ES', it: 'it-IT',
-  'zh-CN': 'cmn-CN', pt: 'pt-PT', ru: 'ru-RU', ja: 'ja-JP', hi: 'hi-IN' };
+  'zh-CN': 'cmn-CN', pt: 'pt-PT', ru: 'ru-RU', ja: 'ja-JP', hi: 'hi-IN',
+  // Further Google Cloud locales. A locale or voice the account cannot use answers 400 and the next provider is tried.
+  af: 'af-ZA', am: 'am-ET', bg: 'bg-BG', bn: 'bn-IN', ca: 'ca-ES', cs: 'cs-CZ', cy: 'cy-GB', da: 'da-DK', el: 'el-GR',
+  et: 'et-EE', eu: 'eu-ES', fi: 'fi-FI', tl: 'fil-PH', gl: 'gl-ES', gu: 'gu-IN', iw: 'he-IL', hu: 'hu-HU', id: 'id-ID',
+  is: 'is-IS', kn: 'kn-IN', ko: 'ko-KR', lt: 'lt-LT', lv: 'lv-LV', ml: 'ml-IN', mr: 'mr-IN', ms: 'ms-MY', no: 'nb-NO',
+  nl: 'nl-NL', pa: 'pa-IN', pl: 'pl-PL', ro: 'ro-RO', sk: 'sk-SK', sr: 'sr-RS', sv: 'sv-SE', sw: 'sw-KE', ta: 'ta-IN',
+  te: 'te-IN', th: 'th-TH', uk: 'uk-UA', ur: 'ur-IN', vi: 'vi-VN', yue: 'yue-HK', 'zh-TW': 'cmn-TW', 'pt-PT': 'pt-PT',
+  'fr-CA': 'fr-CA' };
 const CHIRP = 'Chirp3-HD-Aoede';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -111,18 +123,19 @@ export async function onRequestGet(context, fetcher = fetch) {
   if (!allowed(request)) return json({ error: 'Origin not allowed' }, 403);
   const url = new URL(request.url);
   const cloud = Boolean(env.GOOGLE_TTS_API_KEY), openai = Boolean(env.OPENAI_API_KEY), premium = cloud || openai;
-  const chain = (l) => [cloud && CLOUD_VOICES[l] ? 'google-cloud' : '', openai ? 'openai' : '', GOOGLE_VOICES.has(l) ? 'google' : ''].filter(Boolean);
+  const chain = (code) => { const l = engineCode(code); return [cloud && CLOUD_VOICES[l] ? 'google-cloud' : '', openai && OPENAI_VOICES.has(l) ? 'openai' : '', KEYLESS.has(l) ? 'google' : ''].filter(Boolean); };
   if (url.searchParams.has('info')) {
     const voices = [...TARGETS].filter((l) => chain(l).length);
     return json({ premium, providers: Object.fromEntries(voices.map((l) => [l, chain(l)])), voices,
       premiumVoices: voices.filter((l) => chain(l)[0] !== 'google') });
   }
-  const lang = url.searchParams.get('lang') || '';
+  const asked = url.searchParams.get('lang') || '';
+  const lang = engineCode(asked);
   const text = (url.searchParams.get('text') || '').replace(/\s+/g, ' ').trim();
-  if (!TARGETS.has(lang)) return json({ error: 'Unsupported language' }, 400);
+  if (!TARGETS.has(asked)) return json({ error: 'Unsupported language' }, 400);
   if (!text) return json({ error: 'Nothing to read' }, 400);
   if (text.length > MAX_CHARS) return json({ error: `Text is too long (max ${MAX_CHARS} characters)` }, 413);
-  const order = chain(lang);
+  const order = chain(asked);
   if (!order.length) return json({ error: 'No natural voice for this language yet', fallback: 'device' }, 404);
 
   const cache = typeof caches !== 'undefined' ? caches.default : null;

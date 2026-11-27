@@ -1,0 +1,99 @@
+#!/usr/bin/env node
+/* Verifies every Aiva Translate catalogue language against the live engines and writes functions/_lib/language-status.js.
+   Run in the deploy workflow before the tests, so the app offers exactly what really works today:
+   - text:  English -> language must return a non-empty translation that differs from the input, and the result
+            must translate back to English (proves both directions).
+   - voice: the keyless neural voice must return real MP3 audio (> 1 KB) for a sentence in that language.
+   Nothing is simulated. If the engine cannot be reached at all, the file is left as committed (original 14 only).
+   Usage: node scripts/verify-languages.mjs [--dry-run] */
+import { writeFileSync } from 'node:fs';
+import { CORE, WORLD } from '../functions/_lib/language-catalog.js';
+
+const DRY = process.argv.includes('--dry-run');
+const SAMPLE = 'Good morning. Where is the train station, please?';
+const T = 'https://translate.googleapis.com/translate_a/t?client=gtx';
+const V = 'https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function attempt(fn, tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); } catch (e) { if (e.final) throw e; await sleep(600 * (i + 1) + Math.random() * 400); }
+  }
+  throw new Error('gave up');
+}
+async function translate(text, sl, tl) {
+  return attempt(async () => {
+    const res = await fetch(`${T}&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&format=text`, {
+      method: 'POST', body: new URLSearchParams({ q: text }), signal: AbortSignal.timeout(15000),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }
+    });
+    if (res.status === 400) throw Object.assign(new Error('unsupported'), { final: true });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const first = Array.isArray(data) ? data[0] : data;
+    const out = Array.isArray(first) ? first[0] : first;
+    if (typeof out !== 'string' || !out.trim()) throw Object.assign(new Error('empty'), { final: true });
+    return out.trim();
+  });
+}
+async function voice(text, tl) {
+  return attempt(async () => {
+    const res = await fetch(`${V}&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(text.slice(0, 180))}`, {
+      signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (Aiva Pocket Hub language check)' }
+    });
+    if (res.status === 400 || res.status === 404) throw Object.assign(new Error('no voice'), { final: true });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength < 1000) throw Object.assign(new Error('no audio'), { final: true });
+    return buf.byteLength;
+  }, 3);
+}
+
+async function pool(items, size, fn) {
+  const out = new Array(items.length); let i = 0;
+  await Promise.all(Array.from({ length: size }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]); await sleep(120); }
+  }));
+  return out;
+}
+
+const all = [...CORE, ...WORLD].map((r) => ({ code: r[0], name: r[1] }));
+const unique = [...new Map(all.map((r) => [r.code, r])).values()];
+const results = await pool(unique, 4, async ({ code, name }) => {
+  const r = { code, name, text: false, voice: false, note: '' };
+  let said = SAMPLE;
+  if (code === 'en') r.text = true;
+  else {
+    try {
+      said = await translate(SAMPLE, 'en', code);
+      if (said.toLowerCase() === SAMPLE.toLowerCase()) throw new Error('returned the English unchanged');
+      const back = await translate(said, code, 'en');
+      if (!back) throw new Error('no reverse translation');
+      r.text = true;
+    } catch (e) { r.note = `text: ${e.message}`; }
+  }
+  if (r.text) {
+    try { await voice(said, code); r.voice = true; } catch (e) { r.note = [r.note, `voice: ${e.message}`].filter(Boolean).join('; '); }
+  }
+  return r;
+});
+
+const text = results.filter((r) => r.text).map((r) => r.code);
+const voiceOk = results.filter((r) => r.voice).map((r) => r.code);
+const failedText = results.filter((r) => !r.text).map((r) => `${r.code} (${r.name}): ${r.note}`);
+const failedVoice = results.filter((r) => r.text && !r.voice).map((r) => r.code);
+console.log(`Checked ${unique.length} catalogue languages: ${text.length} translate, ${voiceOk.length} have the keyless natural voice.`);
+if (failedText.length) console.log(`Not offered (engine refused or failed):\n  ${failedText.join('\n  ')}`);
+
+// If the engine was unreachable (almost nothing passed), keep the committed file: the app then offers the original 14.
+if (text.length < 20) {
+  console.log('The translation engine could not be verified from here; language-status.js left unchanged.');
+  process.exit(DRY ? 0 : 1);
+}
+const status = { checkedAt: new Date().toISOString(), text, voice: voiceOk, failedText: failedText.map((f) => f.split(' ')[0]), failedVoice };
+const file = `/* Generated by scripts/verify-languages.mjs against the live translation and voice engines before each deploy.
+   Committed as "not verified", so a build that could not run the check offers only the 14 original languages. */
+export const STATUS = ${JSON.stringify(status)};
+`;
+if (DRY) console.log(file);
+else writeFileSync(new URL('../functions/_lib/language-status.js', import.meta.url), file);

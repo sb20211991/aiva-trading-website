@@ -51,8 +51,13 @@ jobs:
           else
             git apply "$RUNNER_TEMP/rail-checkout-ui.patch"
           fi
+      # Aiva Translate: every catalogue language is checked against the live translation and voice engines, and only
+      # the ones that really translate (and, separately, really speak) are offered. If the engines cannot be reached
+      # the committed status is kept and the app offers its original 14 languages: nothing unverified is advertised.
+      - name: Verify Aiva Translate languages against the live engines (build step)
+        run: node scripts/verify-languages.mjs || echo "Language check unavailable: deploying with the original 14 languages"
       - name: Test
-        run: node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs && node test/pay-test.mjs && node test/voice-test.mjs && node test/transit-retry-test.mjs
+        run: node test/translate-world-test.mjs && node test/hub-test.mjs && node test/transport-plan-test.mjs && node test/rail-test.mjs && node test/car-test.mjs && node test/car-middleware-test.mjs && node test/ferry-test.mjs && node test/bike-baggage-test.mjs && node test/flight-extras-test.mjs && node test/finance-test.mjs && node test/pay-test.mjs && node test/voice-test.mjs && node test/transit-retry-test.mjs
       # Provider keys live in repository secrets and are pushed to the Pages project here, so no key is ever written to
       # a file, a log or the repository. TfL's anonymous quota is metered per IP, and Cloudflare's shared egress is
       # frequently over it, so a free TfL app key is what makes London live boards reliable. The car rental gateway is
@@ -155,7 +160,11 @@ jobs:
           curl -sf -m 30 -o "$RUNNER_TEMP/tts.json" "$U/api/hub-tts?info=1" && python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('voice: premium',d['premium'],'natural voices',d['voices'],'premium voices',d.get('premiumVoices'))" "$RUNNER_TEMP/tts.json"
           tts_api() { curl -sf -m 30 -o "$RUNNER_TEMP/tts.mp3" -w 'voice audio %{http_code} %{content_type} %{size_download} bytes\n' "$U/api/hub-tts?lang=en&text=Hello%20from%20Aiva" && [ "$(stat -c%s "$RUNNER_TEMP/tts.mp3")" -gt 1000 ]; }
           retry 'natural voice api' 3 tts_api || echo 'natural voice provider unreachable from the edge right now: the app falls back to device voices'
-          U="$U" python3 ../scripts/pocket-hub-health.py
+          # Aiva Translate world languages: the list endpoint, the new scripts and the speech recogniser state.
+          curl -sf -m 30 -o "$RUNNER_TEMP/langs.json" "$U/api/hub-languages" && python3 -c "import json,sys;d=json.load(open(sys.argv[1]));c=d['counts'];print('languages:',c,'providers',d['providers'],'verified',d['verifiedAt']);sys.exit(0 if c['text']>=14 and not d['signLanguage'] else 1)" "$RUNNER_TEMP/langs.json"
+          for p in /aiva-langs.js /aiva-video.js; do code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$U$p"); printf '%s %s\n' "$p" "$code"; [ "$code" = '200' ] || exit 1; done
+          curl -sf -m 30 "$U/api/hub-stt?info=1" | head -c 300; echo
+                    U="$U" python3 ../scripts/pocket-hub-health.py
       # Apple Pay on Aiva's own Stripe account: register app.aivatrading.uk as a payment method domain (Stripe serves
       # the Apple Pay domain verification itself; the association file is also hosted under /.well-known). Idempotent,
       # skipped without a Stripe key, and never fails the release.
