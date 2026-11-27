@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import vm from 'node:vm';
-import { buildLanguages, CORE, CORE_CODES, WORLD, VARIANTS, TARGETS, SOURCES, engineCode } from '../functions/_lib/languages.js';
+import { buildLanguages, CORE, CORE_CODES, WORLD, VARIANTS, TARGETS, SOURCES, STATUS, engineCode } from '../functions/_lib/languages.js';
 import { onRequestPost as translate, translateWithFallback } from '../functions/api/hub-translate.js';
 import { onRequestGet as ttsGet, OPENAI_VOICES } from '../functions/api/hub-tts.js';
 import { onRequestGet as sttInfo, onRequestPost as stt, languageFromWhisper, MAX_AUDIO_BYTES } from '../functions/api/hub-stt.js';
@@ -21,8 +21,10 @@ const here = (f) => new URL(f, import.meta.url);
   assert.deepEqual(CORE_CODES, ['en', 'ckb', 'ar', 'tr', 'fa', 'fr', 'de', 'es', 'it', 'zh-CN', 'pt', 'ru', 'ja', 'hi']);
   for (const c of ['ku', 'yue', 'zh-TW', 'fa-AF', 'ur', 'ps', 'bal']) assert.ok(all.includes(c), `catalogue has ${c}`);
   assert.ok(all.length >= 240, 'world catalogue');
-  // Committed status is "not verified": only the original 14 are offered, never an unchecked language.
-  assert.deepEqual([...TARGETS].filter((c) => !VARIANTS.some((v) => v[0] === c)).sort(), [...CORE_CODES].sort());
+  // Offered = the original 14 plus exactly what the pre-deploy check verified; unverified status offers only the 14.
+  const verified = new Set(Array.isArray(STATUS.text) ? STATUS.text : []);
+  assert.deepEqual([...TARGETS].filter((c) => !VARIANTS.some((v) => v[0] === c)).sort(), [...new Set([...CORE_CODES, ...WORLD.map((r) => r[0]).filter((c) => verified.has(c))])].sort());
+  assert.deepEqual([...buildLanguages({ text: null }).targets].filter((c) => !VARIANTS.some((v) => v[0] === c)).sort(), [...CORE_CODES].sort());
   assert.ok(SOURCES.has('auto') && !TARGETS.has('auto'));
   // Once verified, every passing language is offered and failing ones are not; core languages are never removed.
   const b = buildLanguages({ text: ['en', 'ku', 'yue', 'sw'] });
@@ -42,7 +44,8 @@ const recorder = (handler) => { const calls = []; const f = async (u, init = {})
   let r = await translate({ request: reqT({ text: 'Hello', source: 'en', target: 'ar-EG' }) }, up);
   assert.equal(r.status, 200); assert.match(up.calls[0].url, /sl=en&tl=ar&/);
   // An unchecked language is refused rather than sent.
-  r = await translate({ request: reqT({ text: 'Hello', source: 'en', target: 'yo' }) }, up);
+  const unchecked = WORLD.map((x) => x[0]).find((c) => !TARGETS.has(c)) || 'not-a-language';
+  r = await translate({ request: reqT({ text: 'Hello', source: 'en', target: unchecked }) }, up);
   assert.equal(r.status, 400);
   // Fallback: official Google Cloud first when keyed, then keyless, then Microsoft.
   up = recorder((u) => (u.includes('translation.googleapis.com') ? new Response('{}', { status: 500 })
@@ -115,7 +118,7 @@ const audio = new Uint8Array(5000);
 /* ---------- language list endpoint ---------- */
 {
   let d = await (await langs({ request: new Request('https://app.aivatrading.uk/api/hub-languages'), env: {} })).json();
-  assert.equal(d.counts.text, 14); assert.equal(d.counts.video, 0); assert.equal(d.signLanguage, false);
+  assert.equal(d.counts.text, [...TARGETS].filter((c) => !VARIANTS.some((v) => v[0] === c)).length); assert.equal(d.counts.video, 0); assert.equal(d.signLanguage, false);
   assert.ok(d.languages.every((l) => l.text && !l.video));
   const ckb = d.languages.find((l) => l.code === 'ckb');
   assert.equal(ckb.voiceIn, false, 'no browser publishes a Sorani recogniser: not advertised');

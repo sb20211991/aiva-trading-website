@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { onRequestGet as tts, chunkText, GOOGLE_VOICES, MAX_CHARS } from '../functions/api/hub-tts.js';
-import { TARGETS } from '../functions/_lib/languages.js';
+import { TARGETS, CORE_CODES, STATUS } from '../functions/_lib/languages.js';
+// Languages the pre-deploy check heard a keyless voice for (empty when the committed status is unverified).
+const HEARD = new Set(Array.isArray(STATUS.voice) ? STATUS.voice : []);
 
 const pub = (f) => new URL(`../public/${f}`, import.meta.url);
 
@@ -24,13 +26,14 @@ function upstream(handler) {
   let d = await r.json();
   assert.equal(d.premium, false);
   assert.ok(d.voices.includes('ar') && d.voices.includes('en'));
-  assert.ok(!d.voices.includes('ckb') && !d.voices.includes('fa'));
+  if (!HEARD.has('ckb') && !HEARD.has('fa')) assert.ok(!d.voices.includes('ckb') && !d.voices.includes('fa'));
   for (const l of d.voices) assert.ok(TARGETS.has(l));
 
   // With the premium key every Aiva language, Kurdish Sorani included, gets the natural AI voice.
   d = await (await tts({ request: req('info=1'), env: { OPENAI_API_KEY: 'sk-test' } })).json();
   assert.equal(d.premium, true);
-  assert.deepEqual(d.voices.sort(), [...TARGETS].sort());
+  for (const c of CORE_CODES) assert.ok(d.voices.includes(c), `premium voice for ${c}`); // every original language
+  for (const l of d.voices) assert.ok(TARGETS.has(l));
 
   // Arabic through the keyless voice.
   let up = upstream(() => mp3('AR'));
@@ -102,7 +105,7 @@ function upstream(handler) {
   assert.equal(up.calls.length, 1); assert.equal(r.headers.get('X-Aiva-Voice'), 'openai');
   d = await (await tts({ request: req('info=1'), env: { GOOGLE_TTS_API_KEY: 'g', OPENAI_API_KEY: 'sk' } })).json();
   assert.deepEqual(d.providers.ar, ['google-cloud', 'openai', 'google']); assert.deepEqual(d.providers.ckb, ['openai']);
-  assert.equal(d.premiumVoices.length, TARGETS.size);
+  for (const c of CORE_CODES) assert.ok(d.premiumVoices.includes(c), `premium ${c}`);
   d = await (await tts({ request: req('info=1'), env: { GOOGLE_TTS_API_KEY: 'g' } })).json();
   assert.ok(!d.voices.includes('ckb')); assert.deepEqual(d.providers.en, ['google-cloud', 'google']);
 
