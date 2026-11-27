@@ -178,6 +178,11 @@ jobs:
       # Apple Pay on Aiva's own Stripe account: register app.aivatrading.uk as a payment method domain (Stripe serves
       # the Apple Pay domain verification itself; the association file is also hosted under /.well-known). Idempotent,
       # skipped without a Stripe key, and never fails the release.
+      # Nuitee SANDBOX run of flight baggage / seats / services on the preview (sandbox key: test bookings, never charged).
+      - name: Flight extras sandbox run (preview only)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: node scripts/flight-extras-sandbox.mjs "${{ steps.deploy.outputs.url }}"
       - name: Register app.aivatrading.uk for Apple Pay with Stripe
         if: github.event_name != 'pull_request'
         env:

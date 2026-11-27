@@ -1,7 +1,8 @@
 /* Aiva Flights seats and extra bags. Offline: the Nuitee replies are local stubs; nothing is booked or charged. */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { onRequestPost, shapeServices, selection } from '../functions/api/travel/flight-book.js';
+import { onRequestPost, shapeServices, selection, bookedServices, shapeFlightBooking } from '../functions/api/travel/flight-book.js';
+import vm from 'node:vm';
 
 const env = { LITEAPI_KEY: 'sand_test' };
 const req = (b) => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: 'https://app.aivatrading.uk', 'content-type': 'application/json' } });
@@ -19,7 +20,7 @@ const attachable = { groups: [
   const s = shapeServices(attachable);
   assert.deepEqual(s.seats.map((x) => [x.number, x.available, x.price?.amount]), [['12A', true, 9.99], ['12B', false, 0]]);
   assert.equal(s.bags[0].weightKg, 20); assert.equal(s.bags[0].quantityMax, 2); assert.equal(s.bags[0].price.amount, 32);
-  assert.deepEqual(shapeServices(undefined), { seats: [], bags: [] });
+  assert.deepEqual(shapeServices(undefined), { seats: [], bags: [], others: [] });
 }
 // Selections must name a listed traveller and a sane quantity.
 assert.deepEqual(selection([{ passengerIndex: 0, serviceId: 'seat_12A' }], 1), [{ passengerIndex: 0, serviceId: 'seat_12A', quantity: 1 }]);
@@ -78,10 +79,53 @@ assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'),
   const calls = [];
   const f = async (url) => { calls.push(String(url)); return reply({ data: [{ prebookId: 'pb_9999', transactionId: 'tr_9', secretKey: 'sk_9', price: 120, currency: 'GBP', servicesAttachable: attachable }] }); };
   const p = await (await onRequestPost({ request: req({ action: 'prebook', offerId: 'offer_123', contact, passengers: pax }), env: live }, f)).json();
-  assert.deepEqual(p.services, { seats: [], bags: [] });
+  assert.deepEqual(p.services, { seats: [], bags: [], others: [] });
   const s = await onRequestPost({ request: req({ action: 'services', prebookId: 'pb_9999', passengers: 1, selected: [{ passengerIndex: 0, serviceId: 'bag_20', quantity: 1 }] }), env: live }, f);
   assert.equal(s.status, 403); assert.ok(!calls.some((u) => u.includes('/services')));
   const on = await (await onRequestPost({ request: req({ action: 'prebook', offerId: 'offer_123', contact, passengers: pax }), env: { ...live, FLIGHT_EXTRAS_LIVE: 'true' } }, f)).json();
   assert.equal(on.services.bags.length, 1);
+}
+// Special luggage, personal bags with sizes, and other priced airline services are shaped; unpriced services are skipped.
+{
+  const s = shapeServices({ groups: [
+    { type: 'BAGGAGE', segmentKey: 'LGW-BCN', services: [
+      { serviceId: 'bag_ski', category: 'baggage', name: 'Ski equipment', pricing: { display: { amount: 45, currency: 'GBP' } }, metadata: { baggage: { weight: 20 } } },
+      { serviceId: 'bag_pers', category: 'baggage', name: 'Small personal bag', pricing: { display: { amount: 0, currency: 'GBP' } }, metadata: { baggage: { dimensions: { length: 40, width: 30, height: 20, unit: 'cm' } } } },
+      { serviceId: 'bag_cab', category: 'baggage', name: 'Cabin bag 10 kg', pricing: { display: { amount: 18, currency: 'GBP' } }, metadata: { baggage: { weight: 10, size: '55 x 40 x 20 cm' } } }] },
+    { type: 'PRIORITY', segmentKey: 'LGW-BCN', services: [{ serviceId: 'prio_1', name: 'Priority boarding', pricing: { display: { amount: 7.5, currency: 'GBP' } } }] },
+    { type: 'MEAL', segmentKey: 'BCN-LGW', services: [{ serviceId: 'meal_1', name: 'Hot meal', description: 'Chicken or vegetarian pasta', pricing: { display: { amount: 9, currency: 'GBP' } } },
+      { serviceId: 'meal_free', name: 'Unpriced snack' }] }] });
+  assert.deepEqual(s.bags.map((b) => [b.serviceId, b.kind]), [['bag_ski', 'special'], ['bag_pers', 'personal'], ['bag_cab', 'cabin']]);
+  assert.equal(s.bags[1].size, '40 × 30 × 20 cm'); assert.equal(s.bags[2].size, '55 x 40 x 20 cm'); assert.equal(s.bags[2].weightKg, 10);
+  assert.deepEqual(s.others.map((o) => [o.serviceId, o.kind, o.segmentKey, o.price.amount]), [['prio_1', 'priority', 'LGW-BCN', 7.5], ['meal_1', 'meal', 'BCN-LGW', 9]]);
+  assert.equal(s.others[1].description, 'Chicken or vegetarian pasta');
+}
+// The confirmed booking lists the services the airline returns with it.
+{
+  const b = shapeFlightBooking({ bookingId: 'b1', bookingRef: 'R1', status: 'CONFIRMED', services: [{ name: 'Checked bag 23 kg', quantity: 1, passengerIndex: 0, segmentKey: 'LGW-BCN', pricing: { display: { amount: 32, currency: 'GBP' } } }] });
+  assert.deepEqual(b.services, [{ name: 'Checked bag 23 kg', quantity: 1, passengerIndex: 0, segmentKey: 'LGW-BCN', price: { amount: 32, currency: 'GBP' } }]);
+  assert.deepEqual(bookedServices({}), []);
+}
+// Search-result baggage filters and bag-inclusive prices (app.js functions, run in a sandbox).
+{
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const pick = (name) => { const i = app.indexOf(`function ${name}(`); return app.slice(i, app.indexOf('\nfunction ', i + 10)); };
+  const ctx = { AS: { q: { pax: '2', children: '0' } }, $: () => ({ value: '' }), asFmtMoney: (n, c) => `${c} ${n.toFixed(2)}`, console };
+  vm.createContext(ctx);
+  vm.runInContext(['asBagInfo', 'asWithBag'].map(pick).join('\n'), ctx);
+  const basic = { price: 52.72, currency: 'GBP', slices: [{}, {}], bags: { carryOn: false, checked: false, allowance: [{ kind: 'personal' }], extras: [{ kind: 'checked', amount: 27.71, currency: 'GBP', weightKg: 20 }] } };
+  const full = { price: 78.86, currency: 'GBP', slices: [{}], bags: { carryOn: true, checked: true, allowance: [{ kind: 'cabin' }, { kind: 'checked' }], extras: [] } };
+  const bi = ctx.asBagInfo(basic);
+  assert.equal(bi.has('personal'), true); assert.equal(bi.has('cabin'), false); assert.equal(bi.has('checked'), false); assert.equal(bi.forSale, true);
+  assert.equal(ctx.asBagInfo(full).has('checked'), true);
+  const w = ctx.asWithBag(basic, 'checked');
+  assert.equal(w.add, 110.84, '27.71 per bag x 2 travellers x 2 flights'); assert.equal(w.total, 163.56);
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.asWithBag(full, 'checked'))), { total: 78.86, add: 0, included: true });
+  assert.equal(ctx.asWithBag(basic, 'cabin'), null, 'no cabin bag sold: no price is invented');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const v of ['personal', 'cabin', 'checked', 'buy']) assert.match(html, new RegExp(`id="asFfBags"[^]*value="${v}"`));
+  assert.match(html, /id="asFfBagPrice"/);
+  const fx = readFileSync(new URL('../public/aiva-flight-extras.js', import.meta.url), 'utf8');
+  assert.match(fx, /More services/); assert.match(fx, /labels: selected\.map\(label\)/);
 }
 console.log('FLIGHT EXTRAS CHECKS PASSED');
