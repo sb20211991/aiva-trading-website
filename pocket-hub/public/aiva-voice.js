@@ -1,20 +1,20 @@
 'use strict';
-/* Aiva Translate voice engine: 2-minute continuous recording, natural AI voice playback and two-way conversation.
+/* Aiva Translate voice engine: 3-minute continuous recording, natural AI voice playback and two-way conversation.
    Recording uses the browser's speech recognition in continuous mode and quietly restarts it when the browser ends a
-   session on a pause, so natural pauses never stop the microphone before the 2-minute limit, Stop or Cancel.
+   session on a pause, so natural pauses never stop the microphone before the 3-minute limit, Stop or Cancel.
    Playback asks /api/hub-tts for a natural neural voice and falls back to the best voice on the device. */
 (function (root) {
   const doc = root.document;
   const nav = root.navigator || {};
   const Recognition = root.SpeechRecognition || root.webkitSpeechRecognition;
-  const MAX_MS = 120000;
+  const MAX_MS = 180000; // 3:00 in both conversation directions
   const SPEECH_LANG = { en: 'en-GB', ckb: 'ckb-IQ', ar: 'ar-SA', tr: 'tr-TR', fa: 'fa-IR', fr: 'fr-FR', de: 'de-DE', es: 'es-ES', it: 'it-IT', 'zh-CN': 'zh-CN', pt: 'pt-PT', ru: 'ru-RU', ja: 'ja-JP', hi: 'hi-IN' };
   // Closest device voices when a device has none for a language. Pronunciation is then approximate and the app says so.
-  const NEAR = { ckb: ['ku', 'fa', 'ar'] };
+  const NEAR = { ckb: ['ku', 'fa', 'ar'], fa: ['prs'] };
   const RATES = [0.75, 0.9, 1, 1.15, 1.3];
   const isIOS = /iP(hone|ad|od)/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
   const join = (...parts) => parts.map((p) => String(p || '').trim()).filter(Boolean).join(' ');
-  const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 0.001)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000 - 0.001)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
   const speechLang = (code) => SPEECH_LANG[code] || code || nav.language || 'en-GB';
 
   /* Best transcript for one result list. Android Chrome repeats the whole utterance in each new final result in
@@ -352,7 +352,7 @@
   /* ---------- Timer display ---------- */
   function timerUI(el) {
     if (!el) return { update() {}, hide() {} };
-    el.innerHTML = `<div class="rec-row"><span class="rec-dot" aria-hidden="true"></span><span><b class="rec-elapsed">0:00</b> / ${clock(MAX_MS)}</span><span class="rec-left">${clock(MAX_MS)} left</span></div><div class="rec-track" role="progressbar" aria-label="Recording time used" aria-valuemin="0" aria-valuemax="${MAX_MS / 1000}" aria-valuenow="0"><div class="rec-fill"></div></div>`;
+    el.innerHTML = `<div class="rec-row"><span class="rec-dot" aria-hidden="true"></span><span><b class="rec-elapsed">00:00</b> / ${clock(MAX_MS)}</span><span class="rec-left">${clock(MAX_MS)} left</span></div><div class="rec-track" role="progressbar" aria-label="Recording time used" aria-valuemin="0" aria-valuemax="${MAX_MS / 1000}" aria-valuenow="0"><div class="rec-fill"></div></div>`;
     const q = (s) => el.querySelector(s);
     return {
       update(ms, max = MAX_MS) {
@@ -425,7 +425,7 @@
         if (!r.text) { status('error', message(r.error || 'no-speech', name(src))); return; }
         const entry = { id: nextId++, side: s, src, dst, original: r.text, translation: '', state: 'translating' };
         log.push(entry); renderLog();
-        status('busy', `${r.limit ? 'Reached the 2-minute limit. ' : ''}Translating into ${name(dst)}…`);
+        status('busy', `${r.limit ? 'Reached the 3-minute limit. ' : ''}Translating into ${name(dst)}…`);
         try {
           entry.translation = await cfg.translate(r.text, src, dst);
           entry.state = 'done'; renderLog();
@@ -450,7 +450,7 @@
       if (rec.state() !== 'idle') return;
       if (lang('a') === lang('b')) { status('error', 'Choose two different languages, one for each person.'); return; }
       side = s;
-      status('listening', `Listening in ${name(lang(s))}… pause naturally, Aiva keeps listening for up to 2 minutes. Tap again to finish.`);
+      status('listening', `Listening in ${name(lang(s))}… pause naturally, Aiva keeps listening for up to 3 minutes. Tap again to finish.`);
       rec.start({ lang: speechLang(lang(s)) });
     }
 

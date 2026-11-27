@@ -1,4 +1,4 @@
-// Aiva Translate voice upgrade: natural voice endpoint, 2-minute continuous recorder, voice choice and helpers.
+// Aiva Translate voice upgrade: natural voice endpoint, 3-minute continuous recorder, voice choice and helpers.
 // Every upstream call and every browser API is simulated, so this runs offline and deterministically.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -168,22 +168,22 @@ function browser({ unprefixed = false } = {}) {
 }
 
 for (const lang of ['en-GB', 'ckb-IQ', 'ar-SA']) {
-  // Same 2-minute session in each direction / language a conversation uses.
+  // Same 3-minute session in each direction / language a conversation uses.
   const { AV, clock, recs } = browser();
   let ended = null;
   const rec = AV.createRecorder({ onEnd: (r) => { ended = r; } });
   await rec.start({ lang }); clock.advance(10);
-  for (let t = 0; t < 115000; t += 23000) { const r = recs.at(-1); r.say(`part ${t / 1000}`, true); clock.advance(12000); r.error('no-speech'); r.end(); clock.advance(11000); }
+  for (let t = 0; t < 175000; t += 25000) { const r = recs.at(-1); r.say(`part ${t / 1000}`, true); clock.advance(12000); r.error('no-speech'); r.end(); clock.advance(13000); }
   assert.equal(rec.state(), 'listening', `${lang}: still recording at ${clock.now() - 1_000_010} ms`);
   clock.advance(6000);
-  assert.ok(ended && ended.limit && ended.ms === 120000, `${lang}: stopped at 2:00`);
+  assert.ok(ended && ended.limit && ended.ms === 180000, `${lang}: stopped at 03:00`);
   assert.ok(recs.every((r) => r.lang === lang));
-  console.log(`120-second recording in ${lang}: ${recs.length} sessions, stopped at ${ended.ms / 1000}s, text "${ended.text.slice(0, 40)}…"`);
+  console.log(`180-second recording in ${lang}: ${recs.length} sessions, stopped at ${ended.ms / 1000}s, text "${ended.text.slice(0, 40)}…"`);
 }
 
 {
   const { AV, clock, recs } = browser();
-  assert.equal(AV.MAX_MS, 120000);
+  assert.equal(AV.MAX_MS, 180000);
   const ticks = [], states = [];
   let ended = null, live = '';
   const rec = AV.createRecorder({ onTick: (ms) => ticks.push(ms), onState: (s) => states.push(s), onText: (t) => { live = t; }, onEnd: (r) => { ended = r; } });
@@ -192,7 +192,7 @@ for (const lang of ['en-GB', 'ckb-IQ', 'ar-SA']) {
   assert.equal(rec.state(), 'listening');
   assert.equal(recs[0].lang, 'ckb-IQ'); assert.equal(recs[0].continuous, true); assert.equal(recs[0].interimResults, true);
 
-  // A full 2-minute session with natural pauses: the browser ends a session on each pause and Aiva restarts it.
+  // A full 3-minute session with natural pauses: the browser ends a session on each pause and Aiva restarts it.
   const phrases = ['Hello, I would like a quotation', 'for five hundred solar panels', 'delivered to Erbil', 'by the end of next month', 'please include shipping'];
   let t = 0;
   for (const [i, p] of phrases.entries()) {
@@ -207,21 +207,21 @@ for (const lang of ['en-GB', 'ckb-IQ', 'ar-SA']) {
   }
   assert.equal(recs.length, phrases.length + 1, 'one new session per pause');
   assert.equal(live, phrases.join(' '));
-  // Keep going until the 2-minute limit stops the microphone by itself.
-  clock.advance(120000 - t - 1000);
-  assert.equal(rec.state(), 'listening', 'still recording just before 2:00');
+  // Keep going until the 3-minute limit stops the microphone by itself.
+  clock.advance(180000 - t - 1000);
+  assert.equal(rec.state(), 'listening', 'still recording just before 03:00');
   const before = ticks.at(-1);
-  assert.ok(before >= 118000 && before < 120000, `timer shows ${before}`);
+  assert.ok(before >= 178000 && before < 180000, `timer shows ${before}`);
   clock.advance(1250);
-  assert.equal(rec.state(), 'stopping', 'stops itself at 2:00');
+  assert.equal(rec.state(), 'stopping', 'stops itself at 03:00');
   clock.advance(400);
   assert.equal(rec.state(), 'idle');
   assert.ok(ended && ended.limit === true && !ended.cancelled && !ended.error);
   assert.equal(ended.text, phrases.join(' '));
-  assert.equal(ended.ms, 120000);
-  assert.equal(Math.max(...ticks), 120000);
-  assert.ok(ticks.length >= 470, 'timer updated four times a second');
-  console.log(`120-second simulated recording: ${phrases.length} pauses survived, ${recs.length} sessions, stopped at ${ended.ms / 1000}s, ${ended.text.split(' ').length} words kept`);
+  assert.equal(ended.ms, 180000);
+  assert.equal(Math.max(...ticks), 180000);
+  assert.ok(ticks.length >= 710, 'timer updated four times a second');
+  console.log(`180-second simulated recording: ${phrases.length} pauses survived, ${recs.length} sessions, stopped at ${ended.ms / 1000}s, ${ended.text.split(' ').length} words kept`);
 }
 
 {
@@ -296,10 +296,53 @@ for (const lang of ['en-GB', 'ckb-IQ', 'ar-SA']) {
   const text = 'One sentence here. '.repeat(60);
   const pieces = splitText(text, 400);
   assert.ok(pieces.every((p) => p.length <= 400)); assert.equal(pieces.join(' '), text.trim());
-  assert.deepEqual([clock(0), clock(1000), clock(59000), clock(61000), clock(120000), clock(119400)], ['0:00', '0:01', '0:59', '1:01', '2:00', '2:00']);
+  assert.deepEqual([clock(0), clock(1000), clock(59000), clock(61000), clock(120000), clock(179400), clock(180000)], ['00:00', '00:01', '00:59', '01:01', '02:00', '03:00', '03:00']);
   assert.match(AV._test.silentWav(), /^data:audio\/wav;base64,UklGR/);
   assert.equal(AV.speechLang('ckb'), 'ckb-IQ');
   assert.match(AV.message('language-not-supported', 'Kurdish Sorani'), /Kurdish Sorani/);
+}
+
+{
+  // Two-way conversation: Person A -> B and Person B -> A each record continuously for the full 3 minutes,
+  // and the countdown starts at 03:00.
+  const { AV, clock, recs, win } = browser();
+  const els = new Map();
+  const node = (id) => {
+    const kids = new Map();
+    const n = { id, value: '', hidden: true, disabled: false, textContent: '', className: '', innerHTML: '', attrs: {}, style: {},
+      classList: { toggle() {}, remove() {} }, setAttribute(k, v) { this.attrs[k] = v; },
+      querySelector(sel) { if (!kids.has(sel)) kids.set(sel, node(sel)); return kids.get(sel); },
+      addEventListener() {}, checked: false, lastChild: { textContent: '' }, lastElementChild: null };
+    return n;
+  };
+  win.document = { getElementById: (id) => { if (!els.has(id)) els.set(id, node(id)); return els.get(id); } };
+  vm.runInContext(readFileSync(pub('aiva-voice.js'), 'utf8'), vm.createContext({ window: win, Date: { now: () => clock.now() }, console, Math, Number, String, Array, Object, Set, Map, Promise, Uint8Array, DataView, encodeURIComponent, JSON }));
+  const AV2 = win.AivaVoice, $ = win.document.getElementById;
+  const translated = [];
+  AV2.setupConversation({ langs: [['en', 'English'], ['ckb', 'Kurdish Sorani'], ['ar', 'Arabic']], langName: (c) => c, a: 'en', b: 'ckb',
+    translate: async (text, src, dst) => { translated.push([src, dst, text]); return `[${dst}] ${text}`; } });
+  $('convoLangA').value = 'en'; $('convoLangB').value = 'ckb';
+  const before = recs.length;
+  for (const [side, lang] of [['A', 'en-GB'], ['B', 'ckb-IQ']]) {
+    $(`convoMic${side}`).onclick(); clock.advance(10);
+    assert.equal($('convoTimer').querySelector('.rec-left').textContent, '03:00 left', `${side}: countdown starts at 03:00`);
+    for (let t = 0; t < 175000; t += 25000) { const r = recs.at(-1); r.say(`${side} ${t / 1000}`, true); clock.advance(12000); r.error('no-speech'); r.end(); clock.advance(13000); }
+    assert.equal(recs.at(-1).lang, lang);
+    assert.match($('convoTimer').querySelector('.rec-elapsed').textContent, /^02:5\d$/, `${side}: still recording near the end`);
+    clock.advance(6000); await new Promise((r) => setImmediate(r));
+    assert.equal($('convoTimer').querySelector('.rec-left').textContent, '00:00 left');
+  }
+  assert.ok(recs.slice(before).every((r) => r.lang === 'en-GB' || r.lang === 'ckb-IQ'));
+  assert.deepEqual(translated.map((x) => x.slice(0, 2)), [['en', 'ckb'], ['ckb', 'en']], 'both directions translated');
+  assert.ok(translated.every((x) => x[2].split(' ').length === 14), 'all seven phrases kept in each direction');
+  console.log('two-way conversation: A->B and B->A each recorded the full 03:00 and were translated');
+}
+
+{
+  // Persian: a Dari (prs) device voice is used when no fa voice is installed.
+  const { AV } = browser();
+  assert.deepEqual([AV._test.pickVoice([{ name: 'Dari', lang: 'prs-AF' }], 'fa').voice?.name, AV._test.pickVoice([{ name: 'Dari', lang: 'prs-AF' }], 'fa').approx], ['Dari', true]);
+  assert.equal(AV._test.pickVoice([{ name: 'Dariush', lang: 'fa-IR' }, { name: 'Dari', lang: 'prs-AF' }], 'fa').voice.name, 'Dariush');
 }
 
 {
