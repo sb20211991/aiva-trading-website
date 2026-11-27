@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* Nuitee SANDBOX run of the Aiva flight baggage and services flow, against a preview deployment (which uses the sandbox
    LiteAPI key: test bookings only, nothing is ever charged). Run by the deploy workflow on pull requests:
-     search -> verify -> prebook (test traveller) -> list the airline's seats / bags / services -> attach one bag
+     search -> verify -> prebook (fictitious sandbox traveller) -> list the airline's seats / bags / services -> attach one bag
      (+ one seat and one other service when offered) -> check the airline returned a new, higher total.
    Payment and ticketing need the card form in a browser, so the run stops before payment.
    Usage: node scripts/flight-extras-sandbox.mjs <preview base URL> */
@@ -24,8 +24,8 @@ for (const [from, to] of routes) {
     const v = await post({ action: 'verify', offerId: o.id });
     if (v.status !== 200) continue;
     const p = await post({ action: 'prebook', offerId: v.d.offerId || o.id,
-      contact: { firstName: 'Test', lastName: 'Sandbox', email: 'sandbox.test@example.com', phoneCountryCode: '44', phoneNumber: '7700900123' },
-      passengers: [{ passengerType: 0, firstName: 'Test', lastName: 'Sandbox', birthday: '1990-01-15', gender: 'M', nationality: 'GB' }] });
+      contact: { firstName: 'Oliver', lastName: 'Bennett', email: 'sandbox.test@example.com', phoneCountryCode: '44', phoneNumber: '7700900123' },
+      passengers: [{ passengerType: 0, firstName: 'Oliver', lastName: 'Bennett', birthday: '1990-01-15', gender: 'M', nationality: 'GB' }] });
     if (p.status !== 200) { log(`${from}-${to} ${o.airline}: prebook ${p.status} ${p.d.error || ''}`); continue; }
     const sv = p.d.services || {};
     log(`${from}-${to} ${o.airline}: prebook ${p.d.prebookId} £${p.d.price} · offered seats=${(sv.seats || []).length} bags=${(sv.bags || []).length} services=${(sv.others || []).length}`);
