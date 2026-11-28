@@ -27,6 +27,8 @@
     special: { icon: '⛷️', label: 'Special baggage', hint: 'sports or large items' },
   };
   const OICON = { priority: '⚡', meal: '🍽️', insurance: '🛡️', flexibility: '🔁', airport: '🛋️', other: '✨' };
+  /* Airline names often arrive in capitals ("UP TO 44LB/20KG BAGGAGE"): shown in sentence case, units kept. */
+  const nice = (t) => { const v = String(t || ''); return v === v.toUpperCase() && /[A-Z]{3}/.test(v) ? v.toLowerCase().replace(/^./, (c) => c.toUpperCase()).replace(/(\d)\s?(kg|lb|cm)\b/gi, (m, d, u) => `${d}${u.toLowerCase()}`) : v; };
   const day = (t) => (t ? new Date(String(t).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '');
 
   /* Which flight each service belongs to, labelled Outbound / Return (or Flight 1, 2…) with its airports.
@@ -102,6 +104,7 @@
     .fx-seat:disabled{background:#eceff4;color:#b6bdc9;cursor:not-allowed}.fx-gap{width:32px}.fx-aisle{width:14px}
     .fx details>summary{cursor:pointer;font-weight:800;list-style:none}.fx details>summary::-webkit-details-marker{display:none}.fx details>summary:after{content:' ▾';color:var(--muted)}
     .fx-copy{margin-top:10px;font-size:13px}
+    .fx-special{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}.fx-special>summary{font-size:14px}
     @media(max-width:700px){.fx-opt{flex:1 1 calc(50% - 6px)}.fx-opt.none{flex-basis:100%}}
   </style>`;
 
@@ -163,13 +166,13 @@
 
     const optLabel = (b, group) => {
       const sameName = group.opts.every((o) => o.name === group.opts[0].name);
-      const main = b.weightKg ? `${b.weightKg} kg` : b.name;
-      const sub = [b.weightKg && !sameName && !String(b.name).includes(String(b.weightKg)) ? b.name : '', b.size].filter(Boolean).join(' · ');
+      const main = b.weightKg ? `${b.weightKg} kg` : group.kind === 'special' ? 'Add' : nice(b.name);
+      const sub = [b.weightKg && !sameName && !String(b.name).includes(String(b.weightKg)) ? nice(b.name) : '', b.size].filter(Boolean).join(' · ');
       return `${esc(main)} · <b>${esc(fmt(b.price) || 'price on request')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}`;
     };
     const groupHTML = (g) => {
       const i = st.pax, chosen = g.opts.find((o) => q(i, o.serviceId) > 0), meta = KIND[g.kind] || KIND.checked;
-      const title = g.kind === 'special' ? g.opts[0].name : meta.label;
+      const title = g.kind === 'special' ? nice(g.opts[0].name) : meta.label;
       return `<div class="fx-group"><div class="mini">${meta.icon} <b>${esc(title)}</b>${g.kind !== 'special' ? ` · ${esc(meta.hint)}` : ''}</div>
         <div class="fx-opts" role="radiogroup" aria-label="${esc(title)} for ${esc(names[i])}, ${esc(flightOf(g.seg).label)}">
           <button type="button" role="radio" aria-checked="${!chosen}" class="fx-opt none${chosen ? '' : ' on'}" data-fx-none="${esc(g.key)}">No extra ${esc(g.kind === 'special' ? 'item' : meta.label.toLowerCase())}</button>
@@ -191,7 +194,9 @@
         ${names.length > 1 ? `<div class="fx-tabs" role="tablist" aria-label="Travellers">${names.map((n, k) => `<button type="button" role="tab" aria-selected="${k === i}" class="as-btn ${k === i ? '' : 'ghost'}" data-fx-pax="${k}">${esc(n)}${bagCount(k) ? ` · 🧳${bagCount(k)}` : ''}</button>`).join('')}</div>` : ''}
         <div class="fx-card"><div class="mini" style="margin-bottom:4px"><b>Included in ${esc(names[i])}'s fare</b>${offer?.airline ? ` · ${esc(offer.airline)}` : ''}</div>${includedHTML(offer, types[i])}</div>
         ${groups.length ? segs.map((sk) => { const f = flightOf(sk); return `<div class="fx-card"><div class="fx-flight"><b>✈️ ${esc(f.label)}${f.route ? ' · ' + esc(f.route) : ''}</b><span class="mini">${esc(f.date)}</span></div>
-            <div class="mini">Add extra baggage</div>${groups.filter((g) => g.seg === sk).map(groupHTML).join('')}
+            <div class="mini">Add extra baggage</div>${groups.filter((g) => g.seg === sk && g.kind !== 'special').map(groupHTML).join('')}
+            ${(() => { const sp = groups.filter((g) => g.seg === sk && g.kind === 'special'), on = sp.filter((g) => g.opts.some((o) => q(i, o.serviceId) > 0)).length;
+              return sp.length ? `<details class="fx-special"${on ? ' open' : ''}><summary>⛷️ Sports &amp; special items (${sp.length})${on ? ` · ${on} chosen` : ''}</summary>${sp.map(groupHTML).join('')}</details>` : ''; })()}
             ${sk === segs[0] && hasReturnCopy ? `<button type="button" class="as-btn ghost fx-copy" data-fx-copy="1">Use the same bags on the ${esc(flightOf(segs[1]).label.toLowerCase())}</button>` : ''}</div>`; }).join('')
           + (fmap && Object.keys(fmap).length > 2 && segs.length < keys.length ? `<div class="mini">Flights not shown above have no extra bags for sale for this traveller.</div>` : '')
           : `<div class="notice warn"><b>Extra baggage can't be added for this fare in Aiva.</b> ${esc(offer?.airline || 'The airline')} does not sell additional bags for ${types[i] === 'INF' ? 'infants' : 'this traveller'} through our booking provider Nuitée on this flight${bags.length ? '' : 's'}. The included allowance above still applies; any extra bag would have to be bought from the airline after booking (Manage booking).</div>`}
@@ -254,7 +259,7 @@
         const r = await post({ action: 'services', prebookId: p.prebookId, extrasToken: p.extrasToken, passengers: names.length, selected });
         if (!Number.isFinite(r.price) || !r.currency) throw Object.assign(new Error('The airline did not confirm the new total'), { unknown: true });
         const label = (x) => { const s = byId.get(x.serviceId), f = flightOf(s?.segmentKey);
-          return { name: seats.includes(s) ? `Seat ${s.number}` : `${s?.name || 'Extra'}${s?.weightKg && !String(s?.name).includes(String(s.weightKg)) ? ` ${s.weightKg} kg` : ''}`,
+          return { name: seats.includes(s) ? `Seat ${s.number}` : `${nice(s?.name) || 'Extra'}${s?.weightKg && !String(s?.name).includes(String(s.weightKg)) ? ` ${s.weightKg} kg` : ''}`,
             traveller: names[x.passengerIndex] || '', quantity: x.quantity, flight: [f.label, f.route].filter(Boolean).join(' · '), kind: seats.includes(s) ? 'seat' : bags.includes(s) ? 'bag' : 'service', price: s?.price || null }; };
         const differs = expect.total != null && r.currency === fare.currency && Math.abs(r.price - expect.total) > 0.01;
         finish({ transactionId: r.transactionId, secretKey: r.secretKey, price: r.price, currency: r.currency, extras: selected, labels: selected.map(label), memo: memo(),

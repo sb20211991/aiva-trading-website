@@ -150,4 +150,13 @@ console.log('SANDBOX SHAPE CHECKS PASSED');
   const d = await (await onRequestPost({ request: req({ action: 'book', prebookId: 'pb_1234', transactionId: 'tr_1234' }), env: { LITEAPI_KEY: 'sand_x' } }, f)).json();
   assert.equal(d.services[0].name, 'UP TO 44LB/20KG BAGGAGE');
 }
-console.log('LOCKS CHECKS PASSED');
+{
+  const box = makeBox();
+  const sp = (id, name, amount) => ({ serviceId: id, segmentKey: '0113b59d', segment: null, passengerType: '', name, kind: 'special', weightKg: null, size: '', quantityMax: 1, price: { amount, currency: 'GBP' } });
+  ctx.aivaFlightExtras({ ...prebook, services: { seats: [], others: [], bags: [bag('b20o', 20, 68.45, '0113b59d'), sp('sp_ski', 'SKI EQUIPMENT', 45), sp('sp_golf', 'GOLF', 40)] } }, box, pax.slice(0, 1), offer, null);
+  assert.match(box.innerHTML, /<details class="fx-special"><summary>⛷️ Sports &amp; special items \(2\)<\/summary>/); assert.match(box.innerHTML, /Ski equipment/);
+  await box.click('fx-opt', { id: 'sp_ski', group: '0113b59d|special:sp_ski' });
+  assert.match(box.innerHTML, /<details class="fx-special" open><summary>⛷️ Sports &amp; special items \(2\) · 1 chosen/); assert.match(box.innerHTML, /id="fxTotal">£75\.00</);
+  const app = src('app.js'); assert.match(app, /Total to pay: <b>\$\{asMoney2\(p\.price,p\.currency\)\}/);
+}
+console.log('LOCKS + SPECIAL ITEMS CHECKS PASSED');
