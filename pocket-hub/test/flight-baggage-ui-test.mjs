@@ -159,4 +159,13 @@ console.log('SANDBOX SHAPE CHECKS PASSED');
   assert.match(box.innerHTML, /<details class="fx-special" open><summary>⛷️ Sports &amp; special items \(2\) · 1 chosen/); assert.match(box.innerHTML, /id="fxTotal">£75\.00</);
   const app = src('app.js'); assert.match(app, /Total to pay: <b>\$\{asMoney2\(p\.price,p\.currency\)\}/);
 }
+{
+  // Real sandbox reply shape (28 Nov 2026): the bag sits in locks[].existingServices.
+  const reply = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  const req = (b) => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: 'https://app.aivatrading.uk' } });
+  const f = async (url) => String(url).endsWith('/services') ? reply({ data: { groups: [], locks: [{ category: 'baggage', segmentKey: '508f8447', reasonCode: 'already_booked', existingServices: [{ category: 'baggage', name: 'Standard Check In Baggage 15kg', passengerIndex: 0, metadata: { baggage: { weightKg: 15 } }, pricing: { display: { amount: 65.03, currency: 'GBP' } } }] }] } })
+    : reply({ data: [{ booking: { bookingId: 'bk_5678', status: 'PENDING_CONFIRMATION' } }] });
+  const d = await (await onRequestPost({ request: req({ action: 'book', prebookId: 'pb_5678', transactionId: 'tr_5678' }), env: { LITEAPI_KEY: 'sand_x' } }, f)).json();
+  assert.deepEqual(d.services, [{ name: 'Standard Check In Baggage 15kg', quantity: 1, passengerIndex: 0, segmentKey: '508f8447', price: { amount: 65.03, currency: 'GBP' } }]);
+}
 console.log('LOCKS + SPECIAL ITEMS CHECKS PASSED');

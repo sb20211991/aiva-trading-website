@@ -160,7 +160,7 @@ async function servicesOf(bookingId, env, fetcher) {
     const r = await call('GET', `/flights/bookings/${encodeURIComponent(bookingId)}/services`, null, env, fetcher, 15000);
     const shape = r && typeof r === 'object' ? Object.keys(r).slice(0, 20) : [];
     /* Nuitee answers {groups, locks}: groups is the live catalogue, locks the services held on this booking. */
-    const locks = Array.isArray(r?.locks) ? r.locks.flatMap((l) => (Array.isArray(l?.services) ? l.services.map((x) => ({ ...x, quantity: x.quantity ?? l.quantity, passengerIndex: x.passengerIndex ?? l.passengerIndex })) : [l])) : [];
+    const locks = Array.isArray(r?.locks) ? r.locks.flatMap((l) => (Array.isArray(l?.existingServices) ? l.existingServices.map((x) => ({ ...x, segmentKey: x.segmentKey || l.segmentKey })) : Array.isArray(l?.services) ? l.services.map((x) => ({ ...x, quantity: x.quantity ?? l.quantity, passengerIndex: x.passengerIndex ?? l.passengerIndex })) : [l])) : [];
     const services = bookedServices({ bookedServices: r?.bookedServices || r?.booked || (locks.length ? locks : null) || r?.services || r?.selectedServices || (Array.isArray(r) ? r : []) });
     return { services, shape, sample: JSON.stringify(r?.locks ?? null).slice(0, 700) };
   } catch (e) { return { services: [], shape: [`error ${e.status || ''}`] }; }
