@@ -128,3 +128,16 @@ assert.equal(contact({ firstName: 'Ana', lastName: 'Test', email: 'a@example.com
   assert.equal(live.servicesShape, undefined);
 }
 console.log('FLIGHT BAGGAGE + PHONE CHECKS PASSED');
+// Real sandbox shapes: Ryanair bags without metadata weight ("20kg" in the name), flights named in the group label, and the
+// booking's services read from GET /flights/bookings/{id}/services when the booking reply has none.
+{
+  const s = shapeServices({ groups: [{ category: 'BAGGAGE', label: 'STN - DUB', services: [{ serviceId: 'bag_ry1', name: '20kg Check-in Bag', category: 'BAGGAGE', segmentKey: '50ba1e33', pricing: { display: { amount: 15, currency: 'GBP' } }, metadata: {} }] }] });
+  assert.equal(s.bags[0].weightKg, 20); assert.deepEqual(s.bags[0].segment, { from: 'STN', to: 'DUB' });
+  const reply = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  const req = (b) => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: 'https://app.aivatrading.uk' } });
+  const f = async (url) => String(url).endsWith('/services') ? reply({ data: { bookedServices: [{ name: '20kg Check-in Bag', quantity: 1, passengerIndex: 0, segmentKey: '50ba1e33', pricing: { display: { amount: 15, currency: 'GBP' } } }] } })
+    : reply({ data: [{ booking: { bookingId: 'bk_1234', status: 'CONFIRMED' } }] });
+  const d = await (await onRequestPost({ request: req({ action: 'book', prebookId: 'pb_1234', transactionId: 'tr_1234' }), env: { LITEAPI_KEY: 'sand_x' } }, f)).json();
+  assert.equal(d.services[0].name, '20kg Check-in Bag'); assert.deepEqual(d.servicesReplyShape, ['bookedServices']);
+}
+console.log('SANDBOX SHAPE CHECKS PASSED');

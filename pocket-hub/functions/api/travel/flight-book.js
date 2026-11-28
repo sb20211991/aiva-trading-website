@@ -33,7 +33,7 @@ const segs = (j) => (j?.segments || []).map((s) => ({ from: s.originCode, to: s.
   airline: s.carrier?.marketingName || '', flight: `${s.carrier?.marketingCode || ''}${s.flight?.marketingNumber || ''}` }));
 /* Seats, bags and other services the airline confirmed in the booking (as Nuitee returns them), for the confirmation page. */
 export function bookedServices(b) {
-  const list = [b?.services, b?.selectedServices, b?.ancillaries, b?.journey?.services].find(Array.isArray) || [];
+  const list = [b?.services, b?.bookedServices, b?.selectedServices, b?.ancillaries, b?.journey?.services, b?.booked, b?.data?.bookedServices].find((x) => Array.isArray(x) && x.length) || [];
   return list.map((x) => ({ name: String(x?.name || x?.description || x?.category || x?.type || '').slice(0, 80), quantity: Number(x?.quantity) || 1,
     passengerIndex: Number.isInteger(x?.passengerIndex) ? x.passengerIndex : null, segmentKey: String(x?.segmentKey || '').slice(0, 80),
     price: (() => { const d = x?.pricing?.display || x?.price || {}; const a = Number(d.amount ?? d.total); return Number.isFinite(a) ? { amount: a, currency: String(d.currency || '').slice(0, 3) } : null; })() }))
@@ -58,6 +58,8 @@ export function segmentOf(...src) {
       const from = code3(x.originCode || x.origin || x.departureCode || x.departureAirport || x.from), to = code3(x.destinationCode || x.destination || x.arrivalCode || x.arrivalAirport || x.to);
       if (from && to) return { from, to };
     }
+    const m = typeof o?.label === 'string' && o.label.match(/\b([A-Z]{3})\s*(?:-|–|→|>|to)\s*([A-Z]{3})\b/);
+    if (m) return { from: m[1], to: m[2] };
   }
   return null;
 }
@@ -91,7 +93,7 @@ export function shapeServices(raw) {
           : [dims.length, dims.width, dims.height].every((v) => Number.isFinite(Number(v))) ? `${dims.length} × ${dims.width} × ${dims.height} ${clean(dims.unit || 'cm', 4)}` : '';
         bags.push({ serviceId, segmentKey, segment, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80),
           kind: /sport|ski|snowboard|golf|bike|bicycle|surf|instrument|special|pram|stroller|wheelchair/i.test(text) ? 'special' : /personal|under.?seat|small bag/i.test(text) ? 'personal' : /cabin|carry|hand|overhead/i.test(text) ? 'cabin' : 'checked',
-          weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) ? Number(m.weight ?? m.weightKg) : null, size,
+          weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) && (m.weight ?? m.weightKg) !== null ? Number(m.weight ?? m.weightKg) : Number(text.match(/(\d{1,2})\s?kg/i)?.[1]) || null, size,
           quantityMax: Math.min(3, Math.max(1, Number(m.maxQuantity || sv?.maxQuantity) || 1)), price });
       } else if (price) {
         /* Any other paid service the airline offers for this fare (priority boarding, meals, fast track, lounge, insurance,
@@ -151,6 +153,16 @@ export async function extrasToken(prebookId, env) {
   const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(String(prebookId)));
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 }
+/* The seats and bags Nuitee holds on a booking (GET /flights/bookings/{id}/services), for the confirmation page.
+   Best effort: the booking stands without it. */
+async function servicesOf(bookingId, env, fetcher) {
+  try {
+    const r = await call('GET', `/flights/bookings/${encodeURIComponent(bookingId)}/services`, null, env, fetcher, 15000);
+    const shape = r && typeof r === 'object' ? Object.keys(r).slice(0, 20) : [];
+    const services = bookedServices({ bookedServices: r?.bookedServices || r?.booked || r?.services || r?.selectedServices || (Array.isArray(r) ? r : []) });
+    return { services, shape };
+  } catch (e) { return { services: [], shape: [`error ${e.status || ''}`] }; }
+}
 export async function onRequestPost({ request, env }, fetcher = fetch) {
   if (!allowedOrigin(request)) return json({ error: 'Origin not allowed' }, 403);
   if (!env?.LITEAPI_KEY) return json({ error: 'Flight booking is not connected yet (Nuitee key missing).' }, 503);
@@ -200,14 +212,18 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       const b = await call('POST', '/flights/bookings', { prebookId, clientReference: `aiva-${prebookId}`.slice(0, 64), payment: { method: 'TRANSACTION_ID', transactionId } }, env, fetcher, 90000);
       const s = shapeFlightBooking(b);
       if (!s.bookingId) return json({ error: 'The airline did not confirm the booking. Check "My bookings" and contact Aiva before paying again.' }, 503);
-      return json({ ...s, testMode });
+      const extra = await servicesOf(s.bookingId, env, fetcher);
+      if (!s.services.length && extra.services.length) s.services = extra.services;
+      return json({ ...s, testMode, ...(testMode ? { servicesReplyShape: extra.shape } : {}) });
     }
     if (body?.action === 'status') {
       const bookingId = id(body.bookingId), mail = email(clean(body.email, 254));
       if (!bookingId || !mail) return json({ error: 'Booking reference and email are needed.' }, 400);
       const raw = await call('GET', `/flights/bookings/${encodeURIComponent(bookingId)}`, null, env, fetcher, 20000);
       if (findKey(raw, 'email').toLowerCase() !== mail.toLowerCase()) return json({ error: 'No booking found for this reference and email.' }, 404);
-      return json({ ...shapeFlightBooking(raw), testMode });
+      const s = shapeFlightBooking(raw);
+      if (!s.services.length) s.services = (await servicesOf(s.bookingId || bookingId, env, fetcher)).services;
+      return json({ ...s, testMode });
     }
     return json({ error: 'Unknown action' }, 400);
   } catch (e) {

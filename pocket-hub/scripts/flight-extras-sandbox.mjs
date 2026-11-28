@@ -75,6 +75,7 @@ outer2: for (const [from, to] of routes) {
     const segCount = o.slices.reduce((n, sl) => n + Math.max(1, (sl.segments || []).length), 0);
     log(`RETURN ${from}-${to} ${o.airline}: ${o.slices.map((x) => `${x.from}→${x.to}`).join(' / ')} · flight segments=${segCount} · bag segment keys=${keys.length} ${JSON.stringify(keys)} · airports on services=${bags.some((b) => b.segment)}`);
     if (keys.length < 2) { log('  bags not offered per direction for this fare, trying the next'); continue; }
+    log('  bag options:', JSON.stringify(bags.map((b) => [b.kind, b.name, b.weightKg, b.price.amount, b.segmentKey, b.segment])));
     const pick = keys.map((k) => bags.filter((b) => b.segmentKey === k).sort((x, y) => x.price.amount - y.price.amount)[0]);
     const r = await attach(p, pick);
     const want = p.price + pick.reduce((n, b) => n + b.price.amount, 0);
@@ -87,7 +88,12 @@ outer2: for (const [from, to] of routes) {
 /* 3. Booking with the bag-inclusive transaction (card step not done here). */
 if (booked) {
   const b = await post({ action: 'book', prebookId: booked.p.prebookId, transactionId: booked.t.transactionId });
-  if (b.status === 200 && b.d.bookingId) log(`BOOK: sandbox booking ${b.d.bookingId} status ${b.d.status} · services confirmed: ${JSON.stringify(b.d.services)}`);
+  if (b.status === 200 && b.d.bookingId) {
+    log(`BOOK: sandbox booking ${b.d.bookingId} status ${b.d.status} · services on the booking: ${JSON.stringify(b.d.services)} · services reply fields ${JSON.stringify(b.d.servicesReplyShape)}`);
+    results.bagOnBooking = (b.d.services || []).some((x) => /bag|kg|lugg/i.test(x.name));
+    const st = await post({ action: 'status', bookingId: b.d.bookingId, email: contact.email });
+    log(`STATUS: ${st.status} ${st.d.status || st.d.error || ''} · services: ${JSON.stringify(st.d.services || [])}`);
+  }
   else log(`BOOK: ${b.status} ${b.d.error || ''} (expected without the card step: payment is made in the Nuitee card form)`);
 }
 log('RESULTS', JSON.stringify(results));

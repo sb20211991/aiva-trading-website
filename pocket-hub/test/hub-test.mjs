@@ -419,7 +419,7 @@ console.log('POCKET HUB CHECKS PASSED');
   const { onRequestPost: fb, passengers } = await import('../functions/api/travel/flight-book.js');
   const req = (b, origin = 'https://app.aivatrading.uk') => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: origin, 'content-type': 'application/json' } });
   let sent;
-  const up = (reply, status = 200) => async (url, init) => { sent = { url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null, key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
+  const up = (reply, status = 200) => async (url, init) => { if (init.method === 'GET' && String(url).endsWith('/services')) return new Response('{"data":{}}', { status: 200 }); /* booked-services lookup after a booking */ sent = { url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null, key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
   const sb = { LITEAPI_KEY: 'sand_x' };
   const contact = { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', phoneCountryCode: '+44', phoneNumber: '07700 900123' };
   const pax = [{ passengerType: 0, firstName: 'Ada', lastName: 'Lovelace', birthday: '1990-01-02', gender: 'F', nationality: 'gb', documentNumber: 'ab 123456', documentExpiry: '2031-01-01', documentIssueCountry: 'GB' }];
