@@ -141,3 +141,13 @@ console.log('FLIGHT BAGGAGE + PHONE CHECKS PASSED');
   assert.equal(d.services[0].name, '20kg Check-in Bag'); assert.deepEqual(d.servicesReplyShape, ['bookedServices']);
 }
 console.log('SANDBOX SHAPE CHECKS PASSED');
+{
+  const s = shapeServices({ groups: [{ category: 'BAGGAGE', services: [{ serviceId: 'bag_baby', name: 'BABY EQUIPMENT', category: 'BAGGAGE', pricing: { display: { amount: 15, currency: 'GBP' } } }, { serviceId: 'bag_bulk', name: 'BULK BAGGAGE', category: 'BAGGAGE', pricing: { display: { amount: 60, currency: 'GBP' } } }] }] });
+  assert.deepEqual(s.bags.map((b) => b.kind), ['special', 'special']);
+  const reply = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  const req = (b) => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: 'https://app.aivatrading.uk' } });
+  const f = async (url) => String(url).endsWith('/services') ? reply({ data: { groups: [], locks: [{ serviceId: 'bag_ry1', name: 'UP TO 44LB/20KG BAGGAGE', quantity: 1, passengerIndex: 0 }] } }) : reply({ data: [{ booking: { bookingId: 'bk_1234', status: 'CONFIRMED' } }] });
+  const d = await (await onRequestPost({ request: req({ action: 'book', prebookId: 'pb_1234', transactionId: 'tr_1234' }), env: { LITEAPI_KEY: 'sand_x' } }, f)).json();
+  assert.equal(d.services[0].name, 'UP TO 44LB/20KG BAGGAGE');
+}
+console.log('LOCKS CHECKS PASSED');

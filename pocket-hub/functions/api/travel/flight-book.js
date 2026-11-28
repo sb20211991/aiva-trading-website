@@ -92,7 +92,7 @@ export function shapeServices(raw) {
         const dims = m.dimensions || m.size || {}, size = typeof dims === 'string' ? clean(dims, 40)
           : [dims.length, dims.width, dims.height].every((v) => Number.isFinite(Number(v))) ? `${dims.length} × ${dims.width} × ${dims.height} ${clean(dims.unit || 'cm', 4)}` : '';
         bags.push({ serviceId, segmentKey, segment, passengerType, name: clean(sv?.name || sv?.description || 'Extra bag', 80),
-          kind: /sport|ski|snowboard|golf|bike|bicycle|surf|instrument|special|pram|stroller|wheelchair/i.test(text) ? 'special' : /personal|under.?seat|small bag/i.test(text) ? 'personal' : /cabin|carry|hand|overhead/i.test(text) ? 'cabin' : 'checked',
+          kind: /sport|ski|snowboard|golf|bike|bicycle|surf|instrument|special|pram|stroller|wheelchair|baby|infant|bulk|equipment/i.test(text) ? 'special' : /personal|under.?seat|small bag/i.test(text) ? 'personal' : /cabin|carry|hand|overhead/i.test(text) ? 'cabin' : 'checked',
           weightKg: Number.isFinite(Number(m.weight ?? m.weightKg)) && (m.weight ?? m.weightKg) !== null ? Number(m.weight ?? m.weightKg) : Number(text.match(/(\d{1,2})\s?kg/i)?.[1]) || null, size,
           quantityMax: Math.min(3, Math.max(1, Number(m.maxQuantity || sv?.maxQuantity) || 1)), price });
       } else if (price) {
@@ -159,8 +159,10 @@ async function servicesOf(bookingId, env, fetcher) {
   try {
     const r = await call('GET', `/flights/bookings/${encodeURIComponent(bookingId)}/services`, null, env, fetcher, 15000);
     const shape = r && typeof r === 'object' ? Object.keys(r).slice(0, 20) : [];
-    const services = bookedServices({ bookedServices: r?.bookedServices || r?.booked || r?.services || r?.selectedServices || (Array.isArray(r) ? r : []) });
-    return { services, shape };
+    /* Nuitee answers {groups, locks}: groups is the live catalogue, locks the services held on this booking. */
+    const locks = Array.isArray(r?.locks) ? r.locks.flatMap((l) => (Array.isArray(l?.services) ? l.services.map((x) => ({ ...x, quantity: x.quantity ?? l.quantity, passengerIndex: x.passengerIndex ?? l.passengerIndex })) : [l])) : [];
+    const services = bookedServices({ bookedServices: r?.bookedServices || r?.booked || (locks.length ? locks : null) || r?.services || r?.selectedServices || (Array.isArray(r) ? r : []) });
+    return { services, shape, sample: JSON.stringify(r?.locks ?? null).slice(0, 700) };
   } catch (e) { return { services: [], shape: [`error ${e.status || ''}`] }; }
 }
 export async function onRequestPost({ request, env }, fetcher = fetch) {
@@ -214,7 +216,7 @@ export async function onRequestPost({ request, env }, fetcher = fetch) {
       if (!s.bookingId) return json({ error: 'The airline did not confirm the booking. Check "My bookings" and contact Aiva before paying again.' }, 503);
       const extra = await servicesOf(s.bookingId, env, fetcher);
       if (!s.services.length && extra.services.length) s.services = extra.services;
-      return json({ ...s, testMode, ...(testMode ? { servicesReplyShape: extra.shape } : {}) });
+      return json({ ...s, testMode, ...(testMode ? { servicesReplyShape: extra.shape, servicesReplyLocks: extra.sample } : {}) });
     }
     if (body?.action === 'status') {
       const bookingId = id(body.bookingId), mail = email(clean(body.email, 254));

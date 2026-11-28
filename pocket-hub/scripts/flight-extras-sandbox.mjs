@@ -89,7 +89,7 @@ outer2: for (const [from, to] of routes) {
 if (booked) {
   const b = await post({ action: 'book', prebookId: booked.p.prebookId, transactionId: booked.t.transactionId });
   if (b.status === 200 && b.d.bookingId) {
-    log(`BOOK: sandbox booking ${b.d.bookingId} status ${b.d.status} · services on the booking: ${JSON.stringify(b.d.services)} · services reply fields ${JSON.stringify(b.d.servicesReplyShape)}`);
+    log(`BOOK: sandbox booking ${b.d.bookingId} status ${b.d.status} · services on the booking: ${JSON.stringify(b.d.services)} · services reply fields ${JSON.stringify(b.d.servicesReplyShape)} · locks ${b.d.servicesReplyLocks}`);
     results.bagOnBooking = (b.d.services || []).some((x) => /bag|kg|lugg/i.test(x.name));
     const st = await post({ action: 'status', bookingId: b.d.bookingId, email: contact.email });
     log(`STATUS: ${st.status} ${st.d.status || st.d.error || ''} · services: ${JSON.stringify(st.d.services || [])}`);
