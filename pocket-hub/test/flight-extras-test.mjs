@@ -64,13 +64,13 @@ assert.equal(selection([], 1), null);
 // The picker filters seats by traveller type, groups bags by flight, locks while attaching and never reuses an old total.
 {
   const js = readFileSync(new URL('../public/aiva-flight-extras.js', import.meta.url), 'utf8');
-  assert.match(js, /s\.passengerType === type/); assert.match(js, /flightNo\(sk\)/); assert.match(js, /if \(st\.busy\) return/);
+  assert.match(js, /s\.passengerType === type/); assert.match(js, /flightOf\(sk\)/); assert.match(js, /if \(st\.busy\) return/);
   assert.match(js, /did not confirm the new total/); assert.ok(!js.includes("forEach((x) => { x.disabled = false; })")); assert.ok(!js.includes('...(Number.isFinite(r.price)'));
 }
 // The page loads the picker before app.js, and checkout waits for it after the prebook.
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 assert.ok(html.indexOf('src="aiva-flight-extras.js"') > -1 && html.indexOf('src="aiva-flight-extras.js"') < html.indexOf('src="app.js"'));
-assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), /window\.aivaFlightExtras\(p,box,passengers\)/);
+assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), /window\.aivaFlightExtras\(p,box,passengers,f,prev\)/);
 // With a live key, paid extras stay off (no services offered, attach refused) until FLIGHT_EXTRAS_LIVE is "true".
 {
   const live = { LITEAPI_KEY: 'prod_live_key', FLIGHT_BOOKING_LIVE: 'true' };
@@ -126,6 +126,6 @@ assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'),
   for (const v of ['personal', 'cabin', 'checked', 'buy']) assert.match(html, new RegExp(`id="asFfBags"[^]*value="${v}"`));
   assert.match(html, /id="asFfBagPrice"/);
   const fx = readFileSync(new URL('../public/aiva-flight-extras.js', import.meta.url), 'utf8');
-  assert.match(fx, /More services/); assert.match(fx, /labels: selected\.map\(label\)/);
+  assert.match(fx, /More airline services/); assert.match(fx, /labels: selected\.map\(label\)/);
 }
 console.log('FLIGHT EXTRAS CHECKS PASSED');

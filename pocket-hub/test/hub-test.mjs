@@ -419,7 +419,7 @@ console.log('POCKET HUB CHECKS PASSED');
   const { onRequestPost: fb, passengers } = await import('../functions/api/travel/flight-book.js');
   const req = (b, origin = 'https://app.aivatrading.uk') => new Request('https://app.aivatrading.uk/api/travel/flight-book', { method: 'POST', body: JSON.stringify(b), headers: { Origin: origin, 'content-type': 'application/json' } });
   let sent;
-  const up = (reply, status = 200) => async (url, init) => { sent = { url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null, key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
+  const up = (reply, status = 200) => async (url, init) => { if (init.method === 'GET' && String(url).endsWith('/services')) return new Response('{"data":{}}', { status: 200 }); /* booked-services lookup after a booking */ sent = { url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null, key: init.headers['X-API-Key'] }; return new Response(JSON.stringify(reply), { status }); };
   const sb = { LITEAPI_KEY: 'sand_x' };
   const contact = { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', phoneCountryCode: '+44', phoneNumber: '07700 900123' };
   const pax = [{ passengerType: 0, firstName: 'Ada', lastName: 'Lovelace', birthday: '1990-01-02', gender: 'F', nationality: 'gb', documentNumber: 'ab 123456', documentExpiry: '2031-01-01', documentIssueCountry: 'GB' }];
@@ -429,7 +429,7 @@ console.log('POCKET HUB CHECKS PASSED');
   r = await fb({ request: req({ action: 'prebook', offerId: 'off_123', contact, passengers: pax }), env: sb }, up({ data: [{ prebookId: 'PB12345', transactionId: 'tr_12345', secretKey: 'pi_s', price: 39.6, currency: 'GBP', booking: { journey: { segments: [{ originCode: 'LHR', destinationCode: 'CDG', departureTime: '2026-12-23T11:40:00', carrier: { marketingCode: 'BA', marketingName: 'British Airways' }, flight: { marketingNumber: '304' } }] } } }] }));
   d = await r.json();
   assert.equal(r.status, 200); assert.equal(sent.url, 'https://api.liteapi.travel/v3.0/flights/prebooks');
-  assert.deepEqual(sent.body.contact, { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', phoneCountryCode: '44', phoneNumber: '07700900123' });
+  assert.deepEqual(sent.body.contact, { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', phoneCountryCode: '44', phoneNumber: '7700900123' }); // international form: trunk 0 dropped after +44
   assert.equal(sent.body.usePaymentSdk, true); assert.equal(sent.body.passengers[0].nationality, 'GB'); assert.equal(sent.body.passengers[0].documentNumber, 'AB123456');
   assert.deepEqual([d.prebookId, d.secretKey, d.paymentEnv, d.segments[0].flight], ['PB12345', 'pi_s', 'sandbox', 'BA304']);
   r = await fb({ request: req({ action: 'book', prebookId: 'PB12345', transactionId: 'tr_12345' }), env: sb }, up({ data: { booking: { bookingId: 'BK9', bookingRef: 'FH-1', status: 'PENDING_CONFIRMATION', journey: { pricing: { display: { total: 39.6, currency: 'GBP' } }, segments: [{ pnr: 'ABC123' }] } } } }, 201));
