@@ -8,7 +8,7 @@ import { onRequestPost, shapeServices, segmentOf, contact } from '../functions/a
 
 const src = (f) => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8');
 const sent = [];
-const ctx = { window: {}, console, Intl, AbortSignal, navigator: { language: 'en-GB' }, String, Number, Math, Map, Set, Object, Array, JSON, Promise, Error,
+const ctx = { window: {}, console, Intl, AbortSignal, navigator: { language: 'en-US' }, String, Number, Math, Map, Set, Object, Array, JSON, Promise, Error,
   fetch: async (url, init) => { const b = JSON.parse(init.body); sent.push(b); const sum = 30 + b.selected.reduce((n, x) => n + ({ b20o: 68.45, b25o: 72.72, b20r: 70.1, b23r: 74 }[x.serviceId] || 0) * x.quantity, 0);
     return { ok: true, json: async () => ({ transactionId: 'tr_new', secretKey: 'sk_new', price: Math.round(sum * 100) / 100, currency: 'GBP' }) }; } };
 ctx.window = ctx; vm.createContext(ctx);
@@ -95,7 +95,7 @@ assert.deepEqual(shapeServices({ groups: [{ type: 'BAGGAGE', segmentKey: 'k1', o
   assert.equal(P.format('US', '1', '2025550143'), '+1 202 555 0143'); assert.equal(P.format('FR', '33', '612345678'), '+33 6 12 34 56 78');
   assert.equal(P.format('IQ', '964', '7701234567'), '+964 770 123 4567');
   assert.equal(P.valid('44', '7700900123'), true); assert.equal(P.valid('44', '77009'), false); assert.equal(P.valid('1', '202555014'), false);
-  assert.equal(P.guess('', '44'), 'GB'); assert.equal(P.guess('IQ', ''), 'IQ');
+  assert.equal(P.guess('', '44'), 'GB'); assert.equal(P.guess('', ''), 'GB', 'en-US browsers still default to +44'); assert.equal(P.guess('IQ', ''), 'IQ');
 }
 // Backend: the contact phone is sent to the airline in international form.
 assert.deepEqual(contact({ firstName: 'Ana', lastName: 'Test', email: 'a@example.com', phoneCountryCode: '+44', phoneNumber: '07700 900123' }),

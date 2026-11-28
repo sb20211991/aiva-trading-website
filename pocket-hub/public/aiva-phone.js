@@ -64,14 +64,14 @@
     return Object.keys(DIAL).map((cc) => [cc, nameOf(cc, db)]).sort((a, b) => a[1].localeCompare(b[1]))
       .map(([cc, nm]) => `<option value="${cc}" data-dial="${DIAL[cc]}" label="${flag(cc)} +${DIAL[cc]}"${cc === sel ? ' selected' : ''}>${flag(cc)} ${nm.replace(/[<&"]/g, '')} (+${DIAL[cc]})</option>`).join('');
   }
-  /* Best default country: the one saved, else the old saved dialling code, else the browser region, else GB. */
+  /* Default country: the one saved, else the old saved dialling code, else GB. */
   function guess(saved, savedCode) {
     const s = String(saved || '').toUpperCase();
     if (DIAL[s]) return s;
     const c = String(savedCode || '').replace(/\D/g, '');
     if (c) { const pref = { '1': 'US', '44': 'GB', '7': 'RU', '39': 'IT', '47': 'NO', '61': 'AU', '212': 'MA', '262': 'RE', '358': 'FI', '590': 'GP', '599': 'CW' }[c]; const hit = pref || Object.keys(DIAL).find((k) => DIAL[k] === c); if (hit) return hit; }
-    const reg = (navigator.language || '').split('-')[1]?.toUpperCase();
-    return DIAL[reg] ? reg : 'GB';
+    /* Aiva is a UK service: 🇬🇧 +44 unless the traveller saved another country (browser language is not a location). */
+    return 'GB';
   }
   /* Wires a country <select> and number <input> pair: the closed select shows "🇬🇧 +44", the hint shows the full number. */
   function bind(select, input, hint) {
